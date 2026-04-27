@@ -1,0 +1,126 @@
+@import url('https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@100..900&display=swap');
+
+:root {
+  --text-primary: #18181B;
+  --text-secondary: #52525B;
+  --text-tertiary: #71717A;
+  --text-inverse: #FAFAFA;
+  --border-radius: 8px;
+  --font-size: 16px;
+  --input-font-size: 14px;
+
+  --bg-primary: #FF4500;
+  --bg-primary-hover: #E03E00;
+  --bg-success: #10B981;
+  --bg-success-hover: #059669;
+  --bg-error: #EF4444;
+  --bg-error-hover: #DC2626;
+  --bg-base-1: #0F0F11;
+  --bg-base-2: #1A1A1D;
+  --bg-base-3: #252528;
+
+  --surface-canvas: #F5F5F5;
+  --surface-sidebar: #FFFFFF;
+  --surface-panel: #FFFFFF;
+  --surface-card: #FAFAFA;
+  --surface-input: #FFFFFF;
+  --surface-toolbar: #F4F4F5;
+  --surface-accent: #FFF3ED;
+  --surface-elevated: rgba(255, 255, 255, 0.88);
+  --surface-elevated-hover: rgba(244, 244, 245, 0.96);
+  --surface-overlay: rgba(255, 255, 255, 0.96);
+  --surface-overlay-muted: rgba(244, 244, 245, 0.84);
+
+  --border-default: #E4E4E7;
+  --border-strong: #D4D4D8;
+  --border-subtle: rgba(212, 212, 216, 0.6);
+
+  --icon-default: #71717A;
+  --icon-muted: #A1A1AA;
+  --overlay-backdrop: rgba(24, 24, 27, 0.45);
+  --focus-ring: rgba(59, 130, 246, 0.28);
+
+  --shadow-soft: 0 1px 2px rgba(24, 24, 27, 0.06);
+  --shadow-panel: 0 8px 24px rgba(24, 24, 27, 0.08);
+  --shadow-modal: 0 24px 80px rgba(24, 24, 27, 0.18), 0 8px 24px rgba(24, 24, 27, 0.1);
+
+  --bg-send-message: var(--surface-input);
+  --bg-send-message-hover: var(--surface-card);
+  --bg-message-tools: var(--surface-toolbar);
+  --bg-message-tools-icon: var(--icon-default);
+  --bg-input: var(--surface-input);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --text-primary: #F4F4F5;
+    --text-secondary: #D4D4D8;
+    --text-tertiary: #A1A1AA;
+    --text-inverse: #18181B;
+
+    --surface-canvas: #111113;
+    --surface-sidebar: #1A1A1D;
+    --surface-panel: #232326;
+    --surface-card: #3A3A3F;
+    --surface-input: #5A5A5F;
+    --surface-toolbar: #4A4A4F;
+    --surface-accent: #3A2418;
+    --surface-elevated: rgba(90, 90, 95, 0.72);
+    --surface-elevated-hover: rgba(74, 74, 79, 0.92);
+    --surface-overlay: rgba(35, 35, 38, 0.96);
+    --surface-overlay-muted: rgba(58, 58, 63, 0.78);
+
+    --border-default: #3F3F46;
+    --border-strong: #52525B;
+    --border-subtle: rgba(82, 82, 91, 0.7);
+
+    --icon-default: #D4D4D8;
+    --icon-muted: #A1A1AA;
+    --overlay-backdrop: rgba(0, 0, 0, 0.5);
+    --focus-ring: rgba(96, 165, 250, 0.3);
+
+    --shadow-soft: 0 1px 2px rgba(0, 0, 0, 0.3);
+    --shadow-panel: 0 8px 24px rgba(0, 0, 0, 0.28);
+    --shadow-modal: 0 24px 80px rgba(0, 0, 0, 0.32), 0 8px 24px rgba(0, 0, 0, 0.2);
+
+    --bg-send-message: var(--surface-input);
+    --bg-send-message-hover: var(--surface-card);
+    --bg-message-tools: var(--surface-toolbar);
+    --bg-message-tools-icon: var(--icon-default);
+    --bg-input: var(--surface-input);
+  }
+}
+
+body {
+  margin: 0;
+  font-family: 'Noto Sans JP', sans-serif;
+  background-color: var(--surface-canvas);
+  color: var(--text-primary);
+}
+
+.bg-primary {
+  background-color: var(--bg-primary);
+  color: var(--text-inverse);
+}
+
+.bg-primary:hover {
+  background-color: var(--bg-primary-hover);
+}
+
+.bg-success {
+  background-color: var(--bg-success);
+  color: var(--text-inverse);
+}
+
+.bg-success:hover {
+  background-color: var(--bg-success-hover);
+}
+
+.bg-error {
+  background-color: var(--bg-error);
+  color: var(--text-inverse);
+}
+
+.bg-error:hover {
+  background-color: var(--bg-error-hover);
+}
