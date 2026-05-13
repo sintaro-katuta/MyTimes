@@ -28,7 +28,7 @@ const closeModal = () => {
       aria-label="モーダルダイアログ"
       @click.self="closeModal"
     >
-      <div class="modal-backdrop" aria-hidden="true" />
+      <div class="modal-backdrop" aria-hidden="true" @click="closeModal" />
       <div class="modal-shell">
         <div class="modal-content">
           <button type="button" class="close-button" aria-label="モーダルを閉じる" @click="closeModal">
