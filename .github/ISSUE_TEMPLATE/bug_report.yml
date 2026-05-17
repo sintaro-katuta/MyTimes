@@ -1,0 +1,53 @@
+name: バグ報告
+description: 不具合や期待と違う動作を報告する
+title: ""
+labels: ["bug"]
+body:
+  - type: textarea
+    id: summary
+    attributes:
+      label: 概要
+      description: 発生している問題を簡潔に書いてください。
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: 再現手順
+      description: 問題を再現する手順を書いてください。
+      value: |
+        1. 
+        2. 
+        3. 
+    validations:
+      required: false
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: 期待する動作
+      description: 本来どう動いてほしいかを書いてください。
+    validations:
+      required: false
+
+  - type: textarea
+    id: actual
+    attributes:
+      label: 実際の動作
+      description: 実際にどう動いたかを書いてください。
+    validations:
+      required: false
+
+  - type: textarea
+    id: environment
+    attributes:
+      label: 環境
+      description: OS、アプリ版、Node/Rust のバージョンなどを書いてください。
+      value: |
+        - OS:
+        - Node:
+        - Rust:
+        - Tauri:
+    validations:
+      required: false

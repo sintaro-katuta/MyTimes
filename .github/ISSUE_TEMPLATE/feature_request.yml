@@ -1,0 +1,41 @@
+name: 機能追加
+description: 新機能や改善を提案する
+title: ""
+labels: ["enhancement"]
+body:
+  - type: textarea
+    id: summary
+    attributes:
+      label: 概要
+      description: 追加・改善したい内容を簡潔に書いてください。
+      placeholder: 例）ローカルDBの接続確認をGitHub Actionsでも実行したい
+    validations:
+      required: true
+
+  - type: textarea
+    id: background
+    attributes:
+      label: 背景
+      description: なぜ必要か、どんな課題があるかを書いてください。
+    validations:
+      required: false
+
+  - type: textarea
+    id: tasks
+    attributes:
+      label: 対応内容
+      description: 想定している作業を箇条書きで書いてください。
+      value: |
+        - [ ] 
+    validations:
+      required: false
+
+  - type: textarea
+    id: done
+    attributes:
+      label: 完了条件
+      description: この issue を完了と判断できる条件を書いてください。
+      value: |
+        - [ ] 
+    validations:
+      required: false
