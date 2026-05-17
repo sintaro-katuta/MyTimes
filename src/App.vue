@@ -4,6 +4,7 @@ import Sidebar from './components/Sidebar.vue'
 import SendMessage from './components/SendMessage.vue'
 import Message from './components/Message.vue'
 import Input from './components/Input.vue'
+import DatabaseStatus from './components/DatabaseStatus.vue'
 
 import { ref } from 'vue'
 
@@ -28,6 +29,7 @@ const openNewNoteModal = () => {
       <main class="content">
         <div class="header">
           <Input />
+          <DatabaseStatus />
         </div>
         <div class="messages">
           <Message name="name" date="2026-04-02" message="test" />
@@ -71,6 +73,14 @@ const openNewNoteModal = () => {
   height: calc(100vh - 32px);
   min-width: 0;
   min-height: 0;
+}
+
+.header {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: center;
+  margin-bottom: 16px;
 }
 
 .modal-title,
