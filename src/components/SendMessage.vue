@@ -1,6 +1,23 @@
 <script setup>
-import { nextTick, onMounted, ref } from 'vue'
+import { computed, nextTick, onMounted, ref, watch } from 'vue'
 import { Bold, Italic, Strikethrough, List, ListOrdered, Link, SquareCode, Plus, SendHorizontal } from '@lucide/vue'
+
+const props = defineProps({
+  modelValue: {
+    type: String,
+    default: '',
+  },
+  isSending: {
+    type: Boolean,
+    default: false,
+  },
+  errorMessage: {
+    type: String,
+    default: '',
+  },
+})
+
+const emit = defineEmits(['update:modelValue', 'submit'])
 
 const tools = [
   { name: '太字', icon: Bold },
@@ -12,8 +29,14 @@ const tools = [
   { name: 'コードブロック', icon: SquareCode },
 ]
 
-const message = ref('')
 const textareaRef = ref(null)
+const message = computed({
+  get: () => props.modelValue,
+  set: (value) => {
+    emit('update:modelValue', value)
+  },
+})
+const canSend = computed(() => message.value.trim().length > 0 && !props.isSending)
 
 const resizeTextarea = () => {
   if (!textareaRef.value) return
@@ -22,11 +45,33 @@ const resizeTextarea = () => {
   textareaRef.value.style.height = `${textareaRef.value.scrollHeight}px`
 }
 
+const submitMessage = () => {
+  if (!canSend.value) return
+
+  emit('submit')
+}
+
+const handleTextareaKeydown = (event) => {
+  if (!event.metaKey || event.key !== 'Enter') return
+
+  event.preventDefault()
+  submitMessage()
+}
+
 onMounted(() => {
   nextTick(() => {
     resizeTextarea()
   })
 })
+
+watch(
+  () => props.modelValue,
+  () => {
+    nextTick(() => {
+      resizeTextarea()
+    })
+  },
+)
 </script>
 
 <template>
@@ -53,7 +98,9 @@ onMounted(() => {
         aria-label="メッセージを入力"
         rows="1"
         @input="resizeTextarea"
+        @keydown="handleTextareaKeydown"
       />
+      <p v-if="errorMessage" class="message-error" role="alert">{{ errorMessage }}</p>
 
       <div class="message-actions">
         <div class="leading-actions">
@@ -63,7 +110,13 @@ onMounted(() => {
         </div>
 
         <div class="trailing-actions">
-          <button type="button" class="send-button" aria-label="メッセージを送信">
+          <button
+            type="button"
+            class="send-button"
+            :disabled="!canSend"
+            :aria-label="isSending ? 'メッセージを送信中' : 'メッセージを送信'"
+            @click="submitMessage"
+          >
             <SendHorizontal :size="18" class="action-icon" />
           </button>
         </div>
@@ -197,6 +250,19 @@ textarea::placeholder {
 
 .send-button:hover {
   background: var(--bg-primary-hover);
+}
+
+.send-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+  transform: none;
+}
+
+.message-error {
+  margin: 0;
+  color: var(--bg-error);
+  font-size: 12px;
+  line-height: 1.5;
 }
 
 .tool-icon,
