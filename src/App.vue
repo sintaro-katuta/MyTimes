@@ -4,7 +4,6 @@ import Sidebar from './components/Sidebar.vue'
 import SendMessage from './components/SendMessage.vue'
 import Message from './components/Message.vue'
 import Input from './components/Input.vue'
-import DatabaseStatus from './components/DatabaseStatus.vue'
 import {
   createMessage,
   exportMessagesToMarkdown,
@@ -111,9 +110,6 @@ onMounted(() => {
       <main class="content">
         <div class="header">
           <Input />
-          <div class="header-actions">
-            <DatabaseStatus />
-          </div>
         </div>
         <p v-if="exportStatus" class="export-status">{{ exportStatus }}</p>
         <div class="messages">
@@ -174,17 +170,7 @@ onMounted(() => {
 }
 
 .header {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  gap: 12px;
-  align-items: center;
   margin-bottom: 16px;
-}
-
-.header-actions {
-  display: flex;
-  align-items: center;
-  gap: 8px;
 }
 
 .export-status {
