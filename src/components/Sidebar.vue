@@ -171,6 +171,9 @@ watch(
         <Icon src="/example1.jpg" width="48" height="48" class="selected" />
         <Icon src="/example1.jpg" width="48" height="48" />
         <Icon src="/example1.jpg" width="48" height="48" />
+        <button type="button" class="rail-action" aria-label="新規フォルダ" @click="startCreateFolder">
+          <Plus :size="20" />
+        </button>
       </div>
     </div>
     <div class="panel">
@@ -186,9 +189,6 @@ watch(
       <div class="section">
         <div class="section-header">
           <p class="section-title">フォルダ</p>
-          <button type="button" class="icon-button" aria-label="新規フォルダ" @click="startCreateFolder">
-            <Plus :size="16" />
-          </button>
         </div>
 
         <form v-if="isCreatingFolder" class="folder-form" @submit.prevent="submitFolder">
@@ -292,6 +292,25 @@ watch(
   justify-content: center;
   flex-direction: column;
   gap: 16px;
+}
+
+.rail-action {
+  width: 48px;
+  height: 48px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--border-subtle);
+  border-radius: 12px;
+  background: var(--bg-base-2);
+  color: var(--text-tertiary);
+  cursor: pointer;
+}
+
+.rail-action:hover {
+  border-color: var(--border-strong);
+  background: var(--bg-base-3);
+  color: var(--text-primary);
 }
 
 .header {

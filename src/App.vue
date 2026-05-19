@@ -275,10 +275,6 @@ onMounted(async () => {
       <main class="content">
         <div class="header">
           <Input />
-          <div class="folder-context">
-            <span class="folder-label">{{ selectedFolder ? selectedFolder.path : 'すべてのメッセージ' }}</span>
-            <span class="note-path">{{ currentNotePath }}</span>
-          </div>
         </div>
         <div ref="messagesRef" class="messages">
           <p v-if="isLoadingMessages" class="messages-state">メッセージを読み込み中</p>
@@ -337,30 +333,7 @@ onMounted(async () => {
 .header {
   display: flex;
   align-items: center;
-  gap: 12px;
   margin-bottom: 16px;
-}
-
-.folder-context {
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  color: var(--text-tertiary);
-  font-size: 12px;
-}
-
-.folder-label,
-.note-path {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.folder-label {
-  color: var(--text-secondary);
-  font-size: 13px;
-  font-weight: 600;
 }
 
 .modal-title,
