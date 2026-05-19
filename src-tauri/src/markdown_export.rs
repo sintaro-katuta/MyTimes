@@ -1,0 +1,145 @@
+use serde::{Deserialize, Serialize};
+use std::collections::BTreeMap;
+use std::fs;
+use std::path::{Path, PathBuf};
+use tauri::{AppHandle, Manager};
+
+#[derive(Debug, Deserialize)]
+pub struct MarkdownMessage {
+    pub id: i64,
+    pub content: String,
+    pub created_at: String,
+}
+
+#[derive(Debug, Serialize)]
+pub struct ExportedMarkdownFile {
+    pub date: String,
+    pub path: String,
+}
+
+#[derive(Debug, Serialize)]
+pub struct MarkdownExportResult {
+    pub exported_count: usize,
+    pub files: Vec<ExportedMarkdownFile>,
+}
+
+#[tauri::command]
+pub fn export_messages_to_markdown(
+    app: AppHandle,
+    messages: Vec<MarkdownMessage>,
+    export_dir: Option<String>,
+) -> Result<MarkdownExportResult, String> {
+    let entries_dir = match export_dir.map(|path| path.trim().to_string()) {
+        Some(path) if !path.is_empty() => PathBuf::from(path),
+        _ => app
+            .path()
+            .app_data_dir()
+            .map_err(|error| error.to_string())?
+            .join("entries"),
+    };
+
+    export_messages_to_dir(&entries_dir, &messages).map_err(|error| error.to_string())
+}
+
+fn export_messages_to_dir(
+    entries_dir: &Path,
+    messages: &[MarkdownMessage],
+) -> std::io::Result<MarkdownExportResult> {
+    let mut messages_by_date = BTreeMap::<String, Vec<&MarkdownMessage>>::new();
+
+    for message in messages {
+        messages_by_date
+            .entry(message_date(&message.created_at).to_string())
+            .or_default()
+            .push(message);
+    }
+
+    let mut files = Vec::with_capacity(messages_by_date.len());
+
+    for (date, mut day_messages) in messages_by_date {
+        day_messages.sort_by(|left, right| {
+            left.created_at
+                .cmp(&right.created_at)
+                .then_with(|| left.id.cmp(&right.id))
+        });
+
+        let file_path = markdown_file_path(entries_dir, &date);
+
+        if let Some(parent) = file_path.parent() {
+            fs::create_dir_all(parent)?;
+        }
+
+        fs::write(&file_path, render_day_markdown(&date, &day_messages))?;
+
+        files.push(ExportedMarkdownFile {
+            date,
+            path: file_path.to_string_lossy().into_owned(),
+        });
+    }
+
+    Ok(MarkdownExportResult {
+        exported_count: messages.len(),
+        files,
+    })
+}
+
+fn markdown_file_path(entries_dir: &Path, date: &str) -> PathBuf {
+    let year = &date[0..4];
+    let month = &date[5..7];
+
+    entries_dir
+        .join(year)
+        .join(month)
+        .join(format!("{date}.md"))
+}
+
+fn render_day_markdown(date: &str, messages: &[&MarkdownMessage]) -> String {
+    let mut markdown = format!("# {date}\n\n");
+
+    for message in messages {
+        markdown.push_str(&format!("## {}\n\n", message_time(&message.created_at)));
+        markdown.push_str(message.content.trim_end());
+        markdown.push_str("\n\n---\n\n");
+    }
+
+    markdown
+}
+
+fn message_date(created_at: &str) -> &str {
+    created_at.get(0..10).unwrap_or("unknown-day")
+}
+
+fn message_time(created_at: &str) -> &str {
+    created_at.get(11..16).unwrap_or("--:--")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn renders_utf8_messages_grouped_by_day() {
+        let message = MarkdownMessage {
+            id: 1,
+            content: "今日は Markdown エクスポートを作った。".to_string(),
+            created_at: "2026-05-19T12:30:00.000Z".to_string(),
+        };
+        let messages = vec![&message];
+
+        assert_eq!(
+            render_day_markdown("2026-05-19", &messages),
+            "# 2026-05-19\n\n## 12:30\n\n今日は Markdown エクスポートを作った。\n\n---\n\n"
+        );
+    }
+
+    #[test]
+    fn builds_year_month_daily_file_path() {
+        assert_eq!(
+            markdown_file_path(Path::new("entries"), "2026-05-19"),
+            Path::new("entries")
+                .join("2026")
+                .join("05")
+                .join("2026-05-19.md")
+        );
+    }
+}

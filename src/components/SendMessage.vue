@@ -14,6 +14,13 @@ const tools = [
 
 const message = ref('')
 const textareaRef = ref(null)
+const emit = defineEmits(['send'])
+const props = defineProps({
+  disabled: {
+    type: Boolean,
+    default: false,
+  },
+})
 
 const resizeTextarea = () => {
   if (!textareaRef.value) return
@@ -27,6 +34,17 @@ onMounted(() => {
     resizeTextarea()
   })
 })
+
+const submitMessage = async () => {
+  const content = message.value.trim()
+
+  if (!content || props.disabled) return
+
+  emit('send', content)
+  message.value = ''
+  await nextTick()
+  resizeTextarea()
+}
 </script>
 
 <template>
@@ -53,6 +71,7 @@ onMounted(() => {
         aria-label="メッセージを入力"
         rows="1"
         @input="resizeTextarea"
+        @keydown.enter.exact.prevent="submitMessage"
       />
 
       <div class="message-actions">
@@ -63,7 +82,7 @@ onMounted(() => {
         </div>
 
         <div class="trailing-actions">
-          <button type="button" class="send-button" aria-label="メッセージを送信">
+          <button type="button" class="send-button" aria-label="メッセージを送信" :disabled="disabled" @click="submitMessage">
             <SendHorizontal :size="18" class="action-icon" />
           </button>
         </div>
@@ -197,6 +216,11 @@ textarea::placeholder {
 
 .send-button:hover {
   background: var(--bg-primary-hover);
+}
+
+.send-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.58;
 }
 
 .tool-icon,

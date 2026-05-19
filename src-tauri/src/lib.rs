@@ -1,3 +1,6 @@
+mod markdown_export;
+
+use markdown_export::export_messages_to_markdown;
 use tauri_plugin_sql::{Migration, MigrationKind};
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -10,6 +13,7 @@ pub fn run() {
     }];
 
     tauri::Builder::default()
+        .invoke_handler(tauri::generate_handler![export_messages_to_markdown])
         .plugin(
             tauri_plugin_sql::Builder::new()
                 .add_migrations("sqlite:mytimes.db", migrations)
