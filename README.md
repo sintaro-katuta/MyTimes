@@ -11,7 +11,10 @@ Vue 3 と Tauri で構成したデスクトップアプリケーションです�
 - マイグレーション: `src-tauri/migrations/1_create_initial_tables.sql`
 - 権限設定: `src-tauri/capabilities/default.json`
 
-`messages` テーブルは Tauri 起動時のマイグレーションで作成されます。フロントエンドからは `Database.load('sqlite:mytimes.db')` で同じ DB を読み込み、`SELECT` と `INSERT` を実行します。
+`messages` と `folders` テーブルは Tauri 起動時のマイグレーションで作成されます。フロントエンドからは `Database.load('sqlite:mytimes.db')` で同じ DB を読み込み、`SELECT` と `INSERT` を実行します。
+
+- `folders`: アプリ内の仮想フォルダツリーとMarkdownエクスポート先パスを保持します。
+- `messages.folder_id`: メッセージが属するフォルダを保持します。
 
 ## 開発
 
