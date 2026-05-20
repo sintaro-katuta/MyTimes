@@ -14,11 +14,14 @@ const tools = [
 
 const message = ref('')
 const textareaRef = ref(null)
-const emit = defineEmits(['send'])
 const props = defineProps({
   disabled: {
     type: Boolean,
     default: false,
+  },
+  onSend: {
+    type: Function,
+    default: null,
   },
 })
 
@@ -40,7 +43,10 @@ const submitMessage = async () => {
 
   if (!content || props.disabled) return
 
-  emit('send', content)
+  const didSend = props.onSend ? await props.onSend(content) : true
+
+  if (!didSend) return
+
   message.value = ''
   await nextTick()
   resizeTextarea()

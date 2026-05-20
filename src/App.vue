@@ -59,8 +59,10 @@ const handleSendMessage = async (content) => {
     await refreshMessages()
     const result = await exportMessagesToMarkdown(messages.value, markdownExportPath.value)
     exportStatus.value = `${result.exported_count}件を書き出しました`
+    return true
   } catch (error) {
     exportStatus.value = error instanceof Error ? error.message : '保存に失敗しました'
+    return false
   } finally {
     isSaving.value = false
   }
@@ -145,7 +147,7 @@ onMounted(() => {
             :message="message.content"
           />
         </div>
-        <SendMessage :disabled="isSaving" @send="handleSendMessage" />
+        <SendMessage :disabled="isSaving" :on-send="handleSendMessage" />
       </main>
     </div>
     <Modal v-model="isModalOpen">
