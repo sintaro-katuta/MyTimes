@@ -1,5 +1,6 @@
 <script setup>
 import { open } from '@tauri-apps/plugin-dialog'
+import { nextTick, onMounted, ref } from 'vue'
 import Modal from './components/Modal.vue'
 import Sidebar from './components/Sidebar.vue'
 import SendMessage from './components/SendMessage.vue'
@@ -13,23 +14,20 @@ import {
   saveMarkdownExportPath,
 } from './lib/messages'
 
-import { computed, onMounted, ref } from 'vue'
-
 const isModalOpen = ref(false)
 const modalMode = ref('settings')
 const messages = ref([])
-const isSaving = ref(false)
+const draftMessage = ref('')
+const messagesRef = ref(null)
+const isLoadingMessages = ref(true)
+const isSendingMessage = ref(false)
+const isSavingSettings = ref(false)
 const isBrowsing = ref(false)
+const loadMessageError = ref('')
+const sendMessageError = ref('')
 const exportStatus = ref('')
 const markdownExportPath = ref('')
 const settingsStatus = ref('')
-
-const displayedMessages = computed(() =>
-  messages.value.map((message) => ({
-    ...message,
-    displayDate: formatMessageDate(message.created_at),
-  })),
-)
 
 const openSettingsModal = () => {
   modalMode.value = 'settings'
@@ -42,34 +40,88 @@ const openNewNoteModal = () => {
   isModalOpen.value = true
 }
 
+const formatMessageDate = (value) => {
+  const date = new Date(value)
+
+  if (Number.isNaN(date.getTime())) {
+    return value
+  }
+
+  return new Intl.DateTimeFormat('ja-JP', {
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+  }).format(date)
+}
+
+const scrollMessagesToBottom = async () => {
+  await nextTick()
+
+  if (!messagesRef.value) return
+
+  messagesRef.value.scrollTop = messagesRef.value.scrollHeight
+}
+
 const refreshMessages = async () => {
-  messages.value = await loadMessages()
+  isLoadingMessages.value = true
+  loadMessageError.value = ''
+
+  try {
+    const rows = await loadMessages()
+
+    messages.value = rows.map((row) => ({
+      ...row,
+      name: '自分',
+      date: formatMessageDate(row.created_at),
+      message: row.content,
+    }))
+
+    await scrollMessagesToBottom()
+  } catch (error) {
+    loadMessageError.value = error instanceof Error ? error.message : 'メッセージの読み込みに失敗しました'
+  } finally {
+    isLoadingMessages.value = false
+  }
 }
 
 const refreshMarkdownExportPath = async () => {
   markdownExportPath.value = await loadMarkdownExportPath()
 }
 
-const handleSendMessage = async (content) => {
-  isSaving.value = true
+const sendMessage = async () => {
+  const content = draftMessage.value.trim()
+
+  if (!content || isSendingMessage.value) return
+
+  isSendingMessage.value = true
+  sendMessageError.value = ''
   exportStatus.value = ''
 
   try {
     await createMessage(content)
-    await refreshMessages()
-    const result = await exportMessagesToMarkdown(messages.value, markdownExportPath.value)
+    const rows = await loadMessages()
+    const result = await exportMessagesToMarkdown(rows, markdownExportPath.value)
+
+    draftMessage.value = ''
+    messages.value = rows.map((row) => ({
+      ...row,
+      name: '自分',
+      date: formatMessageDate(row.created_at),
+      message: row.content,
+    }))
     exportStatus.value = `${result.exported_count}件を書き出しました`
-    return true
+    await scrollMessagesToBottom()
   } catch (error) {
-    exportStatus.value = error instanceof Error ? error.message : '保存に失敗しました'
-    return false
+    sendMessageError.value = error instanceof Error ? error.message : 'メッセージの送信に失敗しました'
   } finally {
-    isSaving.value = false
+    isSendingMessage.value = false
   }
 }
 
 const handleSaveSettings = async (close) => {
-  isSaving.value = true
+  isSavingSettings.value = true
   settingsStatus.value = ''
 
   try {
@@ -80,7 +132,7 @@ const handleSaveSettings = async (close) => {
   } catch (error) {
     settingsStatus.value = error instanceof Error ? error.message : '設定の保存に失敗しました'
   } finally {
-    isSaving.value = false
+    isSavingSettings.value = false
   }
 }
 
@@ -106,25 +158,10 @@ const handleBrowseMarkdownExportPath = async () => {
   }
 }
 
-const formatMessageDate = (value) => {
-  const date = new Date(value)
-
-  if (Number.isNaN(date.getTime())) return value
-
-  return new Intl.DateTimeFormat('ja-JP', {
-    month: '2-digit',
-    day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit',
-  }).format(date)
-}
-
 onMounted(() => {
-  refreshMessages().catch((error) => {
-    exportStatus.value = error instanceof Error ? error.message : 'メッセージの読み込みに失敗しました'
-  })
+  refreshMessages()
   refreshMarkdownExportPath().catch((error) => {
-    exportStatus.value = error instanceof Error ? error.message : '設定の読み込みに失敗しました'
+    loadMessageError.value = error instanceof Error ? error.message : '設定の読み込みに失敗しました'
   })
 })
 </script>
@@ -138,16 +175,26 @@ onMounted(() => {
           <Input />
         </div>
         <p v-if="exportStatus" class="export-status">{{ exportStatus }}</p>
-        <div class="messages">
-          <Message
-            v-for="message in displayedMessages"
-            :key="message.id"
-            name="MyTimes"
-            :date="message.displayDate"
-            :message="message.content"
-          />
+        <div ref="messagesRef" class="messages">
+          <p v-if="isLoadingMessages" class="messages-state">メッセージを読み込み中</p>
+          <p v-else-if="loadMessageError" class="messages-state is-error">{{ loadMessageError }}</p>
+          <p v-else-if="messages.length === 0" class="messages-state">まだメッセージはありません</p>
+          <template v-else>
+            <Message
+              v-for="message in messages"
+              :key="message.id"
+              :name="message.name"
+              :date="message.date"
+              :message="message.message"
+            />
+          </template>
         </div>
-        <SendMessage :disabled="isSaving" :on-send="handleSendMessage" />
+        <SendMessage
+          v-model="draftMessage"
+          :is-sending="isSendingMessage"
+          :error-message="sendMessageError"
+          @submit="sendMessage"
+        />
       </main>
     </div>
     <Modal v-model="isModalOpen">
@@ -168,7 +215,7 @@ onMounted(() => {
             <button
               type="button"
               class="secondary-button browse-button"
-              :disabled="isBrowsing || isSaving"
+              :disabled="isBrowsing || isSavingSettings"
               @click="handleBrowseMarkdownExportPath"
             >
               参照
@@ -180,7 +227,7 @@ onMounted(() => {
       </template>
       <template v-if="modalMode === 'settings'" #footer="{ close }">
         <button type="button" class="secondary-button" @click="close">キャンセル</button>
-        <button type="button" class="primary-button" :disabled="isSaving" @click="handleSaveSettings(close)">保存</button>
+        <button type="button" class="primary-button" :disabled="isSavingSettings" @click="handleSaveSettings(close)">保存</button>
       </template>
     </Modal>
   </div>
@@ -206,6 +253,8 @@ onMounted(() => {
 }
 
 .header {
+  display: flex;
+  align-items: center;
   margin-bottom: 16px;
 }
 
@@ -321,5 +370,16 @@ onMounted(() => {
 
 .messages::-webkit-scrollbar {
   display: none;
+}
+
+.messages-state {
+  align-self: center;
+  margin: auto 0;
+  color: var(--text-tertiary);
+  font-size: 14px;
+}
+
+.messages-state.is-error {
+  color: var(--bg-error);
 }
 </style>
