@@ -1,4 +1,5 @@
 <script setup>
+import { open } from '@tauri-apps/plugin-dialog'
 import Modal from './components/Modal.vue'
 import Sidebar from './components/Sidebar.vue'
 import SendMessage from './components/SendMessage.vue'
@@ -18,6 +19,7 @@ const isModalOpen = ref(false)
 const modalMode = ref('settings')
 const messages = ref([])
 const isSaving = ref(false)
+const isBrowsing = ref(false)
 const exportStatus = ref('')
 const markdownExportPath = ref('')
 const settingsStatus = ref('')
@@ -80,6 +82,28 @@ const handleSaveSettings = async (close) => {
   }
 }
 
+const handleBrowseMarkdownExportPath = async () => {
+  isBrowsing.value = true
+  settingsStatus.value = ''
+
+  try {
+    const selectedPath = await open({
+      directory: true,
+      multiple: false,
+      defaultPath: markdownExportPath.value || undefined,
+      title: 'Markdown保存先を選択',
+    })
+
+    if (typeof selectedPath === 'string') {
+      markdownExportPath.value = selectedPath
+    }
+  } catch (error) {
+    settingsStatus.value = error instanceof Error ? error.message : '保存先の選択に失敗しました'
+  } finally {
+    isBrowsing.value = false
+  }
+}
+
 const formatMessageDate = (value) => {
   const date = new Date(value)
 
@@ -131,13 +155,23 @@ onMounted(() => {
       <template #body>
         <form v-if="modalMode === 'settings'" class="settings-form" @submit.prevent>
           <label class="field-label" for="markdown-export-path">Markdown保存先</label>
-          <input
-            id="markdown-export-path"
-            v-model="markdownExportPath"
-            class="path-input"
-            type="text"
-            placeholder="/Users/sintaro/Documents/MyTimes/entries"
-          />
+          <div class="path-field">
+            <input
+              id="markdown-export-path"
+              v-model="markdownExportPath"
+              class="path-input"
+              type="text"
+              placeholder="/Users/sintaro/Documents/MyTimes/entries"
+            />
+            <button
+              type="button"
+              class="secondary-button browse-button"
+              :disabled="isBrowsing || isSaving"
+              @click="handleBrowseMarkdownExportPath"
+            >
+              参照
+            </button>
+          </div>
           <p v-if="settingsStatus" class="settings-status">{{ settingsStatus }}</p>
         </form>
         <p v-else class="modal-text">新しいノートの入力項目はここに追加します。</p>
@@ -196,6 +230,12 @@ onMounted(() => {
   font-weight: 700;
 }
 
+.path-field {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
 .path-input {
   width: 100%;
   box-sizing: border-box;
@@ -252,6 +292,16 @@ onMounted(() => {
 .secondary-button:hover {
   background: var(--surface-card);
   color: var(--text-primary);
+}
+
+.secondary-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.58;
+}
+
+.browse-button {
+  flex: 0 0 auto;
+  min-width: 72px;
 }
 
 .messages {
