@@ -170,13 +170,6 @@ watch(
 <template>
   <div class="sidebar">
     <div class="rail">
-      <div class="icons">
-        <button type="button" class="rail-action" aria-label="新規フォルダ" @click="startCreateFolder">
-          <Plus :size="20" />
-        </button>
-      </div>
-    </div>
-    <div class="panel">
       <div class="header">
         <h1 class="heading">{{ appTitle }}</h1>
         <div class="actions">
@@ -185,10 +178,15 @@ watch(
           </button>
         </div>
       </div>
+
       <hr class="divider" />
-      <div class="section">
+
+      <div class="section folder-section">
         <div class="section-header">
           <p class="section-title">フォルダ</p>
+          <button type="button" class="icon-button" aria-label="新規フォルダ" @click="startCreateFolder">
+            <Plus :size="18" />
+          </button>
         </div>
 
         <form v-if="isCreatingFolder" class="folder-form" @submit.prevent="submitFolder">
@@ -251,11 +249,17 @@ watch(
           </div>
         </div>
       </div>
+    </div>
 
+    <div class="panel">
+      <div class="header">
+        <h2 class="heading">{{ selectedFolderName }}</h2>
+      </div>
+      <hr class="divider" />
       <div class="section notes-section">
-        <p class="section-title">ノート</p>
+        <p class="section-title">ファイル</p>
         <div class="notes">
-          <div v-if="notes.length === 0" class="empty-folders">このフォルダにノートはありません</div>
+          <div v-if="notes.length === 0" class="empty-folders">このフォルダにファイルはありません</div>
           <div v-for="note in notes" :key="note.path" class="note">
             <FileText :size="16" />
             <div class="note-body">
@@ -276,41 +280,20 @@ watch(
 <style scoped>
 .sidebar {
   display: flex;
+  gap: 8px;
 }
 
 .rail {
-  width: 72px;
+  width: 280px;
+  height: calc(100vh - 32px);
+  box-sizing: border-box;
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  min-width: 0;
   background-color: var(--bg-base-1);
-}
-
-.icons {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex-direction: column;
-  gap: 16px;
-}
-
-.rail-action {
-  width: 48px;
-  height: 48px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
   border: 1px solid var(--border-subtle);
   border-radius: 12px;
-  background: var(--bg-base-2);
-  color: var(--text-tertiary);
-  cursor: pointer;
-}
-
-.rail-action:hover {
-  border-color: var(--border-strong);
-  background: var(--bg-base-3);
-  color: var(--text-primary);
+  padding: 16px;
 }
 
 .header {
@@ -345,7 +328,7 @@ watch(
 }
 
 .panel {
-  width: 300px;
+  width: 280px;
   height: calc(100vh - 32px);
   box-sizing: border-box;
   display: flex;
@@ -356,9 +339,13 @@ watch(
 }
 
 .heading {
+  margin: 0;
+  min-width: 0;
+  overflow: hidden;
   font-size: 16px;
   color: var(--text-base-2);
-  width: 100%;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .notes {
@@ -376,6 +363,11 @@ watch(
 }
 
 .notes-section {
+  flex: 1;
+  overflow: hidden;
+}
+
+.folder-section {
   flex: 1;
   overflow: hidden;
 }
