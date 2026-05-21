@@ -1,11 +1,10 @@
 <script setup>
 import { computed, ref, watch } from 'vue'
-import Button from './Button.vue'
 
 import {
   ChevronDown,
   ChevronRight,
-  FileText,
+  Pencil,
   Folder,
   FolderOpen,
   Plus,
@@ -25,24 +24,21 @@ const props = defineProps({
     type: Number,
     default: null,
   },
-  isLoadingFolders: {
-    type: Boolean,
-    default: false,
-  },
-  folderError: {
+  selectedNotePath: {
     type: String,
-    default: '',
-  },
-  appTitle: {
-    type: String,
-    default: 'デイリー分報',
+    default: null,
   },
 })
 
-const emit = defineEmits(['open-settings', 'open-new-note', 'create-folder', 'select-folder'])
+const emit = defineEmits([
+  'open-settings',
+  'open-create-folder',
+  'open-rename-folder',
+  'select-folder',
+  'select-folder-notes',
+  'select-note',
+])
 
-const isCreatingFolder = ref(false)
-const folderName = ref('')
 const expandedFolderIds = ref(new Set())
 
 const foldersByParent = computed(() => {
@@ -114,8 +110,16 @@ const openSettings = () => {
   emit('open-settings')
 }
 
-const openNewNote = () => {
-  emit('open-new-note')
+const openCreateFolder = () => {
+  emit('open-create-folder')
+}
+
+const openRenameFolder = () => {
+  emit('open-rename-folder')
+}
+
+const selectFolderNotes = () => {
+  emit('select-folder-notes')
 }
 
 const selectAllMessages = () => {
@@ -124,6 +128,14 @@ const selectAllMessages = () => {
 
 const selectFolder = (folder) => {
   emit('select-folder', folder.id)
+}
+
+const selectNote = (note) => {
+  emit('select-note', note.path)
+}
+
+const noteFileName = (path) => {
+  return path.split(/[\\/]/).filter(Boolean).at(-1) ?? path
 }
 
 const toggleFolder = (folder) => {
@@ -136,25 +148,6 @@ const toggleFolder = (folder) => {
   }
 
   expandedFolderIds.value = nextExpandedIds
-}
-
-const startCreateFolder = () => {
-  isCreatingFolder.value = true
-}
-
-const cancelCreateFolder = () => {
-  isCreatingFolder.value = false
-  folderName.value = ''
-}
-
-const submitFolder = () => {
-  const name = folderName.value.trim()
-
-  if (!name) return
-
-  emit('create-folder', name)
-  folderName.value = ''
-  isCreatingFolder.value = false
 }
 
 watch(
@@ -170,109 +163,89 @@ watch(
 <template>
   <div class="sidebar">
     <div class="rail">
-      <div class="header">
-        <h1 class="heading">{{ appTitle }}</h1>
-        <div class="actions">
-          <button type="button" class="icon-button" aria-label="設定" @click="openSettings">
-            <Settings />
-          </button>
-        </div>
+      <div class="rail-actions">
+        <button type="button" class="rail-button" aria-label="新規フォルダ" @click="openCreateFolder">
+          <Plus :size="20" />
+        </button>
       </div>
 
-      <hr class="divider" />
+      <div class="folder-icons" aria-label="フォルダ一覧">
+        <button
+          type="button"
+          class="rail-button"
+          :class="{ active: selectedFolderId === null }"
+          aria-label="すべて"
+          @click="selectAllMessages"
+        >
+          <FolderOpen :size="20" />
+        </button>
 
-      <div class="section folder-section">
-        <div class="section-header">
-          <p class="section-title">フォルダ</p>
-          <button type="button" class="icon-button" aria-label="新規フォルダ" @click="startCreateFolder">
-            <Plus :size="18" />
+        <template v-for="folder in visibleFolders" :key="folder.id">
+          <button
+            v-if="folder.hasChildren"
+            type="button"
+            class="rail-button is-toggle"
+            :aria-label="folder.isExpanded ? `${folder.name}を折りたたむ` : `${folder.name}を展開する`"
+            @click="toggleFolder(folder)"
+          >
+            <ChevronDown v-if="folder.isExpanded" :size="16" />
+            <ChevronRight v-else :size="16" />
           </button>
-        </div>
 
-        <form v-if="isCreatingFolder" class="folder-form" @submit.prevent="submitFolder">
-          <label class="sr-only" for="folder-name">フォルダ名</label>
-          <input
-            id="folder-name"
-            v-model="folderName"
-            type="text"
-            :placeholder="`${selectedFolderName} に作成`"
-            autofocus
-            @keydown.esc="cancelCreateFolder"
-          />
-          <div class="folder-form-actions">
-            <button type="button" class="text-button" @click="cancelCreateFolder">キャンセル</button>
-            <button type="submit" class="text-button is-primary">作成</button>
-          </div>
-        </form>
-
-        <p v-if="isLoadingFolders" class="state-text">フォルダを読み込み中</p>
-        <p v-else-if="folderError" class="state-text is-error">{{ folderError }}</p>
-
-        <div class="folder-list" aria-label="フォルダ一覧">
           <button
             type="button"
-            class="folder-row"
-            :class="{ active: selectedFolderId === null }"
-            @click="selectAllMessages"
+            class="rail-button"
+            :class="{ active: selectedFolderId === folder.id }"
+            :aria-label="folder.path"
+            :title="folder.path"
+            @click="selectFolder(folder)"
           >
-            <span class="folder-indent" />
-            <FolderOpen :size="16" />
-            <span class="folder-name">すべて</span>
+            <FolderOpen v-if="selectedFolderId === folder.id" :size="20" />
+            <Folder v-else :size="20" />
           </button>
-
-          <div v-if="!isLoadingFolders && folders.length === 0" class="empty-folders">
-            フォルダはまだありません
-          </div>
-
-          <div v-for="folder in visibleFolders" :key="folder.id" class="folder-item">
-            <button
-              type="button"
-              class="folder-toggle"
-              :style="{ marginLeft: `${folder.depth * 16}px` }"
-              :aria-label="folder.isExpanded ? '折りたたむ' : '展開する'"
-              :disabled="!folder.hasChildren"
-              @click="toggleFolder(folder)"
-            >
-              <ChevronDown v-if="folder.hasChildren && folder.isExpanded" :size="14" />
-              <ChevronRight v-else-if="folder.hasChildren" :size="14" />
-            </button>
-            <button
-              type="button"
-              class="folder-row"
-              :class="{ active: selectedFolderId === folder.id }"
-              @click="selectFolder(folder)"
-            >
-              <FolderOpen v-if="selectedFolderId === folder.id" :size="16" />
-              <Folder v-else :size="16" />
-              <span class="folder-name">{{ folder.name }}</span>
-            </button>
-          </div>
-        </div>
+        </template>
       </div>
+
+      <button type="button" class="rail-button rail-settings" aria-label="設定" @click="openSettings">
+        <Settings :size="20" />
+      </button>
     </div>
 
     <div class="panel">
-      <div class="header">
-        <h2 class="heading">{{ selectedFolderName }}</h2>
-      </div>
-      <hr class="divider" />
       <div class="section notes-section">
+        <div class="folder-header">
+          <button type="button" class="folder-title-button" @click="selectFolderNotes">
+            {{ selectedFolderName }}
+          </button>
+          <button
+            v-if="selectedFolderId !== null"
+            type="button"
+            class="folder-action"
+            aria-label="フォルダ名を変更"
+            @click="openRenameFolder"
+          >
+            <Pencil :size="16" />
+          </button>
+        </div>
         <p class="section-title">ファイル</p>
         <div class="notes">
           <div v-if="notes.length === 0" class="empty-folders">このフォルダにファイルはありません</div>
-          <div v-for="note in notes" :key="note.path" class="note">
-            <FileText :size="16" />
+          <button
+            v-for="note in notes"
+            :key="note.path"
+            type="button"
+            class="note"
+            :class="{ active: selectedNotePath === note.path }"
+            @click="selectNote(note)"
+          >
             <div class="note-body">
-              <p class="title">{{ note.path }}</p>
+              <p class="title">{{ noteFileName(note.path) }}</p>
               <p class="note-meta">{{ note.messageCount }}件</p>
             </div>
-          </div>
+          </button>
         </div>
       </div>
 
-      <div class="footer">
-        <Button color="primary" @click="openNewNote">新しいノート</Button>
-      </div>
     </div>
   </div>
 </template>
@@ -284,47 +257,66 @@ watch(
 }
 
 .rail {
-  width: 280px;
+  width: 72px;
   height: calc(100vh - 32px);
   box-sizing: border-box;
   display: flex;
   flex-direction: column;
-  min-width: 0;
-  background-color: var(--bg-base-1);
-  border: 1px solid var(--border-subtle);
-  border-radius: 12px;
-  padding: 16px;
-}
-
-.header {
-  height: 64px;
-  display: flex;
   align-items: center;
-  justify-content: space-between;
+  background-color: var(--bg-base-1);
+  padding: 12px;
 }
 
-.actions {
+.rail-actions,
+.folder-icons {
   display: flex;
+  flex-direction: column;
+  align-items: center;
   gap: 8px;
 }
 
-.icon-button {
+.folder-icons {
+  flex: 1;
+  min-height: 0;
+  margin-top: 16px;
+  overflow-y: auto;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.folder-icons::-webkit-scrollbar {
+  display: none;
+}
+
+.rail-button {
+  width: 48px;
+  height: 48px;
   display: flex;
   align-items: center;
   justify-content: center;
   padding: 0;
-  border: none;
-  background: transparent;
-  color: var(--text-base-2);
+  border: 1px solid var(--border-subtle);
+  border-radius: 12px;
+  background: var(--bg-base-2);
+  color: var(--text-tertiary);
   cursor: pointer;
 }
 
-.icon-button:hover {
+.rail-button:hover,
+.rail-button.active {
+  border-color: var(--border-strong);
+  background: var(--bg-base-3);
   color: var(--text-primary);
 }
 
-.divider {
-  margin: 0 8px;
+.rail-button.is-toggle {
+  height: 28px;
+  border-color: transparent;
+  background: transparent;
+}
+
+.rail-settings {
+  margin-top: 16px;
 }
 
 .panel {
@@ -336,16 +328,6 @@ watch(
   background-color: var(--bg-base-2);
   border-radius: 16px;
   padding: 16px;
-}
-
-.heading {
-  margin: 0;
-  min-width: 0;
-  overflow: hidden;
-  font-size: 16px;
-  color: var(--text-base-2);
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
 .notes {
@@ -367,15 +349,49 @@ watch(
   overflow: hidden;
 }
 
-.folder-section {
-  flex: 1;
-  overflow: hidden;
-}
-
-.section-header {
+.folder-header {
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  gap: 8px;
+}
+
+.folder-title-button {
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+  border: none;
+  background: transparent;
+  color: var(--text-primary);
+  cursor: pointer;
+  font-size: 16px;
+  font-weight: 700;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.folder-title-button:hover {
+  color: var(--text-secondary);
+}
+
+.folder-action {
+  width: 28px;
+  height: 28px;
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text-tertiary);
+  cursor: pointer;
+}
+
+.folder-action:hover {
+  background: var(--bg-base-3);
+  color: var(--text-primary);
 }
 
 .section-title {
@@ -385,127 +401,29 @@ watch(
   font-weight: 700;
 }
 
-.folder-form {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  padding: 8px;
-  border: 1px solid var(--border-subtle);
-  border-radius: 8px;
-  background: var(--bg-base-3);
-}
-
-.folder-form input {
-  width: 100%;
-  box-sizing: border-box;
-  padding: 8px;
-  border: 1px solid var(--border-default);
-  border-radius: 6px;
-  background: var(--surface-input);
-  color: var(--text-primary);
-  font: inherit;
-  font-size: 13px;
-}
-
-.folder-form-actions {
-  display: flex;
-  justify-content: flex-end;
-  gap: 8px;
-}
-
-.text-button {
-  padding: 4px 6px;
-  border: none;
-  background: transparent;
-  color: var(--text-tertiary);
-  cursor: pointer;
-  font-size: 12px;
-}
-
-.text-button.is-primary {
-  color: var(--bg-primary);
-  font-weight: 700;
-}
-
-.folder-list,
 .notes {
   min-height: 0;
   overflow-y: auto;
 }
 
-.folder-item {
-  display: flex;
-  align-items: center;
-}
-
-.folder-toggle {
-  width: 22px;
-  height: 32px;
-  display: flex;
-  flex: 0 0 auto;
-  align-items: center;
-  justify-content: center;
-  padding: 0;
-  border: none;
-  background: transparent;
-  color: var(--text-tertiary);
-  cursor: pointer;
-}
-
-.folder-toggle:disabled {
-  cursor: default;
-  opacity: 0;
-}
-
-.folder-row {
+.note {
   width: 100%;
-  min-width: 0;
-  height: 32px;
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 0 8px;
+  padding: 10px;
   border: none;
   border-radius: 8px;
   background: transparent;
   color: var(--text-secondary);
   cursor: pointer;
+  font: inherit;
   text-align: left;
 }
 
-.folder-row:hover,
-.folder-row.active {
+.note:hover,
+.note.active {
   background-color: var(--bg-base-3);
   color: var(--text-primary);
-}
-
-.folder-indent {
-  width: 22px;
-  flex: 0 0 auto;
-}
-
-.folder-name {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.footer {
-  margin-top: auto;
-}
-
-.note {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 10px;
-  border-radius: 8px;
-  color: var(--text-secondary);
-}
-
-.note:hover {
-  background-color: var(--bg-base-3);
 }
 
 .note-body {

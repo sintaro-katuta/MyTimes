@@ -15,6 +15,7 @@ import {
   loadFolders as loadStoredFolders,
   loadMarkdownExportPath,
   loadMessages as loadStoredMessages,
+  renameFolder as renameStoredFolder,
   saveAppTitle,
   saveMarkdownExportPath,
 } from './lib/messages'
@@ -27,6 +28,7 @@ const messagesRef = ref(null)
 const folders = ref([])
 const folderNotes = ref([])
 const selectedFolderId = ref(null)
+const selectedNotePath = ref(null)
 const isLoadingMessages = ref(true)
 const isLoadingFolders = ref(true)
 const isSendingMessage = ref(false)
@@ -40,6 +42,8 @@ const markdownExportPath = ref('')
 const appTitle = ref('デイリー分報')
 const settingsAppTitle = ref('')
 const settingsMarkdownExportPath = ref('')
+const folderName = ref('')
+const renameFolderName = ref('')
 const settingsStatus = ref('')
 
 const selectedFolder = computed(() => {
@@ -47,6 +51,8 @@ const selectedFolder = computed(() => {
 
   return folders.value.find((folder) => folder.id === selectedFolderId.value) ?? null
 })
+
+const selectedFolderName = computed(() => selectedFolder.value?.path ?? 'ルート')
 
 const openSettingsModal = () => {
   modalMode.value = 'settings'
@@ -56,9 +62,24 @@ const openSettingsModal = () => {
   isModalOpen.value = true
 }
 
-const openNewNoteModal = () => {
-  modalMode.value = 'new-note'
+const openCreateFolderModal = () => {
+  modalMode.value = 'create-folder'
+  folderName.value = ''
+  loadFolderError.value = ''
   isModalOpen.value = true
+}
+
+const openRenameFolderModal = () => {
+  if (!selectedFolder.value) return
+
+  modalMode.value = 'rename-folder'
+  renameFolderName.value = selectedFolder.value.name
+  loadFolderError.value = ''
+  isModalOpen.value = true
+}
+
+const closeModal = () => {
+  isModalOpen.value = false
 }
 
 const formatMessageDate = (value) => {
@@ -126,7 +147,10 @@ const refreshMessages = async () => {
   loadMessageError.value = ''
 
   try {
-    const rows = await loadStoredMessages({ folderId: selectedFolderId.value })
+    const rows = await loadStoredMessages({
+      folderId: selectedFolderId.value,
+      notePath: selectedNotePath.value,
+    })
 
     messages.value = rows.map(toViewMessage)
 
@@ -148,14 +172,60 @@ const createFolder = async (name) => {
     await refreshFolders()
 
     selectedFolderId.value = createdFolder?.id ?? selectedFolderId.value
+    selectedNotePath.value = null
     await refreshMessages()
   } catch (error) {
     loadFolderError.value = error instanceof Error ? error.message : 'フォルダの作成に失敗しました'
   }
 }
 
+const handleCreateFolder = async (close) => {
+  const name = folderName.value.trim()
+
+  if (!name) return
+
+  await createFolder(name)
+
+  if (!loadFolderError.value) {
+    folderName.value = ''
+    close()
+  }
+}
+
+const handleRenameFolder = async (close) => {
+  const name = renameFolderName.value.trim()
+
+  if (!name || !selectedFolder.value) return
+
+  loadFolderError.value = ''
+
+  try {
+    const renamedFolder = await renameStoredFolder(selectedFolder.value, name)
+
+    await refreshFolders()
+
+    selectedFolderId.value = renamedFolder?.id ?? selectedFolderId.value
+    selectedNotePath.value = null
+    await refreshMessages()
+    close()
+  } catch (error) {
+    loadFolderError.value = error instanceof Error ? error.message : 'フォルダ名の変更に失敗しました'
+  }
+}
+
 const selectFolder = async (folderId) => {
   selectedFolderId.value = folderId
+  selectedNotePath.value = null
+  await refreshMessages()
+}
+
+const selectNote = async (notePath) => {
+  selectedNotePath.value = notePath
+  await refreshMessages()
+}
+
+const selectAllNotesInFolder = async () => {
+  selectedNotePath.value = null
   await refreshMessages()
 }
 
@@ -187,8 +257,14 @@ const sendMessage = async () => {
   exportStatus.value = ''
 
   try {
-    await createMessage(content, { folderId: selectedFolderId.value })
-    const rows = await loadStoredMessages({ folderId: selectedFolderId.value })
+    await createMessage(content, {
+      folderId: selectedFolderId.value,
+      notePath: selectedNotePath.value,
+    })
+    const rows = await loadStoredMessages({
+      folderId: selectedFolderId.value,
+      notePath: selectedNotePath.value,
+    })
 
     draftMessage.value = ''
     messages.value = rows.map(toViewMessage)
@@ -269,13 +345,13 @@ onMounted(async () => {
         :folders="folders"
         :notes="folderNotes"
         :selected-folder-id="selectedFolderId"
-        :is-loading-folders="isLoadingFolders"
-        :folder-error="loadFolderError"
-        :app-title="appTitle"
-        @create-folder="createFolder"
+        :selected-note-path="selectedNotePath"
+        @open-create-folder="openCreateFolderModal"
+        @open-rename-folder="openRenameFolderModal"
         @select-folder="selectFolder"
+        @select-note="selectNote"
+        @select-folder-notes="selectAllNotesInFolder"
         @open-settings="openSettingsModal"
-        @open-new-note="openNewNoteModal"
       />
       <main class="content">
         <div class="header">
@@ -306,7 +382,9 @@ onMounted(async () => {
     </div>
     <Modal v-model="isModalOpen">
       <template #header>
-        <h2 class="modal-title">{{ modalMode === 'settings' ? '設定' : '新しいノート' }}</h2>
+        <h2 class="modal-title">
+          {{ modalMode === 'settings' ? '設定' : modalMode === 'rename-folder' ? 'フォルダ名を変更' : '新規フォルダ' }}
+        </h2>
       </template>
       <template #body>
         <form v-if="modalMode === 'settings'" class="settings-form" @submit.prevent>
@@ -338,11 +416,48 @@ onMounted(async () => {
           </div>
           <p v-if="settingsStatus" class="settings-status">{{ settingsStatus }}</p>
         </form>
-        <p v-else class="modal-text">新しいノートの入力項目はここに追加します。</p>
+        <form
+          v-else-if="modalMode === 'create-folder'"
+          class="settings-form"
+          @submit.prevent="handleCreateFolder(closeModal)"
+        >
+          <label class="field-label" for="folder-name">フォルダ名</label>
+          <input
+            id="folder-name"
+            v-model="folderName"
+            class="path-input"
+            type="text"
+            :placeholder="`${selectedFolderName} に作成`"
+          />
+          <p v-if="loadFolderError" class="settings-status is-error">{{ loadFolderError }}</p>
+        </form>
+        <form
+          v-else-if="modalMode === 'rename-folder'"
+          class="settings-form"
+          @submit.prevent="handleRenameFolder(closeModal)"
+        >
+          <label class="field-label" for="rename-folder-name">フォルダ名</label>
+          <input
+            id="rename-folder-name"
+            v-model="renameFolderName"
+            class="path-input"
+            type="text"
+            placeholder="フォルダ名"
+          />
+          <p v-if="loadFolderError" class="settings-status is-error">{{ loadFolderError }}</p>
+        </form>
       </template>
       <template v-if="modalMode === 'settings'" #footer="{ close }">
         <button type="button" class="secondary-button" @click="close">キャンセル</button>
         <button type="button" class="primary-button" :disabled="isSavingSettings" @click="handleSaveSettings(close)">保存</button>
+      </template>
+      <template v-else-if="modalMode === 'create-folder'" #footer="{ close }">
+        <button type="button" class="secondary-button" @click="close">キャンセル</button>
+        <button type="button" class="primary-button" @click="handleCreateFolder(close)">作成</button>
+      </template>
+      <template v-else-if="modalMode === 'rename-folder'" #footer="{ close }">
+        <button type="button" class="secondary-button" @click="close">キャンセル</button>
+        <button type="button" class="primary-button" @click="handleRenameFolder(close)">変更</button>
       </template>
     </Modal>
   </div>
@@ -379,8 +494,7 @@ onMounted(async () => {
   font-size: 12px;
 }
 
-.modal-title,
-.modal-text {
+.modal-title {
   margin: 0;
 }
 
@@ -423,6 +537,10 @@ onMounted(async () => {
   margin: 4px 0 0;
   color: var(--text-tertiary);
   font-size: 12px;
+}
+
+.settings-status.is-error {
+  color: var(--bg-error);
 }
 
 .primary-button,

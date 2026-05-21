@@ -16,15 +16,22 @@ const getDatabase = () => {
   return databasePromise
 }
 
-export const loadMessages = async ({ folderId = null } = {}) => {
+export const loadMessages = async ({ folderId = null, notePath = null } = {}) => {
   const db = await getDatabase()
   const params = []
-  let whereClause = ''
+  const conditions = []
 
   if (folderId !== null) {
-    whereClause = 'WHERE folder_id = ?'
+    conditions.push('folder_id = ?')
     params.push(folderId)
   }
+
+  if (notePath !== null) {
+    conditions.push("COALESCE(note_path, strftime('%Y-%m-%d.md', created_at)) = ?")
+    params.push(notePath)
+  }
+
+  const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : ''
 
   return db.select(
     `SELECT id, content, note_path, folder_id, markdown_synced, created_at, updated_at
@@ -139,14 +146,73 @@ export const createFolder = async (name, parentFolder = null) => {
   return rows[0] ?? null
 }
 
-export const createMessage = async (content, { folderId = null } = {}) => {
+export const renameFolder = async (folder, name) => {
+  const db = await getDatabase()
+  const folderName = name.trim().replaceAll('/', '-')
+
+  if (!folderName || !folder) return null
+
+  const updatedAt = formatLocalTimestamp(new Date())
+  const pathParts = folder.path.split('/')
+  pathParts[pathParts.length - 1] = folderName
+  const nextPath = pathParts.join('/')
+
+  const rows = await db.select(
+    `SELECT id, name, path, markdown_export_path AS markdownExportPath
+     FROM folders
+     WHERE path = ? OR path LIKE ?
+     ORDER BY path ASC`,
+    [folder.path, `${folder.path}/%`],
+  )
+
+  await db.execute('BEGIN')
+
+  try {
+    for (const row of rows) {
+      const pathSuffix = row.path === folder.path ? '' : row.path.slice(folder.path.length)
+      const exportPathSuffix = row.markdownExportPath.startsWith(folder.markdownExportPath)
+        ? row.markdownExportPath.slice(folder.markdownExportPath.length)
+        : pathSuffix
+
+      await db.execute(
+        `UPDATE folders
+         SET name = ?, path = ?, markdown_export_path = ?, updated_at = ?
+         WHERE id = ?`,
+        [
+          row.id === folder.id ? folderName : row.name,
+          `${nextPath}${pathSuffix}`,
+          `${nextPath}${exportPathSuffix}`,
+          updatedAt,
+          row.id,
+        ],
+      )
+    }
+
+    await db.execute('COMMIT')
+  } catch (error) {
+    await db.execute('ROLLBACK')
+    throw error
+  }
+
+  const renamedRows = await db.select(
+    `SELECT id, name, parent_id AS parentId, path, markdown_export_path AS markdownExportPath
+     FROM folders
+     WHERE id = ?
+     LIMIT 1`,
+    [folder.id],
+  )
+
+  return renamedRows[0] ?? null
+}
+
+export const createMessage = async (content, { folderId = null, notePath = null } = {}) => {
   const db = await getDatabase()
   const createdAt = formatLocalTimestamp(new Date())
 
   await db.execute(
-    `INSERT INTO messages (content, folder_id, created_at, updated_at)
-     VALUES (?, ?, ?, ?)`,
-    [content, folderId, createdAt, createdAt],
+    `INSERT INTO messages (content, note_path, folder_id, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?)`,
+    [content, notePath, folderId, createdAt, createdAt],
   )
 
   const rows = await db.select(
