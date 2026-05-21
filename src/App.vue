@@ -1,15 +1,24 @@
 <script setup>
-import Database from '@tauri-apps/plugin-sql'
+import { open } from '@tauri-apps/plugin-dialog'
 import { computed, nextTick, onMounted, ref } from 'vue'
 import Modal from './components/Modal.vue'
 import Sidebar from './components/Sidebar.vue'
 import SendMessage from './components/SendMessage.vue'
 import Message from './components/Message.vue'
 import Input from './components/Input.vue'
+import {
+  createFolder as createStoredFolder,
+  createMessage,
+  exportMessagesToMarkdown,
+  loadFolderNotes as loadStoredFolderNotes,
+  loadFolders as loadStoredFolders,
+  loadMarkdownExportPath,
+  loadMessages as loadStoredMessages,
+  saveMarkdownExportPath,
+} from './lib/messages'
 
 const isModalOpen = ref(false)
 const modalMode = ref('settings')
-const db = ref(null)
 const messages = ref([])
 const draftMessage = ref('')
 const messagesRef = ref(null)
@@ -19,17 +28,14 @@ const selectedFolderId = ref(null)
 const isLoadingMessages = ref(true)
 const isLoadingFolders = ref(true)
 const isSendingMessage = ref(false)
+const isSavingSettings = ref(false)
+const isBrowsing = ref(false)
 const loadMessageError = ref('')
 const loadFolderError = ref('')
 const sendMessageError = ref('')
-
-const formatLocalDateKey = (date) => {
-  const year = date.getFullYear()
-  const month = String(date.getMonth() + 1).padStart(2, '0')
-  const day = String(date.getDate()).padStart(2, '0')
-
-  return `${year}-${month}-${day}`
-}
+const exportStatus = ref('')
+const markdownExportPath = ref('')
+const settingsStatus = ref('')
 
 const selectedFolder = computed(() => {
   if (selectedFolderId.value === null) return null
@@ -37,33 +43,15 @@ const selectedFolder = computed(() => {
   return folders.value.find((folder) => folder.id === selectedFolderId.value) ?? null
 })
 
-const currentNotePath = computed(() => {
-  const today = formatLocalDateKey(new Date())
-  const fileName = `${today}.md`
-
-  if (!selectedFolder.value) {
-    return fileName
-  }
-
-  return `${selectedFolder.value.markdownExportPath}/${fileName}`
-})
-
 const openSettingsModal = () => {
   modalMode.value = 'settings'
+  settingsStatus.value = ''
   isModalOpen.value = true
 }
 
 const openNewNoteModal = () => {
   modalMode.value = 'new-note'
   isModalOpen.value = true
-}
-
-const getDatabase = async () => {
-  if (!db.value) {
-    db.value = await Database.load('sqlite:mytimes.db')
-  }
-
-  return db.value
 }
 
 const formatMessageDate = (value) => {
@@ -90,18 +78,12 @@ const scrollMessagesToBottom = async () => {
   messagesRef.value.scrollTop = messagesRef.value.scrollHeight
 }
 
-const loadFolders = async () => {
+const refreshFolders = async () => {
   isLoadingFolders.value = true
   loadFolderError.value = ''
 
   try {
-    const database = await getDatabase()
-    const rows = await database.select(
-      `SELECT id, name, parent_id AS parentId, path, markdown_export_path AS markdownExportPath
-       FROM folders
-       ORDER BY path ASC, id ASC`,
-    )
-
+    const rows = await loadStoredFolders()
     folders.value = rows
 
     if (
@@ -117,65 +99,32 @@ const loadFolders = async () => {
   }
 }
 
-const loadFolderNotes = async () => {
+const refreshFolderNotes = async () => {
   try {
-    const database = await getDatabase()
-    const params = []
-    let whereClause = ''
-
-    if (selectedFolderId.value !== null) {
-      whereClause = 'WHERE folder_id = ?'
-      params.push(selectedFolderId.value)
-    }
-
-    const rows = await database.select(
-      `SELECT COALESCE(note_path, strftime('%Y-%m-%d.md', created_at)) AS path,
-              COUNT(*) AS messageCount,
-              MAX(created_at) AS updatedAt
-       FROM messages
-       ${whereClause}
-       GROUP BY COALESCE(note_path, strftime('%Y-%m-%d.md', created_at))
-       ORDER BY updatedAt DESC, path ASC`,
-      params,
-    )
-
-    folderNotes.value = rows
+    folderNotes.value = await loadStoredFolderNotes({ folderId: selectedFolderId.value })
   } catch (error) {
     loadFolderError.value = error instanceof Error ? error.message : 'ノート一覧の読み込みに失敗しました'
   }
 }
 
-const loadMessages = async () => {
+const toViewMessage = (row) => ({
+  ...row,
+  name: '自分',
+  date: formatMessageDate(row.created_at),
+  message: row.content,
+})
+
+const refreshMessages = async () => {
   isLoadingMessages.value = true
   loadMessageError.value = ''
 
   try {
-    const database = await getDatabase()
-    const params = []
-    let whereClause = ''
+    const rows = await loadStoredMessages({ folderId: selectedFolderId.value })
 
-    if (selectedFolderId.value !== null) {
-      whereClause = 'WHERE folder_id = ?'
-      params.push(selectedFolderId.value)
-    }
-
-    const rows = await database.select(
-      `SELECT id, content, created_at
-       FROM messages
-       ${whereClause}
-       ORDER BY created_at ASC, id ASC`,
-      params,
-    )
-
-    messages.value = rows.map((row) => ({
-      id: row.id,
-      name: '自分',
-      date: formatMessageDate(row.created_at),
-      message: row.content,
-    }))
+    messages.value = rows.map(toViewMessage)
 
     await scrollMessagesToBottom()
-    await loadFolderNotes()
+    await refreshFolderNotes()
   } catch (error) {
     loadMessageError.value = error instanceof Error ? error.message : 'メッセージの読み込みに失敗しました'
   } finally {
@@ -183,38 +132,16 @@ const loadMessages = async () => {
   }
 }
 
-const normalizeFolderName = (value) => value.trim().replaceAll('/', '-')
-
-const buildFolderPath = (name, parentFolder) => {
-  if (!parentFolder) return name
-
-  return `${parentFolder.path}/${name}`
-}
-
 const createFolder = async (name) => {
-  const folderName = normalizeFolderName(name)
-
-  if (!folderName) return
-
   loadFolderError.value = ''
 
   try {
-    const database = await getDatabase()
-    const parentFolder = selectedFolder.value
-    const now = new Date().toISOString()
-    const path = buildFolderPath(folderName, parentFolder)
+    const createdFolder = await createStoredFolder(name, selectedFolder.value)
 
-    await database.execute(
-      `INSERT INTO folders (name, parent_id, path, markdown_export_path, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?)`,
-      [folderName, parentFolder?.id ?? null, path, path, now, now],
-    )
+    await refreshFolders()
 
-    await loadFolders()
-
-    const createdFolder = folders.value.find((folder) => folder.path === path)
     selectedFolderId.value = createdFolder?.id ?? selectedFolderId.value
-    await loadMessages()
+    await refreshMessages()
   } catch (error) {
     loadFolderError.value = error instanceof Error ? error.message : 'フォルダの作成に失敗しました'
   }
@@ -222,7 +149,21 @@ const createFolder = async (name) => {
 
 const selectFolder = async (folderId) => {
   selectedFolderId.value = folderId
-  await loadMessages()
+  await refreshMessages()
+}
+
+const refreshMarkdownExportPath = async () => {
+  markdownExportPath.value = await loadMarkdownExportPath()
+}
+
+const currentMarkdownExportPath = () => {
+  const parts = [markdownExportPath.value.trim()]
+
+  if (selectedFolder.value) {
+    parts.push(selectedFolder.value.markdownExportPath)
+  }
+
+  return parts.filter(Boolean).join('/')
 }
 
 const sendMessage = async () => {
@@ -232,19 +173,25 @@ const sendMessage = async () => {
 
   isSendingMessage.value = true
   sendMessageError.value = ''
+  exportStatus.value = ''
 
   try {
-    const database = await getDatabase()
-    const now = new Date().toISOString()
-
-    await database.execute(
-      `INSERT INTO messages (content, note_path, folder_id, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?)`,
-      [content, currentNotePath.value, selectedFolder.value?.id ?? null, now, now],
-    )
+    await createMessage(content, { folderId: selectedFolderId.value })
+    const rows = await loadStoredMessages({ folderId: selectedFolderId.value })
 
     draftMessage.value = ''
-    await loadMessages()
+    messages.value = rows.map(toViewMessage)
+    await scrollMessagesToBottom()
+
+    try {
+      const result = await exportMessagesToMarkdown(rows, currentMarkdownExportPath())
+      exportStatus.value = `${result.exported_count}件を書き出しました`
+      await refreshFolderNotes()
+    } catch (error) {
+      exportStatus.value = error instanceof Error
+        ? `メッセージは保存しましたが、Markdown書き出しに失敗しました: ${error.message}`
+        : 'メッセージは保存しましたが、Markdown書き出しに失敗しました'
+    }
   } catch (error) {
     sendMessageError.value = error instanceof Error ? error.message : 'メッセージの送信に失敗しました'
   } finally {
@@ -252,9 +199,50 @@ const sendMessage = async () => {
   }
 }
 
+const handleSaveSettings = async (close) => {
+  isSavingSettings.value = true
+  settingsStatus.value = ''
+
+  try {
+    await saveMarkdownExportPath(markdownExportPath.value)
+    await refreshMarkdownExportPath()
+    settingsStatus.value = '保存しました'
+    close()
+  } catch (error) {
+    settingsStatus.value = error instanceof Error ? error.message : '設定の保存に失敗しました'
+  } finally {
+    isSavingSettings.value = false
+  }
+}
+
+const handleBrowseMarkdownExportPath = async () => {
+  isBrowsing.value = true
+  settingsStatus.value = ''
+
+  try {
+    const selectedPath = await open({
+      directory: true,
+      multiple: false,
+      defaultPath: markdownExportPath.value || undefined,
+      title: 'Markdown保存先を選択',
+    })
+
+    if (typeof selectedPath === 'string') {
+      markdownExportPath.value = selectedPath
+    }
+  } catch (error) {
+    settingsStatus.value = error instanceof Error ? error.message : '保存先の選択に失敗しました'
+  } finally {
+    isBrowsing.value = false
+  }
+}
+
 onMounted(async () => {
-  await loadFolders()
-  await loadMessages()
+  await refreshFolders()
+  await refreshMessages()
+  refreshMarkdownExportPath().catch((error) => {
+    loadMessageError.value = error instanceof Error ? error.message : '設定の読み込みに失敗しました'
+  })
 })
 </script>
 
@@ -276,6 +264,7 @@ onMounted(async () => {
         <div class="header">
           <Input />
         </div>
+        <p v-if="exportStatus" class="export-status">{{ exportStatus }}</p>
         <div ref="messagesRef" class="messages">
           <p v-if="isLoadingMessages" class="messages-state">メッセージを読み込み中</p>
           <p v-else-if="loadMessageError" class="messages-state is-error">{{ loadMessageError }}</p>
@@ -303,9 +292,32 @@ onMounted(async () => {
         <h2 class="modal-title">{{ modalMode === 'settings' ? '設定' : '新しいノート' }}</h2>
       </template>
       <template #body>
-        <p class="modal-text">
-          {{ modalMode === 'settings' ? '設定項目はここに追加します。' : '新しいノートの入力項目はここに追加します。' }}
-        </p>
+        <form v-if="modalMode === 'settings'" class="settings-form" @submit.prevent>
+          <label class="field-label" for="markdown-export-path">Markdown保存先</label>
+          <div class="path-field">
+            <input
+              id="markdown-export-path"
+              v-model="markdownExportPath"
+              class="path-input"
+              type="text"
+              placeholder="/Users/sintaro/Documents/MyTimes/entries"
+            />
+            <button
+              type="button"
+              class="secondary-button browse-button"
+              :disabled="isBrowsing || isSavingSettings"
+              @click="handleBrowseMarkdownExportPath"
+            >
+              参照
+            </button>
+          </div>
+          <p v-if="settingsStatus" class="settings-status">{{ settingsStatus }}</p>
+        </form>
+        <p v-else class="modal-text">新しいノートの入力項目はここに追加します。</p>
+      </template>
+      <template v-if="modalMode === 'settings'" #footer="{ close }">
+        <button type="button" class="secondary-button" @click="close">キャンセル</button>
+        <button type="button" class="primary-button" :disabled="isSavingSettings" @click="handleSaveSettings(close)">保存</button>
       </template>
     </Modal>
   </div>
@@ -336,9 +348,101 @@ onMounted(async () => {
   margin-bottom: 16px;
 }
 
+.export-status {
+  margin: -6px 0 12px;
+  color: var(--text-tertiary);
+  font-size: 12px;
+}
+
 .modal-title,
 .modal-text {
   margin: 0;
+}
+
+.settings-form {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.field-label {
+  color: var(--text-primary);
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.path-field {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.path-input {
+  width: 100%;
+  box-sizing: border-box;
+  height: 40px;
+  border: 1px solid var(--border-default);
+  border-radius: 8px;
+  padding: 0 12px;
+  background: var(--surface-input);
+  color: var(--text-primary);
+  font-size: 14px;
+}
+
+.path-input:focus-visible {
+  outline: 3px solid var(--focus-ring);
+  outline-offset: 2px;
+}
+
+.settings-status {
+  margin: 4px 0 0;
+  color: var(--text-tertiary);
+  font-size: 12px;
+}
+
+.primary-button,
+.secondary-button {
+  height: 36px;
+  border-radius: 8px;
+  padding: 0 14px;
+  cursor: pointer;
+  font-size: 14px;
+}
+
+.primary-button {
+  border: none;
+  background: var(--bg-primary);
+  color: var(--text-inverse);
+}
+
+.primary-button:hover {
+  background: var(--bg-primary-hover);
+}
+
+.primary-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.58;
+}
+
+.secondary-button {
+  border: 1px solid var(--border-default);
+  background: var(--surface-panel);
+  color: var(--text-secondary);
+}
+
+.secondary-button:hover {
+  background: var(--surface-card);
+  color: var(--text-primary);
+}
+
+.secondary-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.58;
+}
+
+.browse-button {
+  flex: 0 0 auto;
+  min-width: 72px;
 }
 
 .messages {

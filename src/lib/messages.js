@@ -1,0 +1,189 @@
+import { invoke } from '@tauri-apps/api/core'
+import Database from '@tauri-apps/plugin-sql'
+
+const DATABASE_URL = 'sqlite:mytimes.db'
+const MARKDOWN_EXPORT_PATH_KEY = 'markdown_export_path'
+
+let databasePromise
+
+const getDatabase = () => {
+  if (!databasePromise) {
+    databasePromise = Database.load(DATABASE_URL)
+  }
+
+  return databasePromise
+}
+
+export const loadMessages = async ({ folderId = null } = {}) => {
+  const db = await getDatabase()
+  const params = []
+  let whereClause = ''
+
+  if (folderId !== null) {
+    whereClause = 'WHERE folder_id = ?'
+    params.push(folderId)
+  }
+
+  return db.select(
+    `SELECT id, content, note_path, folder_id, markdown_synced, created_at, updated_at
+     FROM messages
+     ${whereClause}
+     ORDER BY created_at ASC, id ASC`,
+    params,
+  )
+}
+
+export const loadFolders = async () => {
+  const db = await getDatabase()
+
+  return db.select(
+    `SELECT id, name, parent_id AS parentId, path, markdown_export_path AS markdownExportPath
+     FROM folders
+     ORDER BY path ASC, id ASC`,
+  )
+}
+
+export const loadFolderNotes = async ({ folderId = null } = {}) => {
+  const db = await getDatabase()
+  const params = []
+  let whereClause = ''
+
+  if (folderId !== null) {
+    whereClause = 'WHERE folder_id = ?'
+    params.push(folderId)
+  }
+
+  return db.select(
+    `SELECT COALESCE(note_path, strftime('%Y-%m-%d.md', created_at)) AS path,
+            COUNT(*) AS messageCount,
+            MAX(created_at) AS updatedAt
+     FROM messages
+     ${whereClause}
+     GROUP BY COALESCE(note_path, strftime('%Y-%m-%d.md', created_at))
+     ORDER BY updatedAt DESC, path ASC`,
+    params,
+  )
+}
+
+export const loadMarkdownExportPath = async () => {
+  const db = await getDatabase()
+  const rows = await db.select('SELECT value FROM settings WHERE key = ?', [
+    MARKDOWN_EXPORT_PATH_KEY,
+  ])
+
+  return rows[0]?.value ?? ''
+}
+
+export const saveMarkdownExportPath = async (path) => {
+  const db = await getDatabase()
+  const updatedAt = new Date().toISOString()
+
+  await db.execute(
+    `INSERT INTO settings (key, value, updated_at)
+     VALUES (?, ?, ?)
+     ON CONFLICT(key) DO UPDATE SET
+       value = excluded.value,
+       updated_at = excluded.updated_at`,
+    [MARKDOWN_EXPORT_PATH_KEY, path.trim(), updatedAt],
+  )
+}
+
+export const createFolder = async (name, parentFolder = null) => {
+  const db = await getDatabase()
+  const folderName = name.trim().replaceAll('/', '-')
+
+  if (!folderName) return null
+
+  const createdAt = formatLocalTimestamp(new Date())
+  const path = parentFolder ? `${parentFolder.path}/${folderName}` : folderName
+
+  await db.execute(
+    `INSERT INTO folders (name, parent_id, path, markdown_export_path, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?)`,
+    [folderName, parentFolder?.id ?? null, path, path, createdAt, createdAt],
+  )
+
+  const rows = await db.select(
+    `SELECT id, name, parent_id AS parentId, path, markdown_export_path AS markdownExportPath
+     FROM folders
+     WHERE path = ?
+     ORDER BY id DESC
+     LIMIT 1`,
+    [path],
+  )
+
+  return rows[0] ?? null
+}
+
+export const createMessage = async (content, { folderId = null } = {}) => {
+  const db = await getDatabase()
+  const createdAt = formatLocalTimestamp(new Date())
+
+  await db.execute(
+    `INSERT INTO messages (content, folder_id, created_at, updated_at)
+     VALUES (?, ?, ?, ?)`,
+    [content, folderId, createdAt, createdAt],
+  )
+
+  const rows = await db.select(
+    `SELECT id, content, note_path, folder_id, markdown_synced, created_at, updated_at
+     FROM messages
+     WHERE content = ? AND created_at = ?
+     ORDER BY id DESC
+     LIMIT 1`,
+    [content, createdAt],
+  )
+
+  return rows[0]
+}
+
+export const exportMessagesToMarkdown = async (messages, exportDir = '') => {
+  const result = await invoke('export_messages_to_markdown', {
+    exportDir: exportDir.trim() || null,
+    messages: messages.map((message) => ({
+      id: message.id,
+      content: message.content,
+      created_at: message.created_at,
+    })),
+  })
+
+  const db = await getDatabase()
+
+  const messagesByDate = messages.reduce((groups, message) => {
+    const date = message.created_at.slice(0, 10)
+
+    if (!groups.has(date)) {
+      groups.set(date, [])
+    }
+
+    groups.get(date).push(message.id)
+    return groups
+  }, new Map())
+
+  await Promise.all(
+    result.files.flatMap((file) => {
+      const ids = messagesByDate.get(file.date) ?? []
+
+      return ids.map((id) =>
+        db.execute(
+          `UPDATE messages
+           SET note_path = ?, markdown_synced = 1, updated_at = ?
+           WHERE id = ?`,
+          [file.path, new Date().toISOString(), id],
+        ),
+      )
+    }),
+  )
+
+  return result
+}
+
+const formatLocalTimestamp = (date) => {
+  const pad = (value) => String(value).padStart(2, '0')
+
+  return [
+    date.getFullYear(),
+    pad(date.getMonth() + 1),
+    pad(date.getDate()),
+  ].join('-') + `T${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`
+}
