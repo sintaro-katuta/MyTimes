@@ -3,6 +3,8 @@ import Database from '@tauri-apps/plugin-sql'
 
 const DATABASE_URL = 'sqlite:mytimes.db'
 const MARKDOWN_EXPORT_PATH_KEY = 'markdown_export_path'
+const APP_TITLE_KEY = 'app_title'
+const DEFAULT_APP_TITLE = 'デイリー分報'
 
 let databasePromise
 
@@ -74,6 +76,13 @@ export const loadMarkdownExportPath = async () => {
   return rows[0]?.value ?? ''
 }
 
+export const loadAppTitle = async () => {
+  const db = await getDatabase()
+  const rows = await db.select('SELECT value FROM settings WHERE key = ?', [APP_TITLE_KEY])
+
+  return rows[0]?.value || DEFAULT_APP_TITLE
+}
+
 export const saveMarkdownExportPath = async (path) => {
   const db = await getDatabase()
   const updatedAt = new Date().toISOString()
@@ -85,6 +94,21 @@ export const saveMarkdownExportPath = async (path) => {
        value = excluded.value,
        updated_at = excluded.updated_at`,
     [MARKDOWN_EXPORT_PATH_KEY, path.trim(), updatedAt],
+  )
+}
+
+export const saveAppTitle = async (title) => {
+  const db = await getDatabase()
+  const updatedAt = new Date().toISOString()
+  const value = title.trim() || DEFAULT_APP_TITLE
+
+  await db.execute(
+    `INSERT INTO settings (key, value, updated_at)
+     VALUES (?, ?, ?)
+     ON CONFLICT(key) DO UPDATE SET
+       value = excluded.value,
+       updated_at = excluded.updated_at`,
+    [APP_TITLE_KEY, value, updatedAt],
   )
 }
 

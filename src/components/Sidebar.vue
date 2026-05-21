@@ -1,6 +1,5 @@
 <script setup>
 import { computed, ref, watch } from 'vue'
-import Icon from './Icon.vue'
 import Button from './Button.vue'
 
 import {
@@ -33,6 +32,10 @@ const props = defineProps({
   folderError: {
     type: String,
     default: '',
+  },
+  appTitle: {
+    type: String,
+    default: 'デイリー分報',
   },
 })
 
@@ -168,9 +171,6 @@ watch(
   <div class="sidebar">
     <div class="rail">
       <div class="icons">
-        <Icon src="/example1.jpg" width="48" height="48" class="selected" />
-        <Icon src="/example1.jpg" width="48" height="48" />
-        <Icon src="/example1.jpg" width="48" height="48" />
         <button type="button" class="rail-action" aria-label="新規フォルダ" @click="startCreateFolder">
           <Plus :size="20" />
         </button>
@@ -178,7 +178,7 @@ watch(
     </div>
     <div class="panel">
       <div class="header">
-        <h1 class="heading">デイリー分報</h1>
+        <h1 class="heading">{{ appTitle }}</h1>
         <div class="actions">
           <button type="button" class="icon-button" aria-label="設定" @click="openSettings">
             <Settings />
@@ -342,12 +342,6 @@ watch(
 
 .divider {
   margin: 0 8px;
-}
-
-.selected {
-  border: 1px solid white;
-  border-radius: 12px;
-  padding: 4px;
 }
 
 .panel {

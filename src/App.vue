@@ -10,10 +10,12 @@ import {
   createFolder as createStoredFolder,
   createMessage,
   exportMessagesToMarkdown,
+  loadAppTitle,
   loadFolderNotes as loadStoredFolderNotes,
   loadFolders as loadStoredFolders,
   loadMarkdownExportPath,
   loadMessages as loadStoredMessages,
+  saveAppTitle,
   saveMarkdownExportPath,
 } from './lib/messages'
 
@@ -35,6 +37,9 @@ const loadFolderError = ref('')
 const sendMessageError = ref('')
 const exportStatus = ref('')
 const markdownExportPath = ref('')
+const appTitle = ref('デイリー分報')
+const settingsAppTitle = ref('')
+const settingsMarkdownExportPath = ref('')
 const settingsStatus = ref('')
 
 const selectedFolder = computed(() => {
@@ -45,6 +50,8 @@ const selectedFolder = computed(() => {
 
 const openSettingsModal = () => {
   modalMode.value = 'settings'
+  settingsAppTitle.value = appTitle.value
+  settingsMarkdownExportPath.value = markdownExportPath.value
   settingsStatus.value = ''
   isModalOpen.value = true
 }
@@ -156,6 +163,10 @@ const refreshMarkdownExportPath = async () => {
   markdownExportPath.value = await loadMarkdownExportPath()
 }
 
+const refreshAppTitle = async () => {
+  appTitle.value = await loadAppTitle()
+}
+
 const currentMarkdownExportPath = () => {
   const parts = [markdownExportPath.value.trim()]
 
@@ -204,7 +215,9 @@ const handleSaveSettings = async (close) => {
   settingsStatus.value = ''
 
   try {
-    await saveMarkdownExportPath(markdownExportPath.value)
+    await saveAppTitle(settingsAppTitle.value)
+    await saveMarkdownExportPath(settingsMarkdownExportPath.value)
+    await refreshAppTitle()
     await refreshMarkdownExportPath()
     settingsStatus.value = '保存しました'
     close()
@@ -223,12 +236,12 @@ const handleBrowseMarkdownExportPath = async () => {
     const selectedPath = await open({
       directory: true,
       multiple: false,
-      defaultPath: markdownExportPath.value || undefined,
+      defaultPath: settingsMarkdownExportPath.value || undefined,
       title: 'Markdown保存先を選択',
     })
 
     if (typeof selectedPath === 'string') {
-      markdownExportPath.value = selectedPath
+      settingsMarkdownExportPath.value = selectedPath
     }
   } catch (error) {
     settingsStatus.value = error instanceof Error ? error.message : '保存先の選択に失敗しました'
@@ -240,6 +253,9 @@ const handleBrowseMarkdownExportPath = async () => {
 onMounted(async () => {
   await refreshFolders()
   await refreshMessages()
+  refreshAppTitle().catch((error) => {
+    loadMessageError.value = error instanceof Error ? error.message : '設定の読み込みに失敗しました'
+  })
   refreshMarkdownExportPath().catch((error) => {
     loadMessageError.value = error instanceof Error ? error.message : '設定の読み込みに失敗しました'
   })
@@ -255,6 +271,7 @@ onMounted(async () => {
         :selected-folder-id="selectedFolderId"
         :is-loading-folders="isLoadingFolders"
         :folder-error="loadFolderError"
+        :app-title="appTitle"
         @create-folder="createFolder"
         @select-folder="selectFolder"
         @open-settings="openSettingsModal"
@@ -293,11 +310,19 @@ onMounted(async () => {
       </template>
       <template #body>
         <form v-if="modalMode === 'settings'" class="settings-form" @submit.prevent>
+          <label class="field-label" for="app-title">アプリ名</label>
+          <input
+            id="app-title"
+            v-model="settingsAppTitle"
+            class="path-input"
+            type="text"
+            placeholder="デイリー分報"
+          />
           <label class="field-label" for="markdown-export-path">Markdown保存先</label>
           <div class="path-field">
             <input
               id="markdown-export-path"
-              v-model="markdownExportPath"
+              v-model="settingsMarkdownExportPath"
               class="path-input"
               type="text"
               placeholder="/Users/sintaro/Documents/MyTimes/entries"
