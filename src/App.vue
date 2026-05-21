@@ -64,6 +64,13 @@ const scrollMessagesToBottom = async () => {
   messagesRef.value.scrollTop = messagesRef.value.scrollHeight
 }
 
+const toViewMessage = (row) => ({
+  ...row,
+  name: '自分',
+  date: formatMessageDate(row.created_at),
+  message: row.content,
+})
+
 const refreshMessages = async () => {
   isLoadingMessages.value = true
   loadMessageError.value = ''
@@ -71,12 +78,7 @@ const refreshMessages = async () => {
   try {
     const rows = await loadMessages()
 
-    messages.value = rows.map((row) => ({
-      ...row,
-      name: '自分',
-      date: formatMessageDate(row.created_at),
-      message: row.content,
-    }))
+    messages.value = rows.map(toViewMessage)
 
     await scrollMessagesToBottom()
   } catch (error) {
@@ -102,17 +104,19 @@ const sendMessage = async () => {
   try {
     await createMessage(content)
     const rows = await loadMessages()
-    const result = await exportMessagesToMarkdown(rows, markdownExportPath.value)
 
     draftMessage.value = ''
-    messages.value = rows.map((row) => ({
-      ...row,
-      name: '自分',
-      date: formatMessageDate(row.created_at),
-      message: row.content,
-    }))
-    exportStatus.value = `${result.exported_count}件を書き出しました`
+    messages.value = rows.map(toViewMessage)
     await scrollMessagesToBottom()
+
+    try {
+      const result = await exportMessagesToMarkdown(rows, markdownExportPath.value)
+      exportStatus.value = `${result.exported_count}件を書き出しました`
+    } catch (error) {
+      exportStatus.value = error instanceof Error
+        ? `メッセージは保存しましたが、Markdown書き出しに失敗しました: ${error.message}`
+        : 'メッセージは保存しましたが、Markdown書き出しに失敗しました'
+    }
   } catch (error) {
     sendMessageError.value = error instanceof Error ? error.message : 'メッセージの送信に失敗しました'
   } finally {
