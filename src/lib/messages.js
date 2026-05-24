@@ -46,7 +46,8 @@ export const loadFolders = async () => {
   const db = await getDatabase()
 
   return db.select(
-    `SELECT id, name, parent_id AS parentId, path, markdown_export_path AS markdownExportPath
+    `SELECT id, name, parent_id AS parentId, path, markdown_export_path AS markdownExportPath,
+            icon_path AS iconPath
      FROM folders
      ORDER BY path ASC, id ASC`,
   )
@@ -135,7 +136,8 @@ export const createFolder = async (name, parentFolder = null) => {
   )
 
   const rows = await db.select(
-    `SELECT id, name, parent_id AS parentId, path, markdown_export_path AS markdownExportPath
+    `SELECT id, name, parent_id AS parentId, path, markdown_export_path AS markdownExportPath,
+            icon_path AS iconPath
      FROM folders
      WHERE path = ?
      ORDER BY id DESC
@@ -195,7 +197,8 @@ export const renameFolder = async (folder, name) => {
   }
 
   const renamedRows = await db.select(
-    `SELECT id, name, parent_id AS parentId, path, markdown_export_path AS markdownExportPath
+    `SELECT id, name, parent_id AS parentId, path, markdown_export_path AS markdownExportPath,
+            icon_path AS iconPath
      FROM folders
      WHERE id = ?
      LIMIT 1`,
@@ -203,6 +206,18 @@ export const renameFolder = async (folder, name) => {
   )
 
   return renamedRows[0] ?? null
+}
+
+export const saveFolderIconPath = async (folderId, iconPath) => {
+  const db = await getDatabase()
+  const updatedAt = formatLocalTimestamp(new Date())
+
+  await db.execute(
+    `UPDATE folders
+     SET icon_path = ?, updated_at = ?
+     WHERE id = ?`,
+    [iconPath, updatedAt, folderId],
+  )
 }
 
 export const createMessage = async (content, { folderId = null, notePath = null } = {}) => {

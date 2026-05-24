@@ -1,12 +1,13 @@
 <script setup>
+import { convertFileSrc } from '@tauri-apps/api/core'
 import { computed, ref, watch } from 'vue'
 
 import {
   ChevronDown,
   ChevronRight,
+  ImagePlus,
   Pencil,
   Folder,
-  FolderOpen,
   Plus,
   Settings,
 } from '@lucide/vue'
@@ -34,6 +35,7 @@ const emit = defineEmits([
   'open-settings',
   'open-create-folder',
   'open-rename-folder',
+  'browse-folder-icon',
   'select-folder',
   'select-folder-notes',
   'select-note',
@@ -118,6 +120,10 @@ const openRenameFolder = () => {
   emit('open-rename-folder')
 }
 
+const browseFolderIcon = () => {
+  emit('browse-folder-icon')
+}
+
 const selectFolderNotes = () => {
   emit('select-folder-notes')
 }
@@ -136,6 +142,10 @@ const selectNote = (note) => {
 
 const noteFileName = (path) => {
   return path.split(/[\\/]/).filter(Boolean).at(-1) ?? path
+}
+
+const folderIconSrc = (folder) => {
+  return folder.iconPath ? convertFileSrc(folder.iconPath) : ''
 }
 
 const toggleFolder = (folder) => {
@@ -170,15 +180,18 @@ watch(
       </div>
 
       <div class="folder-icons" aria-label="フォルダ一覧">
-        <button
-          type="button"
-          class="rail-button"
-          :class="{ active: selectedFolderId === null }"
-          aria-label="すべて"
-          @click="selectAllMessages"
-        >
-          <FolderOpen :size="20" />
-        </button>
+        <div class="rail-item">
+          <span v-if="selectedFolderId === null" class="active-indicator" aria-hidden="true" />
+          <button
+            type="button"
+            class="rail-button"
+            :class="{ active: selectedFolderId === null }"
+            aria-label="すべて"
+            @click="selectAllMessages"
+          >
+            <Folder :size="20" />
+          </button>
+        </div>
 
         <template v-for="folder in visibleFolders" :key="folder.id">
           <button
@@ -192,17 +205,20 @@ watch(
             <ChevronRight v-else :size="16" />
           </button>
 
-          <button
-            type="button"
-            class="rail-button"
-            :class="{ active: selectedFolderId === folder.id }"
-            :aria-label="folder.path"
-            :title="folder.path"
-            @click="selectFolder(folder)"
-          >
-            <FolderOpen v-if="selectedFolderId === folder.id" :size="20" />
-            <Folder v-else :size="20" />
-          </button>
+          <div class="rail-item">
+            <span v-if="selectedFolderId === folder.id" class="active-indicator" aria-hidden="true" />
+            <button
+              type="button"
+              class="rail-button"
+              :class="{ active: selectedFolderId === folder.id }"
+              :aria-label="folder.path"
+              :title="folder.path"
+              @click="selectFolder(folder)"
+            >
+              <img v-if="folder.iconPath" class="folder-image" :src="folderIconSrc(folder)" alt="" />
+              <Folder v-else :size="20" />
+            </button>
+          </div>
         </template>
       </div>
 
@@ -225,6 +241,15 @@ watch(
             @click="openRenameFolder"
           >
             <Pencil :size="16" />
+          </button>
+          <button
+            v-if="selectedFolderId !== null"
+            type="button"
+            class="folder-action"
+            aria-label="フォルダ画像を変更"
+            @click="browseFolderIcon"
+          >
+            <ImagePlus :size="16" />
           </button>
         </div>
         <p class="section-title">ファイル</p>
@@ -288,13 +313,31 @@ watch(
   display: none;
 }
 
+.rail-item {
+  position: relative;
+  width: 72px;
+  display: flex;
+  justify-content: center;
+}
+
+.active-indicator {
+  position: absolute;
+  top: 50%;
+  left: 0;
+  width: 4px;
+  height: 28px;
+  border-radius: 999px;
+  background: var(--text-primary);
+  transform: translateY(-50%);
+}
+
 .rail-button {
   width: 48px;
   height: 48px;
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 0;
+  padding: 4px;
   border: 1px solid var(--border-subtle);
   border-radius: 12px;
   background: var(--bg-base-2);
@@ -302,17 +345,30 @@ watch(
   cursor: pointer;
 }
 
-.rail-button:hover,
-.rail-button.active {
-  border-color: var(--border-strong);
+.rail-button:hover {
+  border-color: var(--border-subtle);
   background: var(--bg-base-3);
+  color: var(--text-primary);
+}
+
+.rail-button.active {
+  border-color: var(--border-subtle);
+  background: var(--bg-base-2);
   color: var(--text-primary);
 }
 
 .rail-button.is-toggle {
   height: 28px;
+  padding: 0;
   border-color: transparent;
   background: transparent;
+}
+
+.folder-image {
+  width: 100%;
+  height: 100%;
+  border-radius: 8px;
+  object-fit: cover;
 }
 
 .rail-settings {

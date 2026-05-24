@@ -17,6 +17,7 @@ import {
   loadMessages as loadStoredMessages,
   renameFolder as renameStoredFolder,
   saveAppTitle,
+  saveFolderIconPath,
   saveMarkdownExportPath,
 } from './lib/messages'
 
@@ -213,6 +214,32 @@ const handleRenameFolder = async (close) => {
   }
 }
 
+const handleBrowseFolderIcon = async () => {
+  if (!selectedFolder.value) return
+
+  loadFolderError.value = ''
+
+  try {
+    const selectedPath = await open({
+      multiple: false,
+      filters: [
+        {
+          name: '画像',
+          extensions: ['png', 'jpg', 'jpeg', 'webp', 'gif', 'bmp', 'svg'],
+        },
+      ],
+      title: 'フォルダ画像を選択',
+    })
+
+    if (typeof selectedPath !== 'string') return
+
+    await saveFolderIconPath(selectedFolder.value.id, selectedPath)
+    await refreshFolders()
+  } catch (error) {
+    loadFolderError.value = error instanceof Error ? error.message : 'フォルダ画像の変更に失敗しました'
+  }
+}
+
 const selectFolder = async (folderId) => {
   selectedFolderId.value = folderId
   selectedNotePath.value = null
@@ -348,6 +375,7 @@ onMounted(async () => {
         :selected-note-path="selectedNotePath"
         @open-create-folder="openCreateFolderModal"
         @open-rename-folder="openRenameFolderModal"
+        @browse-folder-icon="handleBrowseFolderIcon"
         @select-folder="selectFolder"
         @select-note="selectNote"
         @select-folder-notes="selectAllNotesInFolder"

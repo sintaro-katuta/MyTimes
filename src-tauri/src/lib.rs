@@ -18,6 +18,12 @@ pub fn run() {
             sql: include_str!("../migrations/2_add_folders.sql"),
             kind: MigrationKind::Up,
         },
+        Migration {
+            version: 3,
+            description: "add_folder_icon_path",
+            sql: include_str!("../migrations/3_add_folder_icon_path.sql"),
+            kind: MigrationKind::Up,
+        },
     ];
 
     tauri::Builder::default()
