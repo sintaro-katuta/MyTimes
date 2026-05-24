@@ -29,16 +29,29 @@ pub fn export_messages_to_markdown(
     messages: Vec<MarkdownMessage>,
     export_dir: Option<String>,
 ) -> Result<MarkdownExportResult, String> {
-    let entries_dir = match export_dir.map(|path| path.trim().to_string()) {
-        Some(path) if !path.is_empty() => PathBuf::from(path),
-        _ => app
-            .path()
-            .app_data_dir()
-            .map_err(|error| error.to_string())?
-            .join("entries"),
-    };
+    let default_entries_dir = app
+        .path()
+        .app_data_dir()
+        .map_err(|error| error.to_string())?
+        .join("entries");
+    let entries_dir = resolve_entries_dir(&default_entries_dir, export_dir);
 
     export_messages_to_dir(&entries_dir, &messages).map_err(|error| error.to_string())
+}
+
+fn resolve_entries_dir(default_entries_dir: &Path, export_dir: Option<String>) -> PathBuf {
+    match export_dir.map(|path| path.trim().to_string()) {
+        Some(path) if !path.is_empty() => {
+            let requested_dir = PathBuf::from(path);
+
+            if requested_dir.is_absolute() {
+                requested_dir
+            } else {
+                default_entries_dir.join(requested_dir)
+            }
+        }
+        _ => default_entries_dir.to_path_buf(),
+    }
 }
 
 fn export_messages_to_dir(
@@ -140,6 +153,27 @@ mod tests {
                 .join("2026")
                 .join("05")
                 .join("2026-05-19.md")
+        );
+    }
+
+    #[test]
+    fn resolves_relative_export_dir_under_default_entries_dir() {
+        assert_eq!(
+            resolve_entries_dir(Path::new("entries"), Some("project".to_string())),
+            Path::new("entries").join("project")
+        );
+    }
+
+    #[test]
+    fn keeps_absolute_export_dir() {
+        let absolute_path = std::env::current_dir().unwrap().join("project");
+
+        assert_eq!(
+            resolve_entries_dir(
+                Path::new("entries"),
+                Some(absolute_path.to_string_lossy().into())
+            ),
+            absolute_path
         );
     }
 }

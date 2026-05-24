@@ -221,6 +221,18 @@ export const saveFolderIconPath = async (folderId, iconPath) => {
   )
 }
 
+export const saveFolderMarkdownExportPath = async (folderId, markdownExportPath) => {
+  const db = await getDatabase()
+  const updatedAt = formatLocalTimestamp(new Date())
+
+  await db.execute(
+    `UPDATE folders
+     SET markdown_export_path = ?, updated_at = ?
+     WHERE id = ?`,
+    [markdownExportPath.trim(), updatedAt, folderId],
+  )
+}
+
 export const createMessage = async (content, { folderId = null, notePath = null } = {}) => {
   const db = await getDatabase()
   const createdAt = formatLocalTimestamp(new Date())

@@ -18,6 +18,7 @@ import {
   renameFolder as renameStoredFolder,
   saveAppTitle,
   saveFolderIconPath,
+  saveFolderMarkdownExportPath,
   saveMarkdownExportPath,
 } from './lib/messages'
 
@@ -47,6 +48,7 @@ const folderName = ref('')
 const folderCreateIconPath = ref('')
 const renameFolderName = ref('')
 const folderIconPath = ref('')
+const folderMarkdownExportPath = ref('')
 const settingsStatus = ref('')
 
 const selectedFolder = computed(() => {
@@ -82,6 +84,7 @@ const openFolderSettingsModal = () => {
   modalMode.value = 'folder-settings'
   renameFolderName.value = selectedFolder.value.name
   folderIconPath.value = selectedFolder.value.iconPath ?? ''
+  folderMarkdownExportPath.value = selectedFolder.value.markdownExportPath ?? selectedFolder.value.path
   loadFolderError.value = ''
   isModalOpen.value = true
 }
@@ -138,6 +141,7 @@ const refreshFolders = async () => {
 const refreshFolderNotes = async () => {
   try {
     folderNotes.value = await loadStoredFolderNotes({ folderId: selectedFolderId.value })
+    loadFolderError.value = ''
   } catch (error) {
     loadFolderError.value = error instanceof Error ? error.message : 'ノート一覧の読み込みに失敗しました'
   }
@@ -212,9 +216,14 @@ const handleSaveFolderSettings = async (close = null) => {
     const folder = selectedFolder.value
     const renamedFolder = folder.name === name ? folder : await renameStoredFolder(folder, name)
     const iconPath = folderIconPath.value.trim()
+    const markdownPath = folderMarkdownExportPath.value.trim()
 
     if (iconPath !== (folder.iconPath ?? '')) {
       await saveFolderIconPath(folder.id, iconPath || null)
+    }
+
+    if (markdownPath !== (folder.markdownExportPath ?? '')) {
+      await saveFolderMarkdownExportPath(folder.id, markdownPath || renamedFolder?.path || folder.path)
     }
 
     await refreshFolders()
@@ -224,6 +233,28 @@ const handleSaveFolderSettings = async (close = null) => {
     close?.()
   } catch (error) {
     loadFolderError.value = error instanceof Error ? error.message : 'フォルダ設定の保存に失敗しました'
+  }
+}
+
+const handleBrowseFolderMarkdownExportPath = async () => {
+  if (!selectedFolder.value) return
+
+  loadFolderError.value = ''
+
+  try {
+    const selectedPath = await open({
+      directory: true,
+      multiple: false,
+      defaultPath: folderMarkdownExportPath.value || undefined,
+      title: 'フォルダのMarkdown保存先を選択',
+    })
+
+    if (typeof selectedPath !== 'string') return
+
+    folderMarkdownExportPath.value = selectedPath
+    await handleSaveFolderSettings()
+  } catch (error) {
+    loadFolderError.value = error instanceof Error ? error.message : 'フォルダのMarkdown保存先の変更に失敗しました'
   }
 }
 
@@ -300,14 +331,20 @@ const refreshAppTitle = async () => {
   appTitle.value = await loadAppTitle()
 }
 
-const currentMarkdownExportPath = () => {
-  const parts = [markdownExportPath.value.trim()]
+const isAbsolutePath = (path) => path.startsWith('/') || /^[A-Za-z]:[\\/]/.test(path)
 
-  if (selectedFolder.value) {
-    parts.push(selectedFolder.value.markdownExportPath)
+const currentMarkdownExportPath = () => {
+  const basePath = markdownExportPath.value.trim()
+
+  if (!selectedFolder.value) return basePath
+
+  const folderPath = selectedFolder.value.markdownExportPath?.trim() || selectedFolder.value.path
+
+  if (isAbsolutePath(folderPath) || !basePath) {
+    return folderPath
   }
 
-  return parts.filter(Boolean).join('/')
+  return `${basePath.replace(/[\\/]+$/, '')}/${folderPath.replace(/^[\\/]+/, '')}`
 }
 
 const sendMessage = async () => {
@@ -541,6 +578,24 @@ onMounted(async () => {
               type="button"
               class="secondary-button browse-button"
               @click="handleBrowseFolderIcon"
+            >
+              参照
+            </button>
+          </div>
+          <label class="field-label" for="folder-markdown-export-path">Markdown保存先</label>
+          <div class="path-field">
+            <input
+              id="folder-markdown-export-path"
+              v-model="folderMarkdownExportPath"
+              class="path-input"
+              type="text"
+              placeholder="フォルダパス"
+              @change="handleSaveFolderSettings()"
+            />
+            <button
+              type="button"
+              class="secondary-button browse-button"
+              @click="handleBrowseFolderMarkdownExportPath"
             >
               参照
             </button>
