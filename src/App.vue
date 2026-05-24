@@ -1,43 +1,96 @@
 <script setup>
 import { open } from '@tauri-apps/plugin-dialog'
-import { nextTick, onMounted, ref } from 'vue'
+import { computed, nextTick, onMounted, ref } from 'vue'
 import Modal from './components/Modal.vue'
 import Sidebar from './components/Sidebar.vue'
 import SendMessage from './components/SendMessage.vue'
 import Message from './components/Message.vue'
 import Input from './components/Input.vue'
 import {
+  createFolder as createStoredFolder,
   createMessage,
   exportMessagesToMarkdown,
+  loadAppTitle,
+  loadFolderNotes as loadStoredFolderNotes,
+  loadFolders as loadStoredFolders,
   loadMarkdownExportPath,
-  loadMessages,
+  loadMessages as loadStoredMessages,
+  renameFolder as renameStoredFolder,
+  saveAppTitle,
+  saveFolderIconPath,
+  saveFolderMarkdownExportPath,
   saveMarkdownExportPath,
 } from './lib/messages'
 
 const isModalOpen = ref(false)
-const modalMode = ref('settings')
+const modalMode = ref('app-settings')
 const messages = ref([])
 const draftMessage = ref('')
 const messagesRef = ref(null)
+const folders = ref([])
+const folderNotes = ref([])
+const selectedFolderId = ref(null)
+const selectedNotePath = ref(null)
 const isLoadingMessages = ref(true)
+const isLoadingFolders = ref(true)
 const isSendingMessage = ref(false)
 const isSavingSettings = ref(false)
 const isBrowsing = ref(false)
 const loadMessageError = ref('')
+const loadFolderError = ref('')
 const sendMessageError = ref('')
 const exportStatus = ref('')
 const markdownExportPath = ref('')
+const appTitle = ref('デイリー分報')
+const settingsAppTitle = ref('')
+const settingsMarkdownExportPath = ref('')
+const folderName = ref('')
+const folderCreateIconPath = ref('')
+const renameFolderName = ref('')
+const folderIconPath = ref('')
+const folderMarkdownExportPath = ref('')
 const settingsStatus = ref('')
 
+const selectedFolder = computed(() => {
+  if (selectedFolderId.value === null) return null
+
+  return folders.value.find((folder) => folder.id === selectedFolderId.value) ?? null
+})
+
+const selectedFolderName = computed(() => selectedFolder.value?.path ?? 'ルート')
+const modalSize = computed(() =>
+  modalMode.value === 'app-settings' || modalMode.value === 'folder-settings' ? 'wide' : 'default',
+)
+
 const openSettingsModal = () => {
-  modalMode.value = 'settings'
+  modalMode.value = 'app-settings'
+  settingsAppTitle.value = appTitle.value
+  settingsMarkdownExportPath.value = markdownExportPath.value
   settingsStatus.value = ''
   isModalOpen.value = true
 }
 
-const openNewNoteModal = () => {
-  modalMode.value = 'new-note'
+const openCreateFolderModal = () => {
+  modalMode.value = 'create-folder'
+  folderName.value = ''
+  folderCreateIconPath.value = ''
+  loadFolderError.value = ''
   isModalOpen.value = true
+}
+
+const openFolderSettingsModal = () => {
+  if (!selectedFolder.value) return
+
+  modalMode.value = 'folder-settings'
+  renameFolderName.value = selectedFolder.value.name
+  folderIconPath.value = selectedFolder.value.iconPath ?? ''
+  folderMarkdownExportPath.value = selectedFolder.value.markdownExportPath ?? selectedFolder.value.path
+  loadFolderError.value = ''
+  isModalOpen.value = true
+}
+
+const closeModal = () => {
+  isModalOpen.value = false
 }
 
 const formatMessageDate = (value) => {
@@ -64,6 +117,36 @@ const scrollMessagesToBottom = async () => {
   messagesRef.value.scrollTop = messagesRef.value.scrollHeight
 }
 
+const refreshFolders = async () => {
+  isLoadingFolders.value = true
+  loadFolderError.value = ''
+
+  try {
+    const rows = await loadStoredFolders()
+    folders.value = rows
+
+    if (
+      selectedFolderId.value !== null &&
+      !rows.some((folder) => folder.id === selectedFolderId.value)
+    ) {
+      selectedFolderId.value = null
+    }
+  } catch (error) {
+    loadFolderError.value = error instanceof Error ? error.message : 'フォルダの読み込みに失敗しました'
+  } finally {
+    isLoadingFolders.value = false
+  }
+}
+
+const refreshFolderNotes = async () => {
+  try {
+    folderNotes.value = await loadStoredFolderNotes({ folderId: selectedFolderId.value })
+    loadFolderError.value = ''
+  } catch (error) {
+    loadFolderError.value = error instanceof Error ? error.message : 'ノート一覧の読み込みに失敗しました'
+  }
+}
+
 const toViewMessage = (row) => ({
   ...row,
   name: '自分',
@@ -76,11 +159,15 @@ const refreshMessages = async () => {
   loadMessageError.value = ''
 
   try {
-    const rows = await loadMessages()
+    const rows = await loadStoredMessages({
+      folderId: selectedFolderId.value,
+      notePath: selectedNotePath.value,
+    })
 
     messages.value = rows.map(toViewMessage)
 
     await scrollMessagesToBottom()
+    await refreshFolderNotes()
   } catch (error) {
     loadMessageError.value = error instanceof Error ? error.message : 'メッセージの読み込みに失敗しました'
   } finally {
@@ -88,8 +175,176 @@ const refreshMessages = async () => {
   }
 }
 
+const createFolder = async (name, iconPath = '') => {
+  loadFolderError.value = ''
+
+  try {
+    const createdFolder = await createStoredFolder(name, selectedFolder.value, iconPath)
+
+    await refreshFolders()
+
+    selectedFolderId.value = createdFolder?.id ?? selectedFolderId.value
+    selectedNotePath.value = null
+    await refreshMessages()
+  } catch (error) {
+    loadFolderError.value = error instanceof Error ? error.message : 'フォルダの作成に失敗しました'
+  }
+}
+
+const handleCreateFolder = async (close) => {
+  const name = folderName.value.trim()
+
+  if (!name) return
+
+  await createFolder(name, folderCreateIconPath.value)
+
+  if (!loadFolderError.value) {
+    folderName.value = ''
+    folderCreateIconPath.value = ''
+    close()
+  }
+}
+
+const handleSaveFolderSettings = async (close = null) => {
+  const name = renameFolderName.value.trim()
+
+  if (!name || !selectedFolder.value) return
+
+  loadFolderError.value = ''
+
+  try {
+    const folder = selectedFolder.value
+    const renamedFolder = folder.name === name ? folder : await renameStoredFolder(folder, name)
+    const iconPath = folderIconPath.value.trim()
+    const markdownPath = folderMarkdownExportPath.value.trim()
+
+    if (iconPath !== (folder.iconPath ?? '')) {
+      await saveFolderIconPath(folder.id, iconPath || null)
+    }
+
+    if (markdownPath !== (folder.markdownExportPath ?? '')) {
+      await saveFolderMarkdownExportPath(folder.id, markdownPath || renamedFolder?.path || folder.path)
+    }
+
+    await refreshFolders()
+    selectedFolderId.value = renamedFolder?.id ?? selectedFolderId.value
+    selectedNotePath.value = null
+    await refreshMessages()
+    close?.()
+  } catch (error) {
+    loadFolderError.value = error instanceof Error ? error.message : 'フォルダ設定の保存に失敗しました'
+  }
+}
+
+const handleBrowseFolderMarkdownExportPath = async () => {
+  if (!selectedFolder.value) return
+
+  loadFolderError.value = ''
+
+  try {
+    const selectedPath = await open({
+      directory: true,
+      multiple: false,
+      defaultPath: folderMarkdownExportPath.value || undefined,
+      title: 'フォルダのMarkdown保存先を選択',
+    })
+
+    if (typeof selectedPath !== 'string') return
+
+    folderMarkdownExportPath.value = selectedPath
+    await handleSaveFolderSettings()
+  } catch (error) {
+    loadFolderError.value = error instanceof Error ? error.message : 'フォルダのMarkdown保存先の変更に失敗しました'
+  }
+}
+
+const handleBrowseFolderIcon = async () => {
+  if (!selectedFolder.value) return
+
+  loadFolderError.value = ''
+
+  try {
+    const selectedPath = await open({
+      multiple: false,
+      filters: [
+        {
+          name: '画像',
+          extensions: ['png', 'jpg', 'jpeg', 'webp', 'gif', 'bmp', 'svg'],
+        },
+      ],
+      title: 'フォルダ画像を選択',
+    })
+
+    if (typeof selectedPath !== 'string') return
+
+    folderIconPath.value = selectedPath
+    await handleSaveFolderSettings()
+  } catch (error) {
+    loadFolderError.value = error instanceof Error ? error.message : 'フォルダ画像の変更に失敗しました'
+  }
+}
+
+const handleBrowseCreateFolderIcon = async () => {
+  loadFolderError.value = ''
+
+  try {
+    const selectedPath = await open({
+      multiple: false,
+      filters: [
+        {
+          name: '画像',
+          extensions: ['png', 'jpg', 'jpeg', 'webp', 'gif', 'bmp', 'svg'],
+        },
+      ],
+      title: 'フォルダ画像を選択',
+    })
+
+    if (typeof selectedPath === 'string') {
+      folderCreateIconPath.value = selectedPath
+    }
+  } catch (error) {
+    loadFolderError.value = error instanceof Error ? error.message : 'フォルダ画像の選択に失敗しました'
+  }
+}
+
+const selectFolder = async (folderId) => {
+  selectedFolderId.value = folderId
+  selectedNotePath.value = null
+  await refreshMessages()
+}
+
+const selectNote = async (notePath) => {
+  selectedNotePath.value = notePath
+  await refreshMessages()
+}
+
+const selectAllNotesInFolder = async () => {
+  selectedNotePath.value = null
+  await refreshMessages()
+}
+
 const refreshMarkdownExportPath = async () => {
   markdownExportPath.value = await loadMarkdownExportPath()
+}
+
+const refreshAppTitle = async () => {
+  appTitle.value = await loadAppTitle()
+}
+
+const isAbsolutePath = (path) => path.startsWith('/') || /^[A-Za-z]:[\\/]/.test(path)
+
+const currentMarkdownExportPath = () => {
+  const basePath = markdownExportPath.value.trim()
+
+  if (!selectedFolder.value) return basePath
+
+  const folderPath = selectedFolder.value.markdownExportPath?.trim() || selectedFolder.value.path
+
+  if (isAbsolutePath(folderPath) || !basePath) {
+    return folderPath
+  }
+
+  return `${basePath.replace(/[\\/]+$/, '')}/${folderPath.replace(/^[\\/]+/, '')}`
 }
 
 const sendMessage = async () => {
@@ -102,16 +357,23 @@ const sendMessage = async () => {
   exportStatus.value = ''
 
   try {
-    await createMessage(content)
-    const rows = await loadMessages()
+    await createMessage(content, {
+      folderId: selectedFolderId.value,
+      notePath: selectedNotePath.value,
+    })
+    const rows = await loadStoredMessages({
+      folderId: selectedFolderId.value,
+      notePath: selectedNotePath.value,
+    })
 
     draftMessage.value = ''
     messages.value = rows.map(toViewMessage)
     await scrollMessagesToBottom()
 
     try {
-      const result = await exportMessagesToMarkdown(rows, markdownExportPath.value)
+      const result = await exportMessagesToMarkdown(rows, currentMarkdownExportPath())
       exportStatus.value = `${result.exported_count}件を書き出しました`
+      await refreshFolderNotes()
     } catch (error) {
       exportStatus.value = error instanceof Error
         ? `メッセージは保存しましたが、Markdown書き出しに失敗しました: ${error.message}`
@@ -124,15 +386,16 @@ const sendMessage = async () => {
   }
 }
 
-const handleSaveSettings = async (close) => {
+const handleSaveSettings = async () => {
   isSavingSettings.value = true
   settingsStatus.value = ''
 
   try {
-    await saveMarkdownExportPath(markdownExportPath.value)
+    await saveAppTitle(settingsAppTitle.value)
+    await saveMarkdownExportPath(settingsMarkdownExportPath.value)
+    await refreshAppTitle()
     await refreshMarkdownExportPath()
     settingsStatus.value = '保存しました'
-    close()
   } catch (error) {
     settingsStatus.value = error instanceof Error ? error.message : '設定の保存に失敗しました'
   } finally {
@@ -148,12 +411,13 @@ const handleBrowseMarkdownExportPath = async () => {
     const selectedPath = await open({
       directory: true,
       multiple: false,
-      defaultPath: markdownExportPath.value || undefined,
+      defaultPath: settingsMarkdownExportPath.value || undefined,
       title: 'Markdown保存先を選択',
     })
 
     if (typeof selectedPath === 'string') {
-      markdownExportPath.value = selectedPath
+      settingsMarkdownExportPath.value = selectedPath
+      await handleSaveSettings()
     }
   } catch (error) {
     settingsStatus.value = error instanceof Error ? error.message : '保存先の選択に失敗しました'
@@ -162,8 +426,12 @@ const handleBrowseMarkdownExportPath = async () => {
   }
 }
 
-onMounted(() => {
-  refreshMessages()
+onMounted(async () => {
+  await refreshFolders()
+  await refreshMessages()
+  refreshAppTitle().catch((error) => {
+    loadMessageError.value = error instanceof Error ? error.message : '設定の読み込みに失敗しました'
+  })
   refreshMarkdownExportPath().catch((error) => {
     loadMessageError.value = error instanceof Error ? error.message : '設定の読み込みに失敗しました'
   })
@@ -173,7 +441,18 @@ onMounted(() => {
 <template>
   <div class="container">
     <div class="layout">
-      <Sidebar @open-settings="openSettingsModal" @open-new-note="openNewNoteModal" />
+      <Sidebar
+        :folders="folders"
+        :notes="folderNotes"
+        :selected-folder-id="selectedFolderId"
+        :selected-note-path="selectedNotePath"
+        @open-create-folder="openCreateFolderModal"
+        @open-folder-settings="openFolderSettingsModal"
+        @select-folder="selectFolder"
+        @select-note="selectNote"
+        @select-folder-notes="selectAllNotesInFolder"
+        @open-settings="openSettingsModal"
+      />
       <main class="content">
         <div class="header">
           <Input />
@@ -201,20 +480,32 @@ onMounted(() => {
         />
       </main>
     </div>
-    <Modal v-model="isModalOpen">
+    <Modal v-model="isModalOpen" :size="modalSize">
       <template #header>
-        <h2 class="modal-title">{{ modalMode === 'settings' ? '設定' : '新しいノート' }}</h2>
+        <h2 class="modal-title">
+          {{ modalMode === 'app-settings' ? 'アプリ設定' : modalMode === 'folder-settings' ? 'プロジェクト設定' : '新規フォルダ' }}
+        </h2>
       </template>
       <template #body>
-        <form v-if="modalMode === 'settings'" class="settings-form" @submit.prevent>
+        <form v-if="modalMode === 'app-settings'" class="settings-form" @submit.prevent>
+          <label class="field-label" for="app-title">アプリ名</label>
+          <input
+            id="app-title"
+            v-model="settingsAppTitle"
+            class="path-input"
+            type="text"
+            placeholder="デイリー分報"
+            @change="handleSaveSettings"
+          />
           <label class="field-label" for="markdown-export-path">Markdown保存先</label>
           <div class="path-field">
             <input
               id="markdown-export-path"
-              v-model="markdownExportPath"
+              v-model="settingsMarkdownExportPath"
               class="path-input"
               type="text"
               placeholder="/Users/sintaro/Documents/MyTimes/entries"
+              @change="handleSaveSettings"
             />
             <button
               type="button"
@@ -227,11 +518,94 @@ onMounted(() => {
           </div>
           <p v-if="settingsStatus" class="settings-status">{{ settingsStatus }}</p>
         </form>
-        <p v-else class="modal-text">新しいノートの入力項目はここに追加します。</p>
+        <form
+          v-else-if="modalMode === 'create-folder'"
+          class="settings-form"
+          @submit.prevent="handleCreateFolder(closeModal)"
+        >
+          <label class="field-label" for="folder-name">フォルダ名</label>
+          <input
+            id="folder-name"
+            v-model="folderName"
+            class="path-input"
+            type="text"
+            :placeholder="`${selectedFolderName} に作成`"
+          />
+          <label class="field-label" for="create-folder-icon-path">フォルダ画像</label>
+          <div class="path-field">
+            <input
+              id="create-folder-icon-path"
+              v-model="folderCreateIconPath"
+              class="path-input"
+              type="text"
+              placeholder="未設定"
+            />
+            <button
+              type="button"
+              class="secondary-button browse-button"
+              @click="handleBrowseCreateFolderIcon"
+            >
+              参照
+            </button>
+          </div>
+          <p v-if="loadFolderError" class="settings-status is-error">{{ loadFolderError }}</p>
+        </form>
+        <form
+          v-else-if="modalMode === 'folder-settings'"
+          class="settings-form"
+          @submit.prevent="handleSaveFolderSettings()"
+        >
+          <label class="field-label" for="rename-folder-name">フォルダ名</label>
+          <input
+            id="rename-folder-name"
+            v-model="renameFolderName"
+            class="path-input"
+            type="text"
+            placeholder="フォルダ名"
+            @change="handleSaveFolderSettings()"
+          />
+          <label class="field-label" for="folder-icon-path">フォルダ画像</label>
+          <div class="path-field">
+            <input
+              id="folder-icon-path"
+              v-model="folderIconPath"
+              class="path-input"
+              type="text"
+              placeholder="未設定"
+              @change="handleSaveFolderSettings()"
+            />
+            <button
+              type="button"
+              class="secondary-button browse-button"
+              @click="handleBrowseFolderIcon"
+            >
+              参照
+            </button>
+          </div>
+          <label class="field-label" for="folder-markdown-export-path">Markdown保存先</label>
+          <div class="path-field">
+            <input
+              id="folder-markdown-export-path"
+              v-model="folderMarkdownExportPath"
+              class="path-input"
+              type="text"
+              placeholder="フォルダパス"
+              @change="handleSaveFolderSettings()"
+            />
+            <button
+              type="button"
+              class="secondary-button browse-button"
+              @click="handleBrowseFolderMarkdownExportPath"
+            >
+              参照
+            </button>
+          </div>
+          <p v-if="loadFolderError" class="settings-status is-error">{{ loadFolderError }}</p>
+        </form>
       </template>
-      <template v-if="modalMode === 'settings'" #footer="{ close }">
+      <template v-if="modalMode === 'create-folder'" #footer="{ close }">
         <button type="button" class="secondary-button" @click="close">キャンセル</button>
-        <button type="button" class="primary-button" :disabled="isSavingSettings" @click="handleSaveSettings(close)">保存</button>
+        <button type="button" class="primary-button" @click="handleCreateFolder(close)">作成</button>
       </template>
     </Modal>
   </div>
@@ -268,8 +642,7 @@ onMounted(() => {
   font-size: 12px;
 }
 
-.modal-title,
-.modal-text {
+.modal-title {
   margin: 0;
 }
 
@@ -312,6 +685,10 @@ onMounted(() => {
   margin: 4px 0 0;
   color: var(--text-tertiary);
   font-size: 12px;
+}
+
+.settings-status.is-error {
+  color: var(--bg-error);
 }
 
 .primary-button,

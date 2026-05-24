@@ -5,12 +5,26 @@ use tauri_plugin_sql::{Migration, MigrationKind};
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    let migrations = vec![Migration {
-        version: 1,
-        description: "create_initial_tables",
-        sql: include_str!("../migrations/1_create_initial_tables.sql"),
-        kind: MigrationKind::Up,
-    }];
+    let migrations = vec![
+        Migration {
+            version: 1,
+            description: "create_initial_tables",
+            sql: include_str!("../migrations/1_create_initial_tables.sql"),
+            kind: MigrationKind::Up,
+        },
+        Migration {
+            version: 2,
+            description: "add_folders",
+            sql: include_str!("../migrations/2_add_folders.sql"),
+            kind: MigrationKind::Up,
+        },
+        Migration {
+            version: 3,
+            description: "add_folder_icon_path",
+            sql: include_str!("../migrations/3_add_folder_icon_path.sql"),
+            kind: MigrationKind::Up,
+        },
+    ];
 
     tauri::Builder::default()
         .invoke_handler(tauri::generate_handler![export_messages_to_markdown])
