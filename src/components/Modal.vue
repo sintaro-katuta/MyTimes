@@ -7,6 +7,10 @@ const props = defineProps({
     type: Boolean,
     default: false,
   },
+  size: {
+    type: String,
+    default: 'default',
+  },
 })
 
 const emit = defineEmits(['update:modelValue', 'close'])
@@ -29,7 +33,7 @@ const closeModal = () => {
       @click.self="closeModal"
     >
       <div class="modal-backdrop" aria-hidden="true" @click="closeModal" />
-      <div class="modal-shell">
+      <div class="modal-shell" :class="`modal-shell-${props.size}`">
         <div class="modal-content">
           <button type="button" class="close-button" aria-label="モーダルを閉じる" @click="closeModal">
             <CircleX size="24" class="close" />
@@ -73,6 +77,15 @@ const closeModal = () => {
 .modal-shell {
   position: relative;
   width: min(680px, 100%);
+}
+
+.modal-shell-wide {
+  width: min(70vw, calc(100vw - 32px));
+  height: min(70dvh, calc(100dvh - 32px));
+}
+
+.modal-shell-wide .modal-content {
+  height: 100%;
 }
 
 .modal-content {
@@ -132,18 +145,16 @@ const closeModal = () => {
   height: 44px;
   border: none;
   border-radius: 999px;
-  background: var(--surface-elevated);
+  background: transparent;
   padding: 0;
   cursor: pointer;
   color: var(--icon-default);
   transition:
-    background-color 180ms ease,
     color 180ms ease,
     transform 180ms ease;
 }
 
 .close-button:hover {
-  background: var(--surface-elevated-hover);
   color: var(--text-primary);
 }
 

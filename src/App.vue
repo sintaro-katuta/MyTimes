@@ -22,7 +22,7 @@ import {
 } from './lib/messages'
 
 const isModalOpen = ref(false)
-const modalMode = ref('settings')
+const modalMode = ref('app-settings')
 const messages = ref([])
 const draftMessage = ref('')
 const messagesRef = ref(null)
@@ -44,7 +44,9 @@ const appTitle = ref('デイリー分報')
 const settingsAppTitle = ref('')
 const settingsMarkdownExportPath = ref('')
 const folderName = ref('')
+const folderCreateIconPath = ref('')
 const renameFolderName = ref('')
+const folderIconPath = ref('')
 const settingsStatus = ref('')
 
 const selectedFolder = computed(() => {
@@ -54,9 +56,12 @@ const selectedFolder = computed(() => {
 })
 
 const selectedFolderName = computed(() => selectedFolder.value?.path ?? 'ルート')
+const modalSize = computed(() =>
+  modalMode.value === 'app-settings' || modalMode.value === 'folder-settings' ? 'wide' : 'default',
+)
 
 const openSettingsModal = () => {
-  modalMode.value = 'settings'
+  modalMode.value = 'app-settings'
   settingsAppTitle.value = appTitle.value
   settingsMarkdownExportPath.value = markdownExportPath.value
   settingsStatus.value = ''
@@ -66,15 +71,17 @@ const openSettingsModal = () => {
 const openCreateFolderModal = () => {
   modalMode.value = 'create-folder'
   folderName.value = ''
+  folderCreateIconPath.value = ''
   loadFolderError.value = ''
   isModalOpen.value = true
 }
 
-const openRenameFolderModal = () => {
+const openFolderSettingsModal = () => {
   if (!selectedFolder.value) return
 
-  modalMode.value = 'rename-folder'
+  modalMode.value = 'folder-settings'
   renameFolderName.value = selectedFolder.value.name
+  folderIconPath.value = selectedFolder.value.iconPath ?? ''
   loadFolderError.value = ''
   isModalOpen.value = true
 }
@@ -164,11 +171,11 @@ const refreshMessages = async () => {
   }
 }
 
-const createFolder = async (name) => {
+const createFolder = async (name, iconPath = '') => {
   loadFolderError.value = ''
 
   try {
-    const createdFolder = await createStoredFolder(name, selectedFolder.value)
+    const createdFolder = await createStoredFolder(name, selectedFolder.value, iconPath)
 
     await refreshFolders()
 
@@ -185,15 +192,16 @@ const handleCreateFolder = async (close) => {
 
   if (!name) return
 
-  await createFolder(name)
+  await createFolder(name, folderCreateIconPath.value)
 
   if (!loadFolderError.value) {
     folderName.value = ''
+    folderCreateIconPath.value = ''
     close()
   }
 }
 
-const handleRenameFolder = async (close) => {
+const handleSaveFolderSettings = async (close = null) => {
   const name = renameFolderName.value.trim()
 
   if (!name || !selectedFolder.value) return
@@ -201,16 +209,21 @@ const handleRenameFolder = async (close) => {
   loadFolderError.value = ''
 
   try {
-    const renamedFolder = await renameStoredFolder(selectedFolder.value, name)
+    const folder = selectedFolder.value
+    const renamedFolder = folder.name === name ? folder : await renameStoredFolder(folder, name)
+    const iconPath = folderIconPath.value.trim()
+
+    if (iconPath !== (folder.iconPath ?? '')) {
+      await saveFolderIconPath(folder.id, iconPath || null)
+    }
 
     await refreshFolders()
-
     selectedFolderId.value = renamedFolder?.id ?? selectedFolderId.value
     selectedNotePath.value = null
     await refreshMessages()
-    close()
+    close?.()
   } catch (error) {
-    loadFolderError.value = error instanceof Error ? error.message : 'フォルダ名の変更に失敗しました'
+    loadFolderError.value = error instanceof Error ? error.message : 'フォルダ設定の保存に失敗しました'
   }
 }
 
@@ -233,10 +246,33 @@ const handleBrowseFolderIcon = async () => {
 
     if (typeof selectedPath !== 'string') return
 
-    await saveFolderIconPath(selectedFolder.value.id, selectedPath)
-    await refreshFolders()
+    folderIconPath.value = selectedPath
+    await handleSaveFolderSettings()
   } catch (error) {
     loadFolderError.value = error instanceof Error ? error.message : 'フォルダ画像の変更に失敗しました'
+  }
+}
+
+const handleBrowseCreateFolderIcon = async () => {
+  loadFolderError.value = ''
+
+  try {
+    const selectedPath = await open({
+      multiple: false,
+      filters: [
+        {
+          name: '画像',
+          extensions: ['png', 'jpg', 'jpeg', 'webp', 'gif', 'bmp', 'svg'],
+        },
+      ],
+      title: 'フォルダ画像を選択',
+    })
+
+    if (typeof selectedPath === 'string') {
+      folderCreateIconPath.value = selectedPath
+    }
+  } catch (error) {
+    loadFolderError.value = error instanceof Error ? error.message : 'フォルダ画像の選択に失敗しました'
   }
 }
 
@@ -313,7 +349,7 @@ const sendMessage = async () => {
   }
 }
 
-const handleSaveSettings = async (close) => {
+const handleSaveSettings = async () => {
   isSavingSettings.value = true
   settingsStatus.value = ''
 
@@ -323,7 +359,6 @@ const handleSaveSettings = async (close) => {
     await refreshAppTitle()
     await refreshMarkdownExportPath()
     settingsStatus.value = '保存しました'
-    close()
   } catch (error) {
     settingsStatus.value = error instanceof Error ? error.message : '設定の保存に失敗しました'
   } finally {
@@ -345,6 +380,7 @@ const handleBrowseMarkdownExportPath = async () => {
 
     if (typeof selectedPath === 'string') {
       settingsMarkdownExportPath.value = selectedPath
+      await handleSaveSettings()
     }
   } catch (error) {
     settingsStatus.value = error instanceof Error ? error.message : '保存先の選択に失敗しました'
@@ -374,8 +410,7 @@ onMounted(async () => {
         :selected-folder-id="selectedFolderId"
         :selected-note-path="selectedNotePath"
         @open-create-folder="openCreateFolderModal"
-        @open-rename-folder="openRenameFolderModal"
-        @browse-folder-icon="handleBrowseFolderIcon"
+        @open-folder-settings="openFolderSettingsModal"
         @select-folder="selectFolder"
         @select-note="selectNote"
         @select-folder-notes="selectAllNotesInFolder"
@@ -408,14 +443,14 @@ onMounted(async () => {
         />
       </main>
     </div>
-    <Modal v-model="isModalOpen">
+    <Modal v-model="isModalOpen" :size="modalSize">
       <template #header>
         <h2 class="modal-title">
-          {{ modalMode === 'settings' ? '設定' : modalMode === 'rename-folder' ? 'フォルダ名を変更' : '新規フォルダ' }}
+          {{ modalMode === 'app-settings' ? 'アプリ設定' : modalMode === 'folder-settings' ? 'プロジェクト設定' : '新規フォルダ' }}
         </h2>
       </template>
       <template #body>
-        <form v-if="modalMode === 'settings'" class="settings-form" @submit.prevent>
+        <form v-if="modalMode === 'app-settings'" class="settings-form" @submit.prevent>
           <label class="field-label" for="app-title">アプリ名</label>
           <input
             id="app-title"
@@ -423,6 +458,7 @@ onMounted(async () => {
             class="path-input"
             type="text"
             placeholder="デイリー分報"
+            @change="handleSaveSettings"
           />
           <label class="field-label" for="markdown-export-path">Markdown保存先</label>
           <div class="path-field">
@@ -432,6 +468,7 @@ onMounted(async () => {
               class="path-input"
               type="text"
               placeholder="/Users/sintaro/Documents/MyTimes/entries"
+              @change="handleSaveSettings"
             />
             <button
               type="button"
@@ -457,12 +494,29 @@ onMounted(async () => {
             type="text"
             :placeholder="`${selectedFolderName} に作成`"
           />
+          <label class="field-label" for="create-folder-icon-path">フォルダ画像</label>
+          <div class="path-field">
+            <input
+              id="create-folder-icon-path"
+              v-model="folderCreateIconPath"
+              class="path-input"
+              type="text"
+              placeholder="未設定"
+            />
+            <button
+              type="button"
+              class="secondary-button browse-button"
+              @click="handleBrowseCreateFolderIcon"
+            >
+              参照
+            </button>
+          </div>
           <p v-if="loadFolderError" class="settings-status is-error">{{ loadFolderError }}</p>
         </form>
         <form
-          v-else-if="modalMode === 'rename-folder'"
+          v-else-if="modalMode === 'folder-settings'"
           class="settings-form"
-          @submit.prevent="handleRenameFolder(closeModal)"
+          @submit.prevent="handleSaveFolderSettings()"
         >
           <label class="field-label" for="rename-folder-name">フォルダ名</label>
           <input
@@ -471,21 +525,32 @@ onMounted(async () => {
             class="path-input"
             type="text"
             placeholder="フォルダ名"
+            @change="handleSaveFolderSettings()"
           />
+          <label class="field-label" for="folder-icon-path">フォルダ画像</label>
+          <div class="path-field">
+            <input
+              id="folder-icon-path"
+              v-model="folderIconPath"
+              class="path-input"
+              type="text"
+              placeholder="未設定"
+              @change="handleSaveFolderSettings()"
+            />
+            <button
+              type="button"
+              class="secondary-button browse-button"
+              @click="handleBrowseFolderIcon"
+            >
+              参照
+            </button>
+          </div>
           <p v-if="loadFolderError" class="settings-status is-error">{{ loadFolderError }}</p>
         </form>
       </template>
-      <template v-if="modalMode === 'settings'" #footer="{ close }">
-        <button type="button" class="secondary-button" @click="close">キャンセル</button>
-        <button type="button" class="primary-button" :disabled="isSavingSettings" @click="handleSaveSettings(close)">保存</button>
-      </template>
-      <template v-else-if="modalMode === 'create-folder'" #footer="{ close }">
+      <template v-if="modalMode === 'create-folder'" #footer="{ close }">
         <button type="button" class="secondary-button" @click="close">キャンセル</button>
         <button type="button" class="primary-button" @click="handleCreateFolder(close)">作成</button>
-      </template>
-      <template v-else-if="modalMode === 'rename-folder'" #footer="{ close }">
-        <button type="button" class="secondary-button" @click="close">キャンセル</button>
-        <button type="button" class="primary-button" @click="handleRenameFolder(close)">変更</button>
       </template>
     </Modal>
   </div>

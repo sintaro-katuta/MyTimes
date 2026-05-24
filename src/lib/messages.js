@@ -120,9 +120,10 @@ export const saveAppTitle = async (title) => {
   )
 }
 
-export const createFolder = async (name, parentFolder = null) => {
+export const createFolder = async (name, parentFolder = null, iconPath = '') => {
   const db = await getDatabase()
   const folderName = name.trim().replaceAll('/', '-')
+  const normalizedIconPath = iconPath.trim() || null
 
   if (!folderName) return null
 
@@ -130,9 +131,9 @@ export const createFolder = async (name, parentFolder = null) => {
   const path = parentFolder ? `${parentFolder.path}/${folderName}` : folderName
 
   await db.execute(
-    `INSERT INTO folders (name, parent_id, path, markdown_export_path, created_at, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?)`,
-    [folderName, parentFolder?.id ?? null, path, path, createdAt, createdAt],
+    `INSERT INTO folders (name, parent_id, path, markdown_export_path, icon_path, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?)`,
+    [folderName, parentFolder?.id ?? null, path, path, normalizedIconPath, createdAt, createdAt],
   )
 
   const rows = await db.select(

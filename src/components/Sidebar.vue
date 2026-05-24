@@ -5,8 +5,6 @@ import { computed, ref, watch } from 'vue'
 import {
   ChevronDown,
   ChevronRight,
-  ImagePlus,
-  Pencil,
   Folder,
   Plus,
   Settings,
@@ -34,8 +32,7 @@ const props = defineProps({
 const emit = defineEmits([
   'open-settings',
   'open-create-folder',
-  'open-rename-folder',
-  'browse-folder-icon',
+  'open-folder-settings',
   'select-folder',
   'select-folder-notes',
   'select-note',
@@ -116,12 +113,8 @@ const openCreateFolder = () => {
   emit('open-create-folder')
 }
 
-const openRenameFolder = () => {
-  emit('open-rename-folder')
-}
-
-const browseFolderIcon = () => {
-  emit('browse-folder-icon')
+const openFolderSettings = () => {
+  emit('open-folder-settings')
 }
 
 const selectFolderNotes = () => {
@@ -210,7 +203,7 @@ watch(
             <button
               type="button"
               class="rail-button"
-              :class="{ active: selectedFolderId === folder.id }"
+              :class="{ active: selectedFolderId === folder.id, 'has-image': folder.iconPath }"
               :aria-label="folder.path"
               :title="folder.path"
               @click="selectFolder(folder)"
@@ -222,7 +215,7 @@ watch(
         </template>
       </div>
 
-      <button type="button" class="rail-button rail-settings" aria-label="設定" @click="openSettings">
+      <button type="button" class="rail-button rail-settings" aria-label="アプリ設定" @click="openSettings">
         <Settings :size="20" />
       </button>
     </div>
@@ -237,19 +230,10 @@ watch(
             v-if="selectedFolderId !== null"
             type="button"
             class="folder-action"
-            aria-label="フォルダ名を変更"
-            @click="openRenameFolder"
+            aria-label="プロジェクト設定"
+            @click="openFolderSettings"
           >
-            <Pencil :size="16" />
-          </button>
-          <button
-            v-if="selectedFolderId !== null"
-            type="button"
-            class="folder-action"
-            aria-label="フォルダ画像を変更"
-            @click="browseFolderIcon"
-          >
-            <ImagePlus :size="16" />
+            <Settings :size="16" />
           </button>
         </div>
         <p class="section-title">ファイル</p>
@@ -355,6 +339,13 @@ watch(
   border-color: var(--border-subtle);
   background: var(--bg-base-2);
   color: var(--text-primary);
+}
+
+.rail-button.has-image,
+.rail-button.has-image:hover,
+.rail-button.has-image.active {
+  border-color: transparent;
+  background: transparent;
 }
 
 .rail-button.is-toggle {
