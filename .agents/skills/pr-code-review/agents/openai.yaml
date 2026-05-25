@@ -1,4 +1,4 @@
 interface:
   display_name: "PR Code Review"
   short_description: "PR差分を確認してレビューコメントまで投稿する"
-  default_prompt: "Use $pr-code-review to review the current pull request and post review comments."
+  default_prompt: "Use $pr-code-review to review the current pull request. Post all review comments, summaries, and final reports in Japanese."

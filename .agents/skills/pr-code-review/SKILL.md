@@ -1,6 +1,6 @@
 ---
 name: pr-code-review
-description: Review GitHub pull requests as Codex and post the results back to the PR. Use when Codex is asked to review a PR, inspect PR diffs, set itself as reviewer, classify findings by priority, post one comment per finding, and publish a Japanese summary comment with commands and GitHub operations performed.
+description: Review GitHub pull requests as Codex and post the results back to the PR in Japanese. Use when Codex is asked to review a PR, inspect PR diffs, set itself as reviewer, classify findings by priority, post one comment per finding, control @codex review style through repository rules, and publish Japanese review comments, summaries, and final reports with commands and GitHub operations performed.
 ---
 
 # PR Code Review
@@ -38,8 +38,11 @@ description: Review GitHub pull requests as Codex and post the results back to t
    - Do not run destructive commands or overwrite user work.
 
 6. Prepare review comments in Japanese.
+   - Write all review comments, summary comments, and final reports in Japanese, including reviews triggered by `@codex review`.
    - Sort findings by priority: `High`, `Medium`, then `Low`.
    - Use `優先度`, not `重大度`.
+   - Use `優先度`, not `Severity`.
+   - Keep English boilerplate to the minimum necessary; write explanatory text in Japanese.
    - Post each finding as a separate PR comment.
    - Prefer line comments when a file and line are unambiguous.
    - Use a normal PR comment for cross-file, design-level, or line-ambiguous findings.
@@ -73,6 +76,7 @@ Use this shape for each individual finding:
 Use `High` for release-blocking correctness, data loss, security, or clear regression risks.
 Use `Medium` for likely bugs under specific conditions, specification gaps, maintainability risks that can cause defects, or meaningful test gaps.
 Use `Low` for minor improvements that are useful but not required before merge.
+In Japanese comments, label the field as `優先度` and keep the explanation under `問題`, `影響`, and `対応案`.
 
 ## Summary Comment Format
 
