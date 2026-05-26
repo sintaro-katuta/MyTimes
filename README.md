@@ -16,6 +16,8 @@ Vue 3 と Tauri で構成したデスクトップアプリケーションです�
 - `folders`: アプリ内の仮想フォルダツリーとMarkdownエクスポート先パスを保持します。
 - `messages.folder_id`: メッセージが属するフォルダを保持します。
 
+Markdown をノート本文の正本とし、SQLite を表示、検索、メタ情報、同期判定のためのキャッシュとして扱う方針は [Markdown正本化設計](docs/markdown-canonical.md) にまとめています。
+
 ## 開発
 
 ```sh
