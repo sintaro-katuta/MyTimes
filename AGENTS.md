@@ -69,6 +69,8 @@
 - PR 本文には、関連 Linear issue を `Fixes <Linear issue番号>` 形式で記載する。
 - PR 作成前に、未コミットの差分と push 済みブランチを確認する。
 - PR は作業ブランチから `main` 向けに作成する。
+- PR は通常 `draft` ではなく ready for review として作成する。
+- ユーザーが明示的に draft PR を依頼した場合のみ、draft として作成する。
 
 ## レビューコメント
 
