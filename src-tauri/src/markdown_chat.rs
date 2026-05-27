@@ -36,6 +36,12 @@ pub struct AppendChatMessageRequest {
     pub content: String,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct CodeFence {
+    marker: u8,
+    len: usize,
+}
+
 #[tauri::command]
 pub fn parse_markdown_to_chat(markdown: String) -> Result<ParsedMarkdownChat, String> {
     Ok(parse_markdown_chat(&markdown))
@@ -61,19 +67,18 @@ fn parse_markdown_chat(markdown: &str) -> ParsedMarkdownChat {
     let mut unparsed_start = None;
     let mut unparsed_lines = Vec::new();
     let mut index = 0;
-    let mut in_code_fence = false;
+    let mut code_fence = None;
 
     while index < lines.len() {
         let line = lines[index];
 
-        if is_code_fence(line) {
-            in_code_fence = !in_code_fence;
+        if update_code_fence(&mut code_fence, line) {
             push_unparsed_line(&mut unparsed_start, &mut unparsed_lines, index + 1, line);
             index += 1;
             continue;
         }
 
-        if !in_code_fence {
+        if code_fence.is_none() {
             if let Some(found_date) = parse_date_heading(line) {
                 flush_unparsed_block(
                     &mut unparsed_start,
@@ -98,27 +103,26 @@ fn parse_markdown_chat(markdown: &str) -> ParsedMarkdownChat {
                 index += 1;
                 let content_start_line = index + 1;
                 let mut content_lines = Vec::new();
-                let mut message_in_code_fence = false;
+                let mut message_code_fence = None;
                 let mut end_line = start_line;
 
                 while index < lines.len() {
                     let current_line = lines[index];
 
-                    if is_code_fence(current_line) {
-                        message_in_code_fence = !message_in_code_fence;
+                    if update_code_fence(&mut message_code_fence, current_line) {
                         content_lines.push(current_line.to_string());
                         end_line = index + 1;
                         index += 1;
                         continue;
                     }
 
-                    if !message_in_code_fence && is_message_separator(current_line) {
+                    if message_code_fence.is_none() && is_message_separator(current_line) {
                         end_line = index + 1;
                         index += 1;
                         break;
                     }
 
-                    if !message_in_code_fence && parse_time_heading(current_line).is_some() {
+                    if message_code_fence.is_none() && parse_time_heading(current_line).is_some() {
                         end_line = index;
                         break;
                     }
@@ -181,7 +185,7 @@ fn append_chat_message(
         next_markdown.push_str(markdown);
         push_append_spacing(&mut next_markdown);
 
-        if parse_markdown_chat(markdown).date.is_none() {
+        if last_date_heading(markdown).as_deref() != Some(date) {
             next_markdown.push_str(&format!("# {date}\n\n"));
         }
     }
@@ -303,10 +307,59 @@ fn is_message_separator(line: &str) -> bool {
     line.trim() == "---"
 }
 
-fn is_code_fence(line: &str) -> bool {
+fn parse_code_fence(line: &str) -> Option<CodeFence> {
     let trimmed = line.trim_start();
+    let bytes = trimmed.as_bytes();
+    let marker = *bytes.first()?;
 
-    trimmed.starts_with("```") || trimmed.starts_with("~~~")
+    if marker != b'`' && marker != b'~' {
+        return None;
+    }
+
+    let len = bytes.iter().take_while(|byte| **byte == marker).count();
+
+    if len >= 3 {
+        Some(CodeFence { marker, len })
+    } else {
+        None
+    }
+}
+
+fn update_code_fence(active: &mut Option<CodeFence>, line: &str) -> bool {
+    let Some(found) = parse_code_fence(line) else {
+        return false;
+    };
+
+    match active {
+        Some(current) if current.marker == found.marker && found.len >= current.len => {
+            *active = None;
+        }
+        Some(_) => {}
+        None => {
+            *active = Some(found);
+        }
+    }
+
+    true
+}
+
+fn last_date_heading(markdown: &str) -> Option<String> {
+    let mut active_fence = None;
+    let mut last_date = None;
+
+    for line in markdown.lines() {
+        if update_code_fence(&mut active_fence, line) {
+            continue;
+        }
+
+        if active_fence.is_none() {
+            if let Some(date) = parse_date_heading(line) {
+                last_date = Some(date.to_string());
+            }
+        }
+    }
+
+    last_date
 }
 
 fn trim_markdown_body(lines: &[String]) -> String {
@@ -353,6 +406,19 @@ mod tests {
         assert_eq!(
             parsed.messages[0].content,
             "```md\n---\n## 10:00\n```\n\n本文。"
+        );
+    }
+
+    #[test]
+    fn keeps_shorter_nested_fences_inside_longer_code_fences() {
+        let parsed = parse_markdown_chat(
+            "# 2026-05-25\n\n## 09:15\n\n````md\n```md\n---\n## 10:00\n```\n````\n\n本文。\n\n---\n",
+        );
+
+        assert_eq!(parsed.messages.len(), 1);
+        assert_eq!(
+            parsed.messages[0].content,
+            "````md\n```md\n---\n## 10:00\n```\n````\n\n本文。"
         );
     }
 
@@ -414,6 +480,22 @@ mod tests {
         assert_eq!(
             appended,
             "# 2026-05-25\n\n## 08:00\n\n既存\n\n---\n\n## 09:15\n\n追記する。\n\n---\n"
+        );
+    }
+
+    #[test]
+    fn appends_date_heading_when_last_date_is_different() {
+        let appended = append_chat_message(
+            "# 2026-05-25\n\n## 23:50\n\n既存\n\n---\n",
+            "2026-05-26",
+            "00:10",
+            "翌日",
+        )
+        .unwrap();
+
+        assert_eq!(
+            appended,
+            "# 2026-05-25\n\n## 23:50\n\n既存\n\n---\n\n# 2026-05-26\n\n## 00:10\n\n翌日\n\n---\n"
         );
     }
 
