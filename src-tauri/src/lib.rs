@@ -1,6 +1,8 @@
+mod markdown_chat;
 mod markdown_export;
 mod markdown_files;
 
+use markdown_chat::{append_chat_message_to_markdown, parse_markdown_to_chat};
 use markdown_export::export_messages_to_markdown;
 use markdown_files::{list_markdown_files, read_markdown_file, save_markdown_file};
 use tauri_plugin_sql::{Migration, MigrationKind};
@@ -31,6 +33,8 @@ pub fn run() {
     tauri::Builder::default()
         .invoke_handler(tauri::generate_handler![
             export_messages_to_markdown,
+            parse_markdown_to_chat,
+            append_chat_message_to_markdown,
             list_markdown_files,
             read_markdown_file,
             save_markdown_file
