@@ -178,8 +178,8 @@ fn append_chat_message(
     if markdown.trim().is_empty() {
         next_markdown.push_str(&format!("# {date}\n\n"));
     } else {
-        next_markdown.push_str(markdown.trim_end());
-        next_markdown.push_str("\n\n");
+        next_markdown.push_str(markdown);
+        push_append_spacing(&mut next_markdown);
 
         if parse_markdown_chat(markdown).date.is_none() {
             next_markdown.push_str(&format!("# {date}\n\n"));
@@ -191,6 +191,18 @@ fn append_chat_message(
     next_markdown.push_str("\n\n---\n");
 
     Ok(next_markdown)
+}
+
+fn push_append_spacing(markdown: &mut String) {
+    if markdown.ends_with("\n\n") {
+        return;
+    }
+
+    if markdown.ends_with('\n') {
+        markdown.push('\n');
+    } else {
+        markdown.push_str("\n\n");
+    }
 }
 
 fn push_unparsed_line(
@@ -375,6 +387,33 @@ mod tests {
         assert_eq!(
             appended,
             "# Project Note\n\n自由な本文\n\n# 2026-05-25\n\n## 09:15\n\n追記する。\n\n---\n"
+        );
+    }
+
+    #[test]
+    fn appends_chat_message_without_trimming_existing_markdown() {
+        let markdown = "# Project Note\n\n末尾スペースを保持する  ";
+        let appended = append_chat_message(markdown, "2026-05-25", "09:15", "追記する。").unwrap();
+
+        assert_eq!(
+            appended,
+            "# Project Note\n\n末尾スペースを保持する  \n\n# 2026-05-25\n\n## 09:15\n\n追記する。\n\n---\n"
+        );
+    }
+
+    #[test]
+    fn appends_chat_message_with_minimum_spacing() {
+        let appended = append_chat_message(
+            "# 2026-05-25\n\n## 08:00\n\n既存\n\n---\n",
+            "2026-05-25",
+            "09:15",
+            "追記する。",
+        )
+        .unwrap();
+
+        assert_eq!(
+            appended,
+            "# 2026-05-25\n\n## 08:00\n\n既存\n\n---\n\n## 09:15\n\n追記する。\n\n---\n"
         );
     }
 
