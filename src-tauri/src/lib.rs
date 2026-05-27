@@ -1,6 +1,8 @@
 mod markdown_export;
+mod markdown_files;
 
 use markdown_export::export_messages_to_markdown;
+use markdown_files::{list_markdown_files, read_markdown_file, save_markdown_file};
 use tauri_plugin_sql::{Migration, MigrationKind};
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -27,7 +29,12 @@ pub fn run() {
     ];
 
     tauri::Builder::default()
-        .invoke_handler(tauri::generate_handler![export_messages_to_markdown])
+        .invoke_handler(tauri::generate_handler![
+            export_messages_to_markdown,
+            list_markdown_files,
+            read_markdown_file,
+            save_markdown_file
+        ])
         .plugin(tauri_plugin_dialog::init())
         .plugin(
             tauri_plugin_sql::Builder::new()
