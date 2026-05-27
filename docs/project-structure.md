@@ -60,6 +60,50 @@ DB テーブルは外部公開 API ではないため、`folders` テーブル�
 
 `directory_path` は必須で、同じディレクトリを重複登録しないように一意制約を付ける。
 
+### ER 図
+
+Markdown ファイルを正本とし、DB はプロジェクト情報と Markdown から再生成できるキャッシュを保持する。
+
+```mermaid
+erDiagram
+  projects ||--o{ note_files : contains
+  note_files ||--o{ message_cache : parses_into
+
+  projects {
+    integer id PK
+    text directory_path UK
+    text display_name
+    text icon_path
+    text created_at
+    text updated_at
+  }
+
+  note_files {
+    integer id PK
+    integer project_id FK
+    text relative_path
+    text file_mtime
+    text file_hash
+    text last_loaded_at
+    text parse_status
+    text created_at
+    text updated_at
+  }
+
+  message_cache {
+    integer id PK
+    integer note_file_id FK
+    text content
+    text message_time
+    integer sort_order
+    text source_hash
+    text created_at
+    text updated_at
+  }
+```
+
+`note_files.relative_path` は `readme.md` や `frontend/button.md` のように、プロジェクトの `directory_path` からの相対パスを保持する。実ファイルの本文は Markdown ファイルが正本であり、`message_cache` はチャット表示用に再生成できるキャッシュとして扱う。
+
 ### 廃止する `folders` 由来の概念
 
 - `parent_id`: プロジェクトは階層化しない。階層は参照ルートディレクトリ配下のフォルダーとして扱う
