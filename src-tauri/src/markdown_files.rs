@@ -1,5 +1,6 @@
 use serde::Serialize;
 use std::fs;
+use std::io::ErrorKind;
 use std::path::{Component, Path, PathBuf};
 use std::time::UNIX_EPOCH;
 
@@ -143,7 +144,35 @@ fn resolve_writable_markdown_file(
         return Err("プロジェクト外にMarkdownファイルを保存できません".to_string());
     }
 
+    validate_existing_writable_file(project_dir, &file_path)?;
+
     Ok(file_path)
+}
+
+fn validate_existing_writable_file(project_dir: &Path, file_path: &Path) -> Result<(), String> {
+    let metadata = match fs::symlink_metadata(file_path) {
+        Ok(metadata) => metadata,
+        Err(error) if error.kind() == ErrorKind::NotFound => return Ok(()),
+        Err(error) => return Err(format!("Markdownファイル情報の取得に失敗しました: {error}")),
+    };
+
+    if metadata.file_type().is_symlink() {
+        return Err("シンボリックリンクのMarkdownファイルには保存できません".to_string());
+    }
+
+    if !metadata.is_file() {
+        return Err("保存先はMarkdownファイルである必要があります".to_string());
+    }
+
+    let canonical = file_path
+        .canonicalize()
+        .map_err(|error| format!("Markdownファイルを解決できません: {error}"))?;
+
+    if !canonical.starts_with(project_dir) {
+        return Err("プロジェクト外にMarkdownファイルを保存できません".to_string());
+    }
+
+    Ok(())
 }
 
 fn nearest_existing_parent<'a>(path: &'a Path, project_dir: &'a Path) -> Result<&'a Path, String> {
@@ -230,7 +259,10 @@ fn markdown_file_entry(project_dir: &Path, file_path: &Path) -> Result<MarkdownF
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::atomic::{AtomicU64, Ordering};
     use std::time::{SystemTime, UNIX_EPOCH};
+
+    static TEST_PROJECT_COUNTER: AtomicU64 = AtomicU64::new(0);
 
     struct TestProject {
         path: PathBuf,
@@ -238,8 +270,11 @@ mod tests {
 
     impl TestProject {
         fn new() -> Self {
+            let counter = TEST_PROJECT_COUNTER.fetch_add(1, Ordering::Relaxed);
             let unique_name = format!(
-                "mytimes-markdown-files-{}",
+                "mytimes-markdown-files-{}-{}-{}",
+                std::process::id(),
+                counter,
                 SystemTime::now()
                     .duration_since(UNIX_EPOCH)
                     .unwrap()
@@ -329,5 +364,25 @@ mod tests {
             "text".to_string()
         )
         .is_err());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn rejects_existing_symlink_on_save() {
+        use std::os::unix::fs::symlink;
+
+        let project = TestProject::new();
+        let outside = TestProject::new();
+        let outside_file = outside.path.join("secret.md");
+        fs::write(&outside_file, "secret").unwrap();
+        symlink(&outside_file, project.path.join("draft.md")).unwrap();
+
+        assert!(save_markdown_file(
+            project.path_string(),
+            "draft.md".to_string(),
+            "updated".to_string()
+        )
+        .is_err());
+        assert_eq!(fs::read_to_string(outside_file).unwrap(), "secret");
     }
 }
