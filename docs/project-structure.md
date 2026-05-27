@@ -43,23 +43,29 @@ Markdown をノート本文の正本にするため、左端のアイコン列�
 
 `display_name` は左端ペインの UI ラベルであり、ファイル探索や保存先の正本にはしない。プロジェクト名を変更しても、参照ルートディレクトリ名やノート相対パスは変更しない。
 
-## `folders` テーブルの扱い
+## `projects` テーブルの扱い
 
-初期実装では破壊的なリネームを避け、既存の `folders` テーブルをプロジェクト参照情報として段階移行する。
+DB テーブルは外部公開 API ではないため、`folders` テーブルを互換維持のために引きずらず、Markdown 正本化の方針に合わせて `projects` テーブルへ直接移行する。
 
-### 初期移行で追加する列
+`folders` の仮想フォルダツリー構造は廃止し、一番左のペインに表示するプロジェクト情報は `projects` に保持する。
 
+### `projects` の列
+
+- `id INTEGER PRIMARY KEY`
 - `directory_path TEXT`
 - `display_name TEXT`
+- `icon_path TEXT`
+- `created_at TEXT`
+- `updated_at TEXT`
 
-既存列は互換維持のため残す。
+`directory_path` は必須で、同じディレクトリを重複登録しないように一意制約を付ける。
 
-- `name`: 当面は `display_name` のフォールバックとして扱う
-- `path`: 既存データ互換用。新規実装ではノート正本や探索起点にしない
-- `markdown_export_path`: 既存エクスポート設定互換用。Markdown 正本化後の通常探索起点にはしない
-- `parent_id`: 仮想フォルダツリー互換用。新規プロジェクト構造では原則使わない
+### 廃止する `folders` 由来の概念
 
-将来的に互換期間を終えたら `projects` テーブルへ切り出すか、`folders` をプロジェクト相当の名前へ改める。ただし初期実装では既存マイグレーションと UI への影響を抑えるため、テーブル名変更は行わない。
+- `parent_id`: プロジェクトは階層化しない。階層は参照ルートディレクトリ配下のフォルダーとして扱う
+- `path`: 仮想フォルダパスとしては使わない。ノートは `directory_path` からの相対パスで識別する
+- `markdown_export_path`: Markdown 正本化後はエクスポート先ではなく、プロジェクトの `directory_path` を読み書きの起点にする
+- `messages.folder_id`: Markdown から再生成されるキャッシュは project とノート相対パスへ紐づける
 
 ## UI 方針
 
@@ -134,16 +140,17 @@ UI は絶対パスをノート識別子として扱わない。ノート選択�
 
 ## 既存データ移行方針
 
-既存 `folders` データは次の方針で移行する。
+既存 `folders` データは `projects` へ変換し、変換後は `folders` を通常運用に使わない。
 
-1. `markdown_export_path` が絶対パスなら、それを `directory_path` の候補にする。
-2. アプリ全体の Markdown 保存先があり、`markdown_export_path` が相対パスなら、全体保存先と結合したパスを `directory_path` の候補にする。
-3. どちらも使えない場合は、ユーザーにディレクトリ選択を促す。
-4. `display_name` は既存 `name` を初期値にする。
-5. `icon_path` はそのまま引き継ぐ。
-6. `parent_id` による階層はプロジェクト構造へは引き継がない。
+1. `markdown_export_path` が絶対パスなら、それを `projects.directory_path` の候補にする。
+2. アプリ全体の Markdown 保存先があり、`markdown_export_path` が相対パスなら、全体保存先と結合したパスを `projects.directory_path` の候補にする。
+3. どちらも使えない場合は、ユーザーにプロジェクトとして登録するフォルダー選択を促す。
+4. `projects.display_name` は既存 `folders.name` を初期値にする。
+5. `projects.icon_path` は既存 `folders.icon_path` を引き継ぐ。
+6. `folders.parent_id` による階層はプロジェクト構造へ引き継がない。実ディレクトリ配下のフォルダー構造を表示する。
+7. 移行後のメッセージキャッシュは、Markdown ファイルを読み直して project とノート相対パスへ紐づけ直す。
 
-既存 `messages.folder_id` は、移行期間中のキャッシュ参照として残す。Markdown 正本化後は、メッセージはプロジェクト内のノート相対パスへ紐づくキャッシュとして再生成する。
+既存 DB にだけ存在する本文の Markdown 書き出しは、[Markdown正本化設計](markdown-canonical.md) の既存データ移行方針に従う。既存 Markdown ファイルを自動上書きしないことを優先する。
 
 ## 後続実装への影響
 
@@ -155,5 +162,4 @@ UI は絶対パスをノート識別子として扱わない。ノート選択�
 ## 未決定事項
 
 - 既存 UI 文言の「フォルダ」を「プロジェクト」と「フォルダー」にどう分離するか
-- `folders` テーブルをいつ `projects` テーブルへ分離するか
 - 参照ルートディレクトリが削除、移動、アクセス不能になった場合の復旧 UI

@@ -13,7 +13,7 @@ Vue 3 と Tauri で構成したデスクトップアプリケーションです�
 
 `messages` と `folders` テーブルは Tauri 起動時のマイグレーションで作成されます。フロントエンドからは `Database.load('sqlite:mytimes.db')` で同じ DB を読み込み、`SELECT` と `INSERT` を実行します。
 
-- `folders`: 現行実装ではアプリ内の仮想フォルダツリーとMarkdownエクスポート先パスを保持します。Markdown正本化では、一番左のペインに表示するプロジェクト情報へ段階移行します。
+- `folders`: 現行実装ではアプリ内の仮想フォルダツリーとMarkdownエクスポート先パスを保持します。Markdown正本化では廃止し、一番左のペインに表示するプロジェクト情報は `projects` テーブルへ移行します。
 - `messages.folder_id`: メッセージが属するフォルダを保持します。
 
 Markdown をノート本文の正本とし、SQLite を表示、検索、メタ情報、同期判定のためのキャッシュとして扱う方針は [Markdown正本化設計](docs/markdown-canonical.md) にまとめています。
