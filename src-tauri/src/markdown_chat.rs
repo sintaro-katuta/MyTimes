@@ -325,7 +325,7 @@ fn escape_message_line(line: &str) -> String {
         return line.to_string();
     };
 
-    if line[first_content_index..].trim_end() == "---" {
+    if is_escapable_message_line(line) {
         let (prefix, suffix) = line.split_at(first_content_index);
         format!("{prefix}\\{suffix}")
     } else {
@@ -348,12 +348,18 @@ fn unescape_message_line(line: &str) -> String {
 
     let content = &line[first_content_index..];
 
-    if content.starts_with("\\---") && content[1..].trim_end() == "---" {
+    if content.starts_with('\\') && is_escapable_message_line(&content[1..]) {
         let (prefix, suffix) = line.split_at(first_content_index);
         format!("{prefix}{}", &suffix[1..])
     } else {
         line.to_string()
     }
+}
+
+fn is_escapable_message_line(line: &str) -> bool {
+    is_message_separator(line)
+        || parse_date_heading(line).is_some()
+        || parse_time_heading(line).is_some()
 }
 
 fn parse_code_fence(line: &str) -> Option<CodeFence> {
@@ -467,6 +473,19 @@ mod tests {
     }
 
     #[test]
+    fn restores_escaped_chat_headings_as_message_content() {
+        let parsed = parse_markdown_chat(
+            "# 2026-05-25\n\n## 09:15\n\n前半\n\\## 10:00\n\\# 2026-05-26\n後半\n\n---\n",
+        );
+
+        assert_eq!(parsed.messages.len(), 1);
+        assert_eq!(
+            parsed.messages[0].content,
+            "前半\n## 10:00\n# 2026-05-26\n後半"
+        );
+    }
+
+    #[test]
     fn keeps_shorter_nested_fences_inside_longer_code_fences() {
         let parsed = parse_markdown_chat(
             "# 2026-05-25\n\n## 09:15\n\n````md\n```md\n---\n## 10:00\n```\n````\n\n本文。\n\n---\n",
@@ -526,6 +545,26 @@ mod tests {
         assert_eq!(
             parse_markdown_chat(&appended).messages[0].content,
             "前半\n---\n後半"
+        );
+    }
+
+    #[test]
+    fn escapes_chat_headings_when_appending_message_content() {
+        let appended = append_chat_message(
+            "",
+            "2026-05-25",
+            "09:15",
+            "前半\n## 10:00\n# 2026-05-26\n後半",
+        )
+        .unwrap();
+
+        assert_eq!(
+            appended,
+            "# 2026-05-25\n\n## 09:15\n\n前半\n\\## 10:00\n\\# 2026-05-26\n後半\n\n---\n"
+        );
+        assert_eq!(
+            parse_markdown_chat(&appended).messages[0].content,
+            "前半\n## 10:00\n# 2026-05-26\n後半"
         );
     }
 

@@ -131,12 +131,64 @@ fn escape_message_line(line: &str) -> String {
         return line.to_string();
     };
 
-    if line[first_content_index..].trim_end() == "---" {
+    if is_escapable_message_line(line) {
         let (prefix, suffix) = line.split_at(first_content_index);
         format!("{prefix}\\{suffix}")
     } else {
         line.to_string()
     }
+}
+
+fn is_escapable_message_line(line: &str) -> bool {
+    line.trim() == "---" || parse_date_heading(line).is_some() || parse_time_heading(line).is_some()
+}
+
+fn parse_date_heading(line: &str) -> Option<&str> {
+    let date = line.strip_prefix("# ")?;
+
+    if is_valid_date(date) {
+        Some(date)
+    } else {
+        None
+    }
+}
+
+fn parse_time_heading(line: &str) -> Option<&str> {
+    let time = line.strip_prefix("## ")?;
+
+    if is_valid_time(time) {
+        Some(time)
+    } else {
+        None
+    }
+}
+
+fn is_valid_date(date: &str) -> bool {
+    let bytes = date.as_bytes();
+
+    bytes.len() == 10
+        && bytes[4] == b'-'
+        && bytes[7] == b'-'
+        && bytes[0..4].iter().all(u8::is_ascii_digit)
+        && bytes[5..7].iter().all(u8::is_ascii_digit)
+        && bytes[8..10].iter().all(u8::is_ascii_digit)
+}
+
+fn is_valid_time(time: &str) -> bool {
+    let bytes = time.as_bytes();
+
+    if bytes.len() != 5
+        || bytes[2] != b':'
+        || !bytes[0..2].iter().all(u8::is_ascii_digit)
+        || !bytes[3..5].iter().all(u8::is_ascii_digit)
+    {
+        return false;
+    }
+
+    let hour = time[0..2].parse::<u8>().unwrap_or(24);
+    let minute = time[3..5].parse::<u8>().unwrap_or(60);
+
+    hour < 24 && minute < 60
 }
 
 fn message_date(created_at: &str) -> &str {
@@ -178,6 +230,21 @@ mod tests {
         assert_eq!(
             render_day_markdown("2026-05-19", &messages),
             "# 2026-05-19\n\n## 12:30\n\n前半\n\\---\n後半\n\n---\n\n"
+        );
+    }
+
+    #[test]
+    fn escapes_chat_heading_lines_in_message_content() {
+        let message = MarkdownMessage {
+            id: 1,
+            content: "前半\n## 10:00\n# 2026-05-26\n後半".to_string(),
+            created_at: "2026-05-19T12:30:00.000Z".to_string(),
+        };
+        let messages = vec![&message];
+
+        assert_eq!(
+            render_day_markdown("2026-05-19", &messages),
+            "# 2026-05-19\n\n## 12:30\n\n前半\n\\## 10:00\n\\# 2026-05-26\n後半\n\n---\n\n"
         );
     }
 
