@@ -127,6 +127,11 @@ fn parse_markdown_chat(markdown: &str) -> ParsedMarkdownChat {
                         break;
                     }
 
+                    if message_code_fence.is_none() && parse_date_heading(current_line).is_some() {
+                        end_line = index;
+                        break;
+                    }
+
                     content_lines.push(current_line.to_string());
                     end_line = index + 1;
                     index += 1;
@@ -435,6 +440,19 @@ mod tests {
             "# Project Note\n\n自由な本文"
         );
         assert_eq!(parsed.unparsed_blocks[1].content, "## メモ\n\n詳細");
+    }
+
+    #[test]
+    fn stops_message_content_at_next_date_heading() {
+        let parsed = parse_markdown_chat(
+            "# 2026-05-25\n\n## 09:15\n\n前日メモ\n\n# 2026-05-26\n\n## 00:10\n\n翌日メモ\n\n---\n",
+        );
+
+        assert_eq!(parsed.messages.len(), 2);
+        assert_eq!(parsed.messages[0].date.as_deref(), Some("2026-05-25"));
+        assert_eq!(parsed.messages[0].content, "前日メモ");
+        assert_eq!(parsed.messages[1].date.as_deref(), Some("2026-05-26"));
+        assert_eq!(parsed.messages[1].content, "翌日メモ");
     }
 
     #[test]
