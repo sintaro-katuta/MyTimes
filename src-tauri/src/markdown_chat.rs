@@ -137,7 +137,7 @@ fn parse_markdown_chat(markdown: &str) -> ParsedMarkdownChat {
                     index += 1;
                 }
 
-                let content = trim_markdown_body(&content_lines);
+                let content = unescape_message_content(&trim_markdown_body(&content_lines));
                 messages.push(ParsedChatMessage {
                     date: date.clone(),
                     time: time.to_string(),
@@ -196,7 +196,7 @@ fn append_chat_message(
     }
 
     next_markdown.push_str(&format!("## {time}\n\n"));
-    next_markdown.push_str(content);
+    next_markdown.push_str(&escape_message_content(content));
     next_markdown.push_str("\n\n---\n");
 
     Ok(next_markdown)
@@ -312,6 +312,50 @@ fn is_message_separator(line: &str) -> bool {
     line.trim() == "---"
 }
 
+fn escape_message_content(content: &str) -> String {
+    content
+        .lines()
+        .map(escape_message_line)
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
+fn escape_message_line(line: &str) -> String {
+    let Some(first_content_index) = line.find(|character: char| !character.is_whitespace()) else {
+        return line.to_string();
+    };
+
+    if line[first_content_index..].trim_end() == "---" {
+        let (prefix, suffix) = line.split_at(first_content_index);
+        format!("{prefix}\\{suffix}")
+    } else {
+        line.to_string()
+    }
+}
+
+fn unescape_message_content(content: &str) -> String {
+    content
+        .lines()
+        .map(unescape_message_line)
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
+fn unescape_message_line(line: &str) -> String {
+    let Some(first_content_index) = line.find(|character: char| !character.is_whitespace()) else {
+        return line.to_string();
+    };
+
+    let content = &line[first_content_index..];
+
+    if content.starts_with("\\---") && content[1..].trim_end() == "---" {
+        let (prefix, suffix) = line.split_at(first_content_index);
+        format!("{prefix}{}", &suffix[1..])
+    } else {
+        line.to_string()
+    }
+}
+
 fn parse_code_fence(line: &str) -> Option<CodeFence> {
     let trimmed = line.trim_start();
     let bytes = trimmed.as_bytes();
@@ -415,6 +459,14 @@ mod tests {
     }
 
     #[test]
+    fn restores_escaped_separator_lines_as_message_content() {
+        let parsed = parse_markdown_chat("# 2026-05-25\n\n## 09:15\n\n前半\n\\---\n後半\n\n---\n");
+
+        assert_eq!(parsed.messages.len(), 1);
+        assert_eq!(parsed.messages[0].content, "前半\n---\n後半");
+    }
+
+    #[test]
     fn keeps_shorter_nested_fences_inside_longer_code_fences() {
         let parsed = parse_markdown_chat(
             "# 2026-05-25\n\n## 09:15\n\n````md\n```md\n---\n## 10:00\n```\n````\n\n本文。\n\n---\n",
@@ -460,6 +512,20 @@ mod tests {
         assert_eq!(
             append_chat_message("", "2026-05-25", "09:15", "朝会前に整理する。").unwrap(),
             "# 2026-05-25\n\n## 09:15\n\n朝会前に整理する。\n\n---\n"
+        );
+    }
+
+    #[test]
+    fn escapes_separator_lines_when_appending_message_content() {
+        let appended = append_chat_message("", "2026-05-25", "09:15", "前半\n---\n後半").unwrap();
+
+        assert_eq!(
+            appended,
+            "# 2026-05-25\n\n## 09:15\n\n前半\n\\---\n後半\n\n---\n"
+        );
+        assert_eq!(
+            parse_markdown_chat(&appended).messages[0].content,
+            "前半\n---\n後半"
         );
     }
 

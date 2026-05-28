@@ -111,11 +111,32 @@ fn render_day_markdown(date: &str, messages: &[&MarkdownMessage]) -> String {
 
     for message in messages {
         markdown.push_str(&format!("## {}\n\n", message_time(&message.created_at)));
-        markdown.push_str(message.content.trim_end());
+        markdown.push_str(&escape_message_content(message.content.trim_end()));
         markdown.push_str("\n\n---\n\n");
     }
 
     markdown
+}
+
+fn escape_message_content(content: &str) -> String {
+    content
+        .lines()
+        .map(escape_message_line)
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
+fn escape_message_line(line: &str) -> String {
+    let Some(first_content_index) = line.find(|character: char| !character.is_whitespace()) else {
+        return line.to_string();
+    };
+
+    if line[first_content_index..].trim_end() == "---" {
+        let (prefix, suffix) = line.split_at(first_content_index);
+        format!("{prefix}\\{suffix}")
+    } else {
+        line.to_string()
+    }
 }
 
 fn message_date(created_at: &str) -> &str {
@@ -142,6 +163,21 @@ mod tests {
         assert_eq!(
             render_day_markdown("2026-05-19", &messages),
             "# 2026-05-19\n\n## 12:30\n\n今日は Markdown エクスポートを作った。\n\n---\n\n"
+        );
+    }
+
+    #[test]
+    fn escapes_separator_lines_in_message_content() {
+        let message = MarkdownMessage {
+            id: 1,
+            content: "前半\n---\n後半".to_string(),
+            created_at: "2026-05-19T12:30:00.000Z".to_string(),
+        };
+        let messages = vec![&message];
+
+        assert_eq!(
+            render_day_markdown("2026-05-19", &messages),
+            "# 2026-05-19\n\n## 12:30\n\n前半\n\\---\n後半\n\n---\n\n"
         );
     }
 
