@@ -1,3 +1,4 @@
+use crate::markdown_message_escape::escape_message_content;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 use std::fs;
@@ -111,7 +112,7 @@ fn render_day_markdown(date: &str, messages: &[&MarkdownMessage]) -> String {
 
     for message in messages {
         markdown.push_str(&format!("## {}\n\n", message_time(&message.created_at)));
-        markdown.push_str(message.content.trim_end());
+        markdown.push_str(&escape_message_content(message.content.trim_end()));
         markdown.push_str("\n\n---\n\n");
     }
 
@@ -142,6 +143,66 @@ mod tests {
         assert_eq!(
             render_day_markdown("2026-05-19", &messages),
             "# 2026-05-19\n\n## 12:30\n\n今日は Markdown エクスポートを作った。\n\n---\n\n"
+        );
+    }
+
+    #[test]
+    fn escapes_separator_lines_in_message_content() {
+        let message = MarkdownMessage {
+            id: 1,
+            content: "前半\n---\n後半".to_string(),
+            created_at: "2026-05-19T12:30:00.000Z".to_string(),
+        };
+        let messages = vec![&message];
+
+        assert_eq!(
+            render_day_markdown("2026-05-19", &messages),
+            "# 2026-05-19\n\n## 12:30\n\n前半\n\\---\n後半\n\n---\n\n"
+        );
+    }
+
+    #[test]
+    fn escapes_chat_heading_lines_in_message_content() {
+        let message = MarkdownMessage {
+            id: 1,
+            content: "前半\n## 10:00\n# 2026-05-26\n後半".to_string(),
+            created_at: "2026-05-19T12:30:00.000Z".to_string(),
+        };
+        let messages = vec![&message];
+
+        assert_eq!(
+            render_day_markdown("2026-05-19", &messages),
+            "# 2026-05-19\n\n## 12:30\n\n前半\n\\## 10:00\n\\# 2026-05-26\n後半\n\n---\n\n"
+        );
+    }
+
+    #[test]
+    fn keeps_existing_escaped_reserved_lines_in_message_content() {
+        let message = MarkdownMessage {
+            id: 1,
+            content: "前半\n\\---\n\\## 10:00\n\\# 2026-05-26\n後半".to_string(),
+            created_at: "2026-05-19T12:30:00.000Z".to_string(),
+        };
+        let messages = vec![&message];
+
+        assert_eq!(
+            render_day_markdown("2026-05-19", &messages),
+            "# 2026-05-19\n\n## 12:30\n\n前半\n\\\\---\n\\\\## 10:00\n\\\\# 2026-05-26\n後半\n\n---\n\n"
+        );
+    }
+
+    #[test]
+    fn escapes_code_fence_lines_in_message_content() {
+        let message = MarkdownMessage {
+            id: 1,
+            content: "```js\nconst value = 1;".to_string(),
+            created_at: "2026-05-19T12:30:00.000Z".to_string(),
+        };
+        let messages = vec![&message];
+
+        assert_eq!(
+            render_day_markdown("2026-05-19", &messages),
+            "# 2026-05-19\n\n## 12:30\n\n\\```js\nconst value = 1;\n\n---\n\n"
         );
     }
 

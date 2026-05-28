@@ -11,3 +11,13 @@ export const readMarkdownFile = async ({ projectDir, relativePath }) => {
 export const saveMarkdownFile = async ({ projectDir, relativePath, content }) => {
   return invoke('save_markdown_file', { projectDir, relativePath, content })
 }
+
+export const parseMarkdownToChat = async (markdown) => {
+  return invoke('parse_markdown_to_chat', { markdown })
+}
+
+export const appendChatMessageToMarkdown = async ({ markdown, date, time, content }) => {
+  return invoke('append_chat_message_to_markdown', {
+    request: { markdown, date, time, content },
+  })
+}
