@@ -53,6 +53,45 @@ export const loadFolders = async () => {
   )
 }
 
+export const registerProject = async ({ directoryPath, displayName = '', iconPath = '' }) => {
+  const db = await getDatabase()
+  const normalizedDirectoryPath = directoryPath.trim()
+  const projectName = displayName.trim() || getPathBaseName(normalizedDirectoryPath)
+  const normalizedIconPath = iconPath.trim() || null
+  const createdAt = formatLocalTimestamp(new Date())
+
+  if (!normalizedDirectoryPath) return null
+
+  await db.execute(
+    `INSERT INTO folders (name, parent_id, path, markdown_export_path, icon_path, created_at, updated_at)
+     VALUES (?, NULL, ?, ?, ?, ?, ?)
+     ON CONFLICT(path) DO UPDATE SET
+       name = excluded.name,
+       markdown_export_path = excluded.markdown_export_path,
+       icon_path = COALESCE(excluded.icon_path, folders.icon_path),
+       updated_at = excluded.updated_at`,
+    [
+      projectName,
+      normalizedDirectoryPath,
+      normalizedDirectoryPath,
+      normalizedIconPath,
+      createdAt,
+      createdAt,
+    ],
+  )
+
+  const rows = await db.select(
+    `SELECT id, name, parent_id AS parentId, path, markdown_export_path AS markdownExportPath,
+            icon_path AS iconPath
+     FROM folders
+     WHERE path = ?
+     LIMIT 1`,
+    [normalizedDirectoryPath],
+  )
+
+  return rows[0] ?? null
+}
+
 export const loadFolderNotes = async ({ folderId = null } = {}) => {
   const db = await getDatabase()
   const params = []
@@ -304,4 +343,8 @@ const formatLocalTimestamp = (date) => {
     pad(date.getMonth() + 1),
     pad(date.getDate()),
   ].join('-') + `T${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`
+}
+
+const getPathBaseName = (path) => {
+  return path.split(/[\\/]/).filter(Boolean).at(-1) ?? path
 }

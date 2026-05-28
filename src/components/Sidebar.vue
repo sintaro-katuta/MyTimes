@@ -90,7 +90,7 @@ const visibleFolders = computed(() => {
 const selectedFolderName = computed(() => {
   if (props.selectedFolderId === null) return 'ルート'
 
-  return props.folders.find((folder) => folder.id === props.selectedFolderId)?.path ?? '選択中フォルダ'
+  return props.folders.find((folder) => folder.id === props.selectedFolderId)?.name ?? '選択中プロジェクト'
 })
 
 const expandAncestors = (folderId) => {
@@ -167,12 +167,12 @@ watch(
   <div class="sidebar">
     <div class="rail">
       <div class="rail-actions">
-        <button type="button" class="rail-button" aria-label="新規フォルダ" @click="openCreateFolder">
+        <button type="button" class="rail-button" aria-label="新規プロジェクト" @click="openCreateFolder">
           <Plus :size="20" />
         </button>
       </div>
 
-      <div class="folder-icons" aria-label="フォルダ一覧">
+      <div class="folder-icons" aria-label="プロジェクト一覧">
         <div class="rail-item">
           <span v-if="selectedFolderId === null" class="active-indicator" aria-hidden="true" />
           <button
@@ -204,10 +204,10 @@ watch(
               type="button"
               class="rail-button"
               :class="{ active: selectedFolderId === folder.id, 'has-image': folder.iconPath }"
-              :aria-label="folder.path"
-              :title="folder.path"
-              @click="selectFolder(folder)"
-            >
+            :aria-label="folder.name"
+            :title="folder.path"
+            @click="selectFolder(folder)"
+          >
               <img v-if="folder.iconPath" class="folder-image" :src="folderIconSrc(folder)" alt="" />
               <Folder v-else :size="20" />
             </button>
@@ -238,7 +238,7 @@ watch(
         </div>
         <p class="section-title">ファイル</p>
         <div class="notes">
-          <div v-if="notes.length === 0" class="empty-folders">このフォルダにファイルはありません</div>
+          <div v-if="notes.length === 0" class="empty-folders">このプロジェクトにファイルはありません</div>
           <button
             v-for="note in notes"
             :key="note.path"
