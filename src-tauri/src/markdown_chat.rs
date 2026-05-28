@@ -512,6 +512,33 @@ mod tests {
     }
 
     #[test]
+    fn keeps_message_content_roundtrip_reversible_after_append_and_parse() {
+        let cases = [
+            "通常の本文",
+            "---",
+            "  ---",
+            "## 10:00",
+            "# 2026-05-26",
+            "```",
+            "```js\nconst value = 1;",
+            "~~~md\n---\n## 10:00",
+            "\\---",
+            "\\## 10:00",
+            "\\# 2026-05-26",
+            "\\```",
+            "前半\n---\n## 10:00\n# 2026-05-26\n```js\n後半",
+        ];
+
+        for content in cases {
+            let markdown = append_chat_message("", "2026-05-25", "09:15", content).unwrap();
+            let parsed = parse_markdown_chat(&markdown);
+
+            assert_eq!(parsed.messages.len(), 1, "content: {content:?}");
+            assert_eq!(parsed.messages[0].content, content, "content: {content:?}");
+        }
+    }
+
+    #[test]
     fn escapes_separator_lines_when_appending_message_content() {
         let appended = append_chat_message("", "2026-05-25", "09:15", "前半\n---\n後半").unwrap();
 

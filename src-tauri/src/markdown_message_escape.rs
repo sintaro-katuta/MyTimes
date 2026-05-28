@@ -1,3 +1,8 @@
+// Markdown chat files use Markdown both as free-form user content and as
+// structural storage. Lines that can be parsed as chat structure must be escaped
+// before writing message content, and unescaped after parsing. The rule is
+// intentionally reversible: writing adds exactly one leading backslash to a
+// reserved line, and reading removes exactly one when it guards a reserved line.
 pub fn escape_message_content(content: &str) -> String {
     content
         .lines()
@@ -128,6 +133,31 @@ fn is_valid_time(time: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn keeps_message_content_roundtrip_reversible() {
+        let cases = [
+            "通常の本文",
+            "---",
+            "  ---",
+            "## 10:00",
+            "# 2026-05-26",
+            "```",
+            "```js",
+            "~~~",
+            "\\---",
+            "\\## 10:00",
+            "\\# 2026-05-26",
+            "\\```",
+            "前半\n---\n## 10:00\n# 2026-05-26\n```js\n後半",
+        ];
+
+        for content in cases {
+            let escaped = escape_message_content(content);
+
+            assert_eq!(unescape_message_content(&escaped), content);
+        }
+    }
 
     #[test]
     fn escapes_reserved_message_lines() {
