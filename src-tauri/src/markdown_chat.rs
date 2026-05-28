@@ -43,6 +43,12 @@ struct CodeFence {
     len: usize,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct CodeFenceLine<'a> {
+    fence: CodeFence,
+    suffix: &'a str,
+}
+
 #[tauri::command]
 pub fn parse_markdown_to_chat(markdown: String) -> Result<ParsedMarkdownChat, String> {
     Ok(parse_markdown_chat(&markdown))
@@ -313,7 +319,7 @@ fn is_message_separator(line: &str) -> bool {
     line.trim() == "---"
 }
 
-fn parse_code_fence(line: &str) -> Option<CodeFence> {
+fn parse_code_fence_line(line: &str) -> Option<CodeFenceLine<'_>> {
     let trimmed = line.trim_start();
     let bytes = trimmed.as_bytes();
     let marker = *bytes.first()?;
@@ -324,25 +330,32 @@ fn parse_code_fence(line: &str) -> Option<CodeFence> {
 
     let len = bytes.iter().take_while(|byte| **byte == marker).count();
 
-    if len >= 3 {
-        Some(CodeFence { marker, len })
-    } else {
-        None
+    if len < 3 {
+        return None;
     }
+
+    Some(CodeFenceLine {
+        fence: CodeFence { marker, len },
+        suffix: &trimmed[len..],
+    })
 }
 
 fn update_code_fence(active: &mut Option<CodeFence>, line: &str) -> bool {
-    let Some(found) = parse_code_fence(line) else {
+    let Some(found) = parse_code_fence_line(line) else {
         return false;
     };
 
     match active {
-        Some(current) if current.marker == found.marker && found.len >= current.len => {
+        Some(current)
+            if current.marker == found.fence.marker
+                && found.fence.len >= current.len
+                && found.suffix.trim().is_empty() =>
+        {
             *active = None;
         }
         Some(_) => {}
         None => {
-            *active = Some(found);
+            *active = Some(found.fence);
         }
     }
 
@@ -446,6 +459,19 @@ mod tests {
         assert_eq!(
             parsed.messages[0].content,
             "````md\n```md\n---\n## 10:00\n```\n````\n\n本文。"
+        );
+    }
+
+    #[test]
+    fn does_not_close_code_fence_with_info_string_inside_code_fence() {
+        let parsed = parse_markdown_chat(
+            "# 2026-05-25\n\n## 09:15\n\n```md\n```js\n---\n## 10:00\n```\n本文。\n\n---\n",
+        );
+
+        assert_eq!(parsed.messages.len(), 1);
+        assert_eq!(
+            parsed.messages[0].content,
+            "```md\n```js\n---\n## 10:00\n```\n本文。"
         );
     }
 
