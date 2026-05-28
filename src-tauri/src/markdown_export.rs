@@ -192,6 +192,21 @@ mod tests {
     }
 
     #[test]
+    fn escapes_code_fence_lines_in_message_content() {
+        let message = MarkdownMessage {
+            id: 1,
+            content: "```js\nconst value = 1;".to_string(),
+            created_at: "2026-05-19T12:30:00.000Z".to_string(),
+        };
+        let messages = vec![&message];
+
+        assert_eq!(
+            render_day_markdown("2026-05-19", &messages),
+            "# 2026-05-19\n\n## 12:30\n\n\\```js\nconst value = 1;\n\n---\n\n"
+        );
+    }
+
+    #[test]
     fn builds_year_month_daily_file_path() {
         assert_eq!(
             markdown_file_path(Path::new("entries"), "2026-05-19"),

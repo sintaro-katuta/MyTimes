@@ -558,6 +558,23 @@ mod tests {
     }
 
     #[test]
+    fn escapes_unclosed_code_fence_when_appending_message_content() {
+        let first =
+            append_chat_message("", "2026-05-25", "09:15", "```js\nconst value = 1;").unwrap();
+        let appended =
+            append_chat_message(&first, "2026-05-25", "10:00", "後続メッセージ").unwrap();
+        let parsed = parse_markdown_chat(&appended);
+
+        assert_eq!(
+            appended,
+            "# 2026-05-25\n\n## 09:15\n\n\\```js\nconst value = 1;\n\n---\n\n## 10:00\n\n後続メッセージ\n\n---\n"
+        );
+        assert_eq!(parsed.messages.len(), 2);
+        assert_eq!(parsed.messages[0].content, "```js\nconst value = 1;");
+        assert_eq!(parsed.messages[1].content, "後続メッセージ");
+    }
+
+    #[test]
     fn appends_chat_message_without_rewriting_existing_markdown() {
         let markdown = "# Project Note\n\n自由な本文";
         let appended = append_chat_message(markdown, "2026-05-25", "09:15", "追記する。").unwrap();

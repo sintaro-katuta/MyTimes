@@ -50,12 +50,31 @@ fn has_reserved_message_syntax(prefix: &str, suffix: &str) -> bool {
     let candidate = suffix.trim_start_matches('\\');
 
     is_message_separator(candidate)
+        || parse_code_fence_line(candidate).is_some()
         || (prefix.is_empty()
             && (parse_date_heading(candidate).is_some() || parse_time_heading(candidate).is_some()))
 }
 
 fn is_message_separator(line: &str) -> bool {
     line.trim() == "---"
+}
+
+fn parse_code_fence_line(line: &str) -> Option<()> {
+    let trimmed = line.trim_start();
+    let bytes = trimmed.as_bytes();
+    let marker = *bytes.first()?;
+
+    if marker != b'`' && marker != b'~' {
+        return None;
+    }
+
+    let len = bytes.iter().take_while(|byte| **byte == marker).count();
+
+    if len >= 3 {
+        Some(())
+    } else {
+        None
+    }
 }
 
 fn parse_date_heading(line: &str) -> Option<&str> {
@@ -113,26 +132,29 @@ mod tests {
     #[test]
     fn escapes_reserved_message_lines() {
         assert_eq!(
-            escape_message_content("---\n## 10:00\n# 2026-05-26"),
-            "\\---\n\\## 10:00\n\\# 2026-05-26"
+            escape_message_content("---\n## 10:00\n# 2026-05-26\n```\n~~~md"),
+            "\\---\n\\## 10:00\n\\# 2026-05-26\n\\```\n\\~~~md"
         );
     }
 
     #[test]
     fn keeps_escaped_reserved_message_lines_reversible() {
-        let content = "\\---\n\\## 10:00\n\\# 2026-05-26";
+        let content = "\\---\n\\## 10:00\n\\# 2026-05-26\n\\```\n\\~~~md";
         let escaped = escape_message_content(content);
 
-        assert_eq!(escaped, "\\\\---\n\\\\## 10:00\n\\\\# 2026-05-26");
+        assert_eq!(
+            escaped,
+            "\\\\---\n\\\\## 10:00\n\\\\# 2026-05-26\n\\\\```\n\\\\~~~md"
+        );
         assert_eq!(unescape_message_content(&escaped), content);
     }
 
     #[test]
-    fn escapes_indented_separator_because_parser_treats_it_as_a_separator() {
-        let content = "  ---";
+    fn escapes_indented_reserved_lines_that_the_parser_treats_as_reserved() {
+        let content = "  ---\n  ```";
         let escaped = escape_message_content(content);
 
-        assert_eq!(escaped, "  \\---");
+        assert_eq!(escaped, "  \\---\n  \\```");
         assert_eq!(unescape_message_content(&escaped), content);
     }
 
