@@ -1,6 +1,7 @@
 mod markdown_chat;
 mod markdown_export;
 mod markdown_files;
+mod markdown_message_escape;
 
 use markdown_chat::{append_chat_message_to_markdown, parse_markdown_to_chat};
 use markdown_export::export_messages_to_markdown;

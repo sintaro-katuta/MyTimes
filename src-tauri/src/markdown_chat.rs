@@ -1,3 +1,4 @@
+use crate::markdown_message_escape::{escape_message_content, unescape_message_content};
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Serialize, PartialEq, Eq)]
@@ -312,56 +313,6 @@ fn is_message_separator(line: &str) -> bool {
     line.trim() == "---"
 }
 
-fn escape_message_content(content: &str) -> String {
-    content
-        .lines()
-        .map(escape_message_line)
-        .collect::<Vec<_>>()
-        .join("\n")
-}
-
-fn escape_message_line(line: &str) -> String {
-    let Some(first_content_index) = line.find(|character: char| !character.is_whitespace()) else {
-        return line.to_string();
-    };
-
-    if is_escapable_message_line(line) {
-        let (prefix, suffix) = line.split_at(first_content_index);
-        format!("{prefix}\\{suffix}")
-    } else {
-        line.to_string()
-    }
-}
-
-fn unescape_message_content(content: &str) -> String {
-    content
-        .lines()
-        .map(unescape_message_line)
-        .collect::<Vec<_>>()
-        .join("\n")
-}
-
-fn unescape_message_line(line: &str) -> String {
-    let Some(first_content_index) = line.find(|character: char| !character.is_whitespace()) else {
-        return line.to_string();
-    };
-
-    let content = &line[first_content_index..];
-
-    if content.starts_with('\\') && is_escapable_message_line(&content[1..]) {
-        let (prefix, suffix) = line.split_at(first_content_index);
-        format!("{prefix}{}", &suffix[1..])
-    } else {
-        line.to_string()
-    }
-}
-
-fn is_escapable_message_line(line: &str) -> bool {
-    is_message_separator(line)
-        || parse_date_heading(line).is_some()
-        || parse_time_heading(line).is_some()
-}
-
 fn parse_code_fence(line: &str) -> Option<CodeFence> {
     let trimmed = line.trim_start();
     let bytes = trimmed.as_bytes();
@@ -566,6 +517,18 @@ mod tests {
             parse_markdown_chat(&appended).messages[0].content,
             "前半\n## 10:00\n# 2026-05-26\n後半"
         );
+    }
+
+    #[test]
+    fn keeps_existing_escaped_reserved_lines_when_appending_message_content() {
+        let content = "前半\n\\---\n\\## 10:00\n\\# 2026-05-26\n後半";
+        let appended = append_chat_message("", "2026-05-25", "09:15", content).unwrap();
+
+        assert_eq!(
+            appended,
+            "# 2026-05-25\n\n## 09:15\n\n前半\n\\\\---\n\\\\## 10:00\n\\\\# 2026-05-26\n後半\n\n---\n"
+        );
+        assert_eq!(parse_markdown_chat(&appended).messages[0].content, content);
     }
 
     #[test]
