@@ -385,11 +385,11 @@ fn trim_markdown_body(lines: &[String]) -> String {
     let mut start = 0;
     let mut end = lines.len();
 
-    while start < end && lines[start].trim().is_empty() {
+    if start < end && lines[start].trim().is_empty() {
         start += 1;
     }
 
-    while end > start && lines[end - 1].trim().is_empty() {
+    if end > start && lines[end - 1].trim().is_empty() {
         end -= 1;
     }
 
@@ -526,6 +526,8 @@ mod tests {
             "\\## 10:00",
             "\\# 2026-05-26",
             "\\```",
+            "\n先頭空行を保持する",
+            "\n\n先頭空行を複数保持する",
             "前半\n---\n## 10:00\n# 2026-05-26\n```js\n後半",
         ];
 
