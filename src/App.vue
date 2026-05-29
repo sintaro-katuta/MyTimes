@@ -50,6 +50,7 @@ const loadFolderNotesError = ref('')
 const sendMessageError = ref('')
 const exportStatus = ref('')
 const selectedMarkdownContent = ref('')
+const refreshMessagesRequestId = ref(0)
 const markdownExportPath = ref('')
 const appTitle = ref('デイリー分報')
 const settingsAppTitle = ref('')
@@ -182,21 +183,38 @@ const toMarkdownViewMessage = (message, index, notePath = selectedNotePath.value
 })
 
 const refreshMessages = async () => {
+  const requestId = refreshMessagesRequestId.value + 1
+  refreshMessagesRequestId.value = requestId
   isLoadingMessages.value = true
   loadMessageError.value = ''
 
   try {
     if (selectedFolder.value && selectedNotePath.value) {
+      const projectDir = currentMarkdownExportPath()
+      const relativePath = selectedNotePath.value
       const markdown = await readMarkdownFile({
-        projectDir: currentMarkdownExportPath(),
-        relativePath: selectedNotePath.value,
+        projectDir,
+        relativePath,
       })
       const parsed = await parseMarkdownToChat(markdown)
 
+      if (
+        requestId !== refreshMessagesRequestId.value ||
+        !selectedFolder.value ||
+        currentMarkdownExportPath() !== projectDir ||
+        selectedNotePath.value !== relativePath
+      ) {
+        return
+      }
+
       selectedMarkdownContent.value = markdown
-      messages.value = parsed.messages.map(toMarkdownViewMessage)
+      messages.value = parsed.messages.map((message, index) =>
+        toMarkdownViewMessage(message, index, relativePath),
+      )
 
       await scrollMessagesToBottom()
+      if (requestId !== refreshMessagesRequestId.value) return
+
       await refreshFolderNotes()
       return
     }
@@ -204,6 +222,8 @@ const refreshMessages = async () => {
     selectedMarkdownContent.value = ''
 
     if (selectedFolder.value) {
+      if (requestId !== refreshMessagesRequestId.value) return
+
       messages.value = []
       await refreshFolderNotes()
       return
@@ -214,14 +234,22 @@ const refreshMessages = async () => {
       notePath: selectedNotePath.value,
     })
 
+    if (requestId !== refreshMessagesRequestId.value) return
+
     messages.value = rows.map(toViewMessage)
 
     await scrollMessagesToBottom()
+    if (requestId !== refreshMessagesRequestId.value) return
+
     await refreshFolderNotes()
   } catch (error) {
+    if (requestId !== refreshMessagesRequestId.value) return
+
     loadMessageError.value = error instanceof Error ? error.message : 'Markdownファイルの読み込みに失敗しました'
   } finally {
-    isLoadingMessages.value = false
+    if (requestId === refreshMessagesRequestId.value) {
+      isLoadingMessages.value = false
+    }
   }
 }
 
