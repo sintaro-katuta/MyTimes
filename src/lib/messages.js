@@ -63,12 +63,9 @@ export const registerProject = async ({ directoryPath, displayName = '', iconPat
   if (!normalizedDirectoryPath) return null
 
   await db.execute(
-    `INSERT INTO folders (name, parent_id, path, markdown_export_path, icon_path, created_at, updated_at)
-     VALUES (?, NULL, ?, ?, ?, ?, ?)
-     ON CONFLICT(path) DO UPDATE SET
-       name = excluded.name,
-       icon_path = COALESCE(excluded.icon_path, folders.icon_path),
-       updated_at = excluded.updated_at`,
+    `INSERT OR IGNORE INTO folders
+       (name, parent_id, path, markdown_export_path, icon_path, created_at, updated_at)
+     VALUES (?, NULL, ?, ?, ?, ?, ?)`,
     [
       projectName,
       normalizedDirectoryPath,
