@@ -75,7 +75,9 @@ const selectedFolder = computed(() => {
 
 const isMarkdownSendDisabled = computed(() => Boolean(selectedFolder.value && !selectedNotePath.value))
 
-const canUseMarkdownModes = computed(() => Boolean(selectedFolder.value && selectedNotePath.value))
+const canUseMarkdownModes = computed(() =>
+  Boolean(selectedFolder.value && selectedNotePath.value && !loadMessageError.value),
+)
 
 const isMarkdownDirty = computed(() => markdownDraft.value !== selectedMarkdownContent.value)
 
@@ -262,6 +264,9 @@ const refreshMessages = async () => {
   } catch (error) {
     if (requestId !== refreshMessagesRequestId.value) return
 
+    selectedMarkdownContent.value = ''
+    markdownDraft.value = ''
+    viewMode.value = 'chat'
     loadMessageError.value = error instanceof Error ? error.message : 'Markdownファイルの読み込みに失敗しました'
   } finally {
     if (requestId === refreshMessagesRequestId.value) {
@@ -283,6 +288,7 @@ const handleCreateFolder = async (close) => {
   const directoryPath = projectDirectoryPath.value.trim()
 
   if (!directoryPath) return
+  if (!confirmDiscardMarkdownChanges()) return
 
   loadFolderError.value = ''
 
@@ -313,6 +319,7 @@ const handleSaveFolderSettings = async (close = null) => {
   const name = renameFolderName.value.trim()
 
   if (!name || !selectedFolder.value) return
+  if (!confirmDiscardMarkdownChanges()) return
 
   loadFolderError.value = ''
 
@@ -435,6 +442,7 @@ const handleBrowseCreateProjectDirectory = async () => {
 }
 
 const selectFolder = async (folderId) => {
+  if (folderId === selectedFolderId.value && selectedNotePath.value === null) return
   if (!confirmDiscardMarkdownChanges()) return
 
   selectedFolderId.value = folderId
@@ -444,6 +452,7 @@ const selectFolder = async (folderId) => {
 }
 
 const selectNote = async (notePath) => {
+  if (notePath === selectedNotePath.value) return
   if (!confirmDiscardMarkdownChanges()) return
 
   selectedNotePath.value = notePath
@@ -452,6 +461,7 @@ const selectNote = async (notePath) => {
 }
 
 const selectAllNotesInFolder = async () => {
+  if (selectedNotePath.value === null) return
   if (!confirmDiscardMarkdownChanges()) return
 
   selectedNotePath.value = null
@@ -598,6 +608,7 @@ const saveMarkdownDraft = async () => {
 
   const projectDir = currentMarkdownExportPath()
   const relativePath = selectedNotePath.value
+  const draftToSave = markdownDraft.value
 
   isSavingMarkdown.value = true
   markdownEditorError.value = ''
@@ -607,17 +618,17 @@ const saveMarkdownDraft = async () => {
     await saveMarkdownFile({
       projectDir,
       relativePath,
-      content: markdownDraft.value,
+      content: draftToSave,
     })
 
-    const parsed = await parseMarkdownToChat(markdownDraft.value)
+    const parsed = await parseMarkdownToChat(draftToSave)
 
     if (
       selectedFolder.value &&
       currentMarkdownExportPath() === projectDir &&
       selectedNotePath.value === relativePath
     ) {
-      selectedMarkdownContent.value = markdownDraft.value
+      selectedMarkdownContent.value = draftToSave
       messages.value = parsed.messages.map((message, index) =>
         toMarkdownViewMessage(message, index, relativePath),
       )
@@ -637,6 +648,16 @@ const revertMarkdownDraft = () => {
 }
 
 const handleSaveSettings = async () => {
+  const nextMarkdownExportPath = settingsMarkdownExportPath.value.trim()
+
+  if (
+    selectedFolder.value &&
+    nextMarkdownExportPath !== markdownExportPath.value.trim() &&
+    !confirmDiscardMarkdownChanges()
+  ) {
+    return
+  }
+
   isSavingSettings.value = true
   settingsStatus.value = ''
 
