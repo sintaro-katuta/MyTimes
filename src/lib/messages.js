@@ -67,7 +67,6 @@ export const registerProject = async ({ directoryPath, displayName = '', iconPat
      VALUES (?, NULL, ?, ?, ?, ?, ?)
      ON CONFLICT(path) DO UPDATE SET
        name = excluded.name,
-       markdown_export_path = excluded.markdown_export_path,
        icon_path = COALESCE(excluded.icon_path, folders.icon_path),
        updated_at = excluded.updated_at`,
     [
@@ -87,6 +86,32 @@ export const registerProject = async ({ directoryPath, displayName = '', iconPat
      WHERE path = ?
      LIMIT 1`,
     [normalizedDirectoryPath],
+  )
+
+  return rows[0] ?? null
+}
+
+export const saveProjectDisplayName = async (folderId, displayName) => {
+  const db = await getDatabase()
+  const folderName = displayName.trim()
+  const updatedAt = formatLocalTimestamp(new Date())
+
+  if (!folderName) return null
+
+  await db.execute(
+    `UPDATE folders
+     SET name = ?, updated_at = ?
+     WHERE id = ?`,
+    [folderName, updatedAt, folderId],
+  )
+
+  const rows = await db.select(
+    `SELECT id, name, parent_id AS parentId, path, markdown_export_path AS markdownExportPath,
+            icon_path AS iconPath
+     FROM folders
+     WHERE id = ?
+     LIMIT 1`,
+    [folderId],
   )
 
   return rows[0] ?? null

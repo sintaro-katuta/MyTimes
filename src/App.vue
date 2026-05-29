@@ -15,11 +15,11 @@ import {
   loadMarkdownExportPath,
   loadMessages as loadStoredMessages,
   registerProject,
-  renameFolder as renameStoredFolder,
   saveAppTitle,
   saveFolderIconPath,
   saveFolderMarkdownExportPath,
   saveMarkdownExportPath,
+  saveProjectDisplayName,
 } from './lib/messages'
 
 const isModalOpen = ref(false)
@@ -179,17 +179,16 @@ const refreshMessages = async () => {
 const getPathBaseName = (path) => path.split(/[\\/]/).filter(Boolean).at(-1) ?? path
 
 const handleCreateFolder = async (close) => {
-  const name = folderName.value.trim()
   const directoryPath = projectDirectoryPath.value.trim()
 
-  if (!name || !directoryPath) return
+  if (!directoryPath) return
 
   loadFolderError.value = ''
 
   try {
     const createdProject = await registerProject({
       directoryPath,
-      displayName: name,
+      displayName: folderName.value,
       iconPath: folderCreateIconPath.value,
     })
 
@@ -218,7 +217,7 @@ const handleSaveFolderSettings = async (close = null) => {
 
   try {
     const folder = selectedFolder.value
-    const renamedFolder = folder.name === name ? folder : await renameStoredFolder(folder, name)
+    const renamedFolder = folder.name === name ? folder : await saveProjectDisplayName(folder.id, name)
     const iconPath = folderIconPath.value.trim()
     const markdownPath = folderMarkdownExportPath.value.trim()
 
