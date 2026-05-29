@@ -7,7 +7,6 @@ import SendMessage from './components/SendMessage.vue'
 import Message from './components/Message.vue'
 import Input from './components/Input.vue'
 import {
-  createFolder as createStoredFolder,
   createMessage,
   exportMessagesToMarkdown,
   loadAppTitle,
@@ -15,11 +14,12 @@ import {
   loadFolders as loadStoredFolders,
   loadMarkdownExportPath,
   loadMessages as loadStoredMessages,
-  renameFolder as renameStoredFolder,
+  registerProject,
   saveAppTitle,
   saveFolderIconPath,
   saveFolderMarkdownExportPath,
   saveMarkdownExportPath,
+  saveProjectDisplayName,
 } from './lib/messages'
 
 const isModalOpen = ref(false)
@@ -46,6 +46,7 @@ const settingsAppTitle = ref('')
 const settingsMarkdownExportPath = ref('')
 const folderName = ref('')
 const folderCreateIconPath = ref('')
+const projectDirectoryPath = ref('')
 const renameFolderName = ref('')
 const folderIconPath = ref('')
 const folderMarkdownExportPath = ref('')
@@ -57,7 +58,6 @@ const selectedFolder = computed(() => {
   return folders.value.find((folder) => folder.id === selectedFolderId.value) ?? null
 })
 
-const selectedFolderName = computed(() => selectedFolder.value?.path ?? 'ルート')
 const modalSize = computed(() =>
   modalMode.value === 'app-settings' || modalMode.value === 'folder-settings' ? 'wide' : 'default',
 )
@@ -71,9 +71,10 @@ const openSettingsModal = () => {
 }
 
 const openCreateFolderModal = () => {
-  modalMode.value = 'create-folder'
+  modalMode.value = 'create-project'
   folderName.value = ''
   folderCreateIconPath.value = ''
+  projectDirectoryPath.value = ''
   loadFolderError.value = ''
   isModalOpen.value = true
 }
@@ -132,7 +133,7 @@ const refreshFolders = async () => {
       selectedFolderId.value = null
     }
   } catch (error) {
-    loadFolderError.value = error instanceof Error ? error.message : 'フォルダの読み込みに失敗しました'
+    loadFolderError.value = error instanceof Error ? error.message : 'プロジェクト一覧の読み込みに失敗しました'
   } finally {
     isLoadingFolders.value = false
   }
@@ -175,33 +176,35 @@ const refreshMessages = async () => {
   }
 }
 
-const createFolder = async (name, iconPath = '') => {
+const getPathBaseName = (path) => path.split(/[\\/]/).filter(Boolean).at(-1) ?? path
+
+const handleCreateFolder = async (close) => {
+  const directoryPath = projectDirectoryPath.value.trim()
+
+  if (!directoryPath) return
+
   loadFolderError.value = ''
 
   try {
-    const createdFolder = await createStoredFolder(name, selectedFolder.value, iconPath)
+    const createdProject = await registerProject({
+      directoryPath,
+      displayName: folderName.value,
+      iconPath: folderCreateIconPath.value,
+    })
 
     await refreshFolders()
+    if (loadFolderError.value) return
 
-    selectedFolderId.value = createdFolder?.id ?? selectedFolderId.value
+    selectedFolderId.value = createdProject?.id ?? selectedFolderId.value
     selectedNotePath.value = null
     await refreshMessages()
-  } catch (error) {
-    loadFolderError.value = error instanceof Error ? error.message : 'フォルダの作成に失敗しました'
-  }
-}
 
-const handleCreateFolder = async (close) => {
-  const name = folderName.value.trim()
-
-  if (!name) return
-
-  await createFolder(name, folderCreateIconPath.value)
-
-  if (!loadFolderError.value) {
     folderName.value = ''
     folderCreateIconPath.value = ''
+    projectDirectoryPath.value = ''
     close()
+  } catch (error) {
+    loadFolderError.value = error instanceof Error ? error.message : 'プロジェクトの登録に失敗しました'
   }
 }
 
@@ -214,7 +217,7 @@ const handleSaveFolderSettings = async (close = null) => {
 
   try {
     const folder = selectedFolder.value
-    const renamedFolder = folder.name === name ? folder : await renameStoredFolder(folder, name)
+    const renamedFolder = folder.name === name ? folder : await saveProjectDisplayName(folder.id, name)
     const iconPath = folderIconPath.value.trim()
     const markdownPath = folderMarkdownExportPath.value.trim()
 
@@ -232,7 +235,7 @@ const handleSaveFolderSettings = async (close = null) => {
     await refreshMessages()
     close?.()
   } catch (error) {
-    loadFolderError.value = error instanceof Error ? error.message : 'フォルダ設定の保存に失敗しました'
+    loadFolderError.value = error instanceof Error ? error.message : 'プロジェクト設定の保存に失敗しました'
   }
 }
 
@@ -246,7 +249,7 @@ const handleBrowseFolderMarkdownExportPath = async () => {
       directory: true,
       multiple: false,
       defaultPath: folderMarkdownExportPath.value || undefined,
-      title: 'フォルダのMarkdown保存先を選択',
+      title: 'プロジェクトのMarkdown保存先を選択',
     })
 
     if (typeof selectedPath !== 'string') return
@@ -254,7 +257,7 @@ const handleBrowseFolderMarkdownExportPath = async () => {
     folderMarkdownExportPath.value = selectedPath
     await handleSaveFolderSettings()
   } catch (error) {
-    loadFolderError.value = error instanceof Error ? error.message : 'フォルダのMarkdown保存先の変更に失敗しました'
+    loadFolderError.value = error instanceof Error ? error.message : 'プロジェクトのMarkdown保存先の変更に失敗しました'
   }
 }
 
@@ -272,7 +275,7 @@ const handleBrowseFolderIcon = async () => {
           extensions: ['png', 'jpg', 'jpeg', 'webp', 'gif', 'bmp', 'svg'],
         },
       ],
-      title: 'フォルダ画像を選択',
+      title: 'プロジェクト画像を選択',
     })
 
     if (typeof selectedPath !== 'string') return
@@ -280,7 +283,7 @@ const handleBrowseFolderIcon = async () => {
     folderIconPath.value = selectedPath
     await handleSaveFolderSettings()
   } catch (error) {
-    loadFolderError.value = error instanceof Error ? error.message : 'フォルダ画像の変更に失敗しました'
+    loadFolderError.value = error instanceof Error ? error.message : 'プロジェクト画像の変更に失敗しました'
   }
 }
 
@@ -296,14 +299,37 @@ const handleBrowseCreateFolderIcon = async () => {
           extensions: ['png', 'jpg', 'jpeg', 'webp', 'gif', 'bmp', 'svg'],
         },
       ],
-      title: 'フォルダ画像を選択',
+      title: 'プロジェクト画像を選択',
     })
 
     if (typeof selectedPath === 'string') {
       folderCreateIconPath.value = selectedPath
     }
   } catch (error) {
-    loadFolderError.value = error instanceof Error ? error.message : 'フォルダ画像の選択に失敗しました'
+    loadFolderError.value = error instanceof Error ? error.message : 'プロジェクト画像の選択に失敗しました'
+  }
+}
+
+const handleBrowseCreateProjectDirectory = async () => {
+  loadFolderError.value = ''
+
+  try {
+    const selectedPath = await open({
+      directory: true,
+      multiple: false,
+      title: 'プロジェクトフォルダーを選択',
+    })
+
+    if (typeof selectedPath !== 'string') return
+
+    const previousBaseName = getPathBaseName(projectDirectoryPath.value || '')
+    projectDirectoryPath.value = selectedPath
+
+    if (!folderName.value.trim() || folderName.value.trim() === previousBaseName) {
+      folderName.value = getPathBaseName(selectedPath)
+    }
+  } catch (error) {
+    loadFolderError.value = error instanceof Error ? error.message : 'プロジェクトフォルダーの選択に失敗しました'
   }
 }
 
@@ -483,7 +509,13 @@ onMounted(async () => {
     <Modal v-model="isModalOpen" :size="modalSize">
       <template #header>
         <h2 class="modal-title">
-          {{ modalMode === 'app-settings' ? 'アプリ設定' : modalMode === 'folder-settings' ? 'プロジェクト設定' : '新規フォルダ' }}
+          {{
+            modalMode === 'app-settings'
+              ? 'アプリ設定'
+              : modalMode === 'folder-settings'
+                ? 'プロジェクト設定'
+                : 'プロジェクト登録'
+          }}
         </h2>
       </template>
       <template #body>
@@ -519,19 +551,37 @@ onMounted(async () => {
           <p v-if="settingsStatus" class="settings-status">{{ settingsStatus }}</p>
         </form>
         <form
-          v-else-if="modalMode === 'create-folder'"
+          v-else-if="modalMode === 'create-project'"
           class="settings-form"
           @submit.prevent="handleCreateFolder(closeModal)"
         >
-          <label class="field-label" for="folder-name">フォルダ名</label>
+          <label class="field-label" for="project-directory-path">プロジェクトフォルダー</label>
+          <div class="path-field">
+            <input
+              id="project-directory-path"
+              v-model="projectDirectoryPath"
+              class="path-input"
+              type="text"
+              placeholder="/Users/sintaro/Documents/MyTimes"
+              readonly
+            />
+            <button
+              type="button"
+              class="secondary-button browse-button"
+              @click="handleBrowseCreateProjectDirectory"
+            >
+              参照
+            </button>
+          </div>
+          <label class="field-label" for="folder-name">表示名</label>
           <input
             id="folder-name"
             v-model="folderName"
             class="path-input"
             type="text"
-            :placeholder="`${selectedFolderName} に作成`"
+            :placeholder="getPathBaseName(projectDirectoryPath) || 'MyTimes'"
           />
-          <label class="field-label" for="create-folder-icon-path">フォルダ画像</label>
+          <label class="field-label" for="create-folder-icon-path">プロジェクト画像</label>
           <div class="path-field">
             <input
               id="create-folder-icon-path"
@@ -555,16 +605,16 @@ onMounted(async () => {
           class="settings-form"
           @submit.prevent="handleSaveFolderSettings()"
         >
-          <label class="field-label" for="rename-folder-name">フォルダ名</label>
+          <label class="field-label" for="rename-folder-name">表示名</label>
           <input
             id="rename-folder-name"
             v-model="renameFolderName"
             class="path-input"
             type="text"
-            placeholder="フォルダ名"
+            placeholder="表示名"
             @change="handleSaveFolderSettings()"
           />
-          <label class="field-label" for="folder-icon-path">フォルダ画像</label>
+          <label class="field-label" for="folder-icon-path">プロジェクト画像</label>
           <div class="path-field">
             <input
               id="folder-icon-path"
@@ -582,14 +632,14 @@ onMounted(async () => {
               参照
             </button>
           </div>
-          <label class="field-label" for="folder-markdown-export-path">Markdown保存先</label>
+          <label class="field-label" for="folder-markdown-export-path">プロジェクトのMarkdown保存先</label>
           <div class="path-field">
             <input
               id="folder-markdown-export-path"
               v-model="folderMarkdownExportPath"
               class="path-input"
               type="text"
-              placeholder="フォルダパス"
+              placeholder="プロジェクトのパス"
               @change="handleSaveFolderSettings()"
             />
             <button
@@ -603,9 +653,9 @@ onMounted(async () => {
           <p v-if="loadFolderError" class="settings-status is-error">{{ loadFolderError }}</p>
         </form>
       </template>
-      <template v-if="modalMode === 'create-folder'" #footer="{ close }">
+      <template v-if="modalMode === 'create-project'" #footer="{ close }">
         <button type="button" class="secondary-button" @click="close">キャンセル</button>
-        <button type="button" class="primary-button" @click="handleCreateFolder(close)">作成</button>
+        <button type="button" class="primary-button" @click="handleCreateFolder(close)">登録</button>
       </template>
     </Modal>
   </div>

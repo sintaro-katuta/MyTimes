@@ -53,6 +53,67 @@ export const loadFolders = async () => {
   )
 }
 
+export const registerProject = async ({ directoryPath, displayName = '', iconPath = '' }) => {
+  const db = await getDatabase()
+  const normalizedDirectoryPath = directoryPath.trim()
+  const projectName = displayName.trim() || getPathBaseName(normalizedDirectoryPath)
+  const normalizedIconPath = iconPath.trim() || null
+  const createdAt = formatLocalTimestamp(new Date())
+
+  if (!normalizedDirectoryPath) return null
+
+  await db.execute(
+    `INSERT OR IGNORE INTO folders
+       (name, parent_id, path, markdown_export_path, icon_path, created_at, updated_at)
+     VALUES (?, NULL, ?, ?, ?, ?, ?)`,
+    [
+      projectName,
+      normalizedDirectoryPath,
+      normalizedDirectoryPath,
+      normalizedIconPath,
+      createdAt,
+      createdAt,
+    ],
+  )
+
+  const rows = await db.select(
+    `SELECT id, name, parent_id AS parentId, path, markdown_export_path AS markdownExportPath,
+            icon_path AS iconPath
+     FROM folders
+     WHERE path = ?
+     LIMIT 1`,
+    [normalizedDirectoryPath],
+  )
+
+  return rows[0] ?? null
+}
+
+export const saveProjectDisplayName = async (folderId, displayName) => {
+  const db = await getDatabase()
+  const folderName = displayName.trim()
+  const updatedAt = formatLocalTimestamp(new Date())
+
+  if (!folderName) return null
+
+  await db.execute(
+    `UPDATE folders
+     SET name = ?, updated_at = ?
+     WHERE id = ?`,
+    [folderName, updatedAt, folderId],
+  )
+
+  const rows = await db.select(
+    `SELECT id, name, parent_id AS parentId, path, markdown_export_path AS markdownExportPath,
+            icon_path AS iconPath
+     FROM folders
+     WHERE id = ?
+     LIMIT 1`,
+    [folderId],
+  )
+
+  return rows[0] ?? null
+}
+
 export const loadFolderNotes = async ({ folderId = null } = {}) => {
   const db = await getDatabase()
   const params = []
@@ -304,4 +365,8 @@ const formatLocalTimestamp = (date) => {
     pad(date.getMonth() + 1),
     pad(date.getDate()),
   ].join('-') + `T${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`
+}
+
+const getPathBaseName = (path) => {
+  return path.split(/[\\/]/).filter(Boolean).at(-1) ?? path
 }
