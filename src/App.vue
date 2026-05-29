@@ -7,6 +7,13 @@ import SendMessage from './components/SendMessage.vue'
 import Message from './components/Message.vue'
 import Input from './components/Input.vue'
 import {
+  appendChatMessageToMarkdown,
+  listMarkdownFiles,
+  parseMarkdownToChat,
+  readMarkdownFile,
+  saveMarkdownFile,
+} from './lib/markdownFiles'
+import {
   createMessage,
   exportMessagesToMarkdown,
   loadAppTitle,
@@ -33,13 +40,16 @@ const selectedFolderId = ref(null)
 const selectedNotePath = ref(null)
 const isLoadingMessages = ref(true)
 const isLoadingFolders = ref(true)
+const isLoadingFolderNotes = ref(false)
 const isSendingMessage = ref(false)
 const isSavingSettings = ref(false)
 const isBrowsing = ref(false)
 const loadMessageError = ref('')
 const loadFolderError = ref('')
+const loadFolderNotesError = ref('')
 const sendMessageError = ref('')
 const exportStatus = ref('')
+const selectedMarkdownContent = ref('')
 const markdownExportPath = ref('')
 const appTitle = ref('デイリー分報')
 const settingsAppTitle = ref('')
@@ -140,11 +150,18 @@ const refreshFolders = async () => {
 }
 
 const refreshFolderNotes = async () => {
+  isLoadingFolderNotes.value = true
+  loadFolderNotesError.value = ''
+
   try {
-    folderNotes.value = await loadStoredFolderNotes({ folderId: selectedFolderId.value })
+    folderNotes.value = selectedFolder.value
+      ? await listMarkdownFiles(selectedFolder.value.path)
+      : await loadStoredFolderNotes({ folderId: selectedFolderId.value })
     loadFolderError.value = ''
   } catch (error) {
-    loadFolderError.value = error instanceof Error ? error.message : 'ノート一覧の読み込みに失敗しました'
+    loadFolderNotesError.value = error instanceof Error ? error.message : 'ファイル一覧の読み込みに失敗しました'
+  } finally {
+    isLoadingFolderNotes.value = false
   }
 }
 
@@ -155,11 +172,41 @@ const toViewMessage = (row) => ({
   message: row.content,
 })
 
+const toMarkdownViewMessage = (message, index) => ({
+  id: `${selectedNotePath.value ?? 'markdown'}:${message.sortOrder ?? index}`,
+  name: '自分',
+  date: [message.date, message.time].filter(Boolean).join(' '),
+  message: message.content,
+})
+
 const refreshMessages = async () => {
   isLoadingMessages.value = true
   loadMessageError.value = ''
 
   try {
+    if (selectedFolder.value && selectedNotePath.value) {
+      const markdown = await readMarkdownFile({
+        projectDir: selectedFolder.value.path,
+        relativePath: selectedNotePath.value,
+      })
+      const parsed = await parseMarkdownToChat(markdown)
+
+      selectedMarkdownContent.value = markdown
+      messages.value = parsed.messages.map(toMarkdownViewMessage)
+
+      await scrollMessagesToBottom()
+      await refreshFolderNotes()
+      return
+    }
+
+    selectedMarkdownContent.value = ''
+
+    if (selectedFolder.value) {
+      messages.value = []
+      await refreshFolderNotes()
+      return
+    }
+
     const rows = await loadStoredMessages({
       folderId: selectedFolderId.value,
       notePath: selectedNotePath.value,
@@ -170,7 +217,7 @@ const refreshMessages = async () => {
     await scrollMessagesToBottom()
     await refreshFolderNotes()
   } catch (error) {
-    loadMessageError.value = error instanceof Error ? error.message : 'メッセージの読み込みに失敗しました'
+    loadMessageError.value = error instanceof Error ? error.message : 'Markdownファイルの読み込みに失敗しました'
   } finally {
     isLoadingMessages.value = false
   }
@@ -373,6 +420,20 @@ const currentMarkdownExportPath = () => {
   return `${basePath.replace(/[\\/]+$/, '')}/${folderPath.replace(/^[\\/]+/, '')}`
 }
 
+const currentLocalDateParts = () => {
+  const date = new Date()
+  const pad = (value) => String(value).padStart(2, '0')
+
+  return {
+    date: [
+      date.getFullYear(),
+      pad(date.getMonth() + 1),
+      pad(date.getDate()),
+    ].join('-'),
+    time: `${pad(date.getHours())}:${pad(date.getMinutes())}`,
+  }
+}
+
 const sendMessage = async () => {
   const content = draftMessage.value.trim()
 
@@ -383,6 +444,32 @@ const sendMessage = async () => {
   exportStatus.value = ''
 
   try {
+    if (selectedFolder.value && selectedNotePath.value) {
+      const { date, time } = currentLocalDateParts()
+      const nextMarkdown = await appendChatMessageToMarkdown({
+        markdown: selectedMarkdownContent.value,
+        date,
+        time,
+        content,
+      })
+
+      await saveMarkdownFile({
+        projectDir: selectedFolder.value.path,
+        relativePath: selectedNotePath.value,
+        content: nextMarkdown,
+      })
+
+      selectedMarkdownContent.value = nextMarkdown
+      const parsed = await parseMarkdownToChat(nextMarkdown)
+
+      draftMessage.value = ''
+      messages.value = parsed.messages.map(toMarkdownViewMessage)
+      exportStatus.value = `${selectedNotePath.value} に追記しました`
+      await scrollMessagesToBottom()
+      await refreshFolderNotes()
+      return
+    }
+
     await createMessage(content, {
       folderId: selectedFolderId.value,
       notePath: selectedNotePath.value,
@@ -470,6 +557,8 @@ onMounted(async () => {
       <Sidebar
         :folders="folders"
         :notes="folderNotes"
+        :is-loading-notes="isLoadingFolderNotes"
+        :notes-error-message="loadFolderNotesError"
         :selected-folder-id="selectedFolderId"
         :selected-note-path="selectedNotePath"
         @open-create-folder="openCreateFolderModal"
@@ -487,6 +576,7 @@ onMounted(async () => {
         <div ref="messagesRef" class="messages">
           <p v-if="isLoadingMessages" class="messages-state">メッセージを読み込み中</p>
           <p v-else-if="loadMessageError" class="messages-state is-error">{{ loadMessageError }}</p>
+          <p v-else-if="selectedFolder && selectedNotePath === null" class="messages-state">ファイルを選択してください</p>
           <p v-else-if="messages.length === 0" class="messages-state">まだメッセージはありません</p>
           <template v-else>
             <Message
