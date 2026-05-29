@@ -174,8 +174,8 @@ const toViewMessage = (row) => ({
   message: row.content,
 })
 
-const toMarkdownViewMessage = (message, index) => ({
-  id: `${selectedNotePath.value ?? 'markdown'}:${message.sortOrder ?? index}`,
+const toMarkdownViewMessage = (message, index, notePath = selectedNotePath.value) => ({
+  id: `${notePath ?? 'markdown'}:${message.sortOrder ?? index}`,
   name: '自分',
   date: [message.date, message.time].filter(Boolean).join(' '),
   message: message.content,
@@ -452,10 +452,12 @@ const sendMessage = async () => {
     }
 
     if (selectedFolder.value && selectedNotePath.value) {
+      const projectDir = currentMarkdownExportPath()
+      const relativePath = selectedNotePath.value
       const { date, time } = currentLocalDateParts()
       const latestMarkdown = await readMarkdownFile({
-        projectDir: currentMarkdownExportPath(),
-        relativePath: selectedNotePath.value,
+        projectDir,
+        relativePath,
       })
       const nextMarkdown = await appendChatMessageToMarkdown({
         markdown: latestMarkdown,
@@ -465,18 +467,28 @@ const sendMessage = async () => {
       })
 
       await saveMarkdownFile({
-        projectDir: currentMarkdownExportPath(),
-        relativePath: selectedNotePath.value,
+        projectDir,
+        relativePath,
         content: nextMarkdown,
       })
 
-      selectedMarkdownContent.value = nextMarkdown
       const parsed = await parseMarkdownToChat(nextMarkdown)
 
       draftMessage.value = ''
-      messages.value = parsed.messages.map(toMarkdownViewMessage)
-      exportStatus.value = `${selectedNotePath.value} に追記しました`
-      await scrollMessagesToBottom()
+      exportStatus.value = `${relativePath} に追記しました`
+
+      if (
+        selectedFolder.value &&
+        currentMarkdownExportPath() === projectDir &&
+        selectedNotePath.value === relativePath
+      ) {
+        selectedMarkdownContent.value = nextMarkdown
+        messages.value = parsed.messages.map((message, index) =>
+          toMarkdownViewMessage(message, index, relativePath),
+        )
+        await scrollMessagesToBottom()
+      }
+
       await refreshFolderNotes()
       return
     }
