@@ -7,6 +7,13 @@ import SendMessage from './components/SendMessage.vue'
 import Message from './components/Message.vue'
 import Input from './components/Input.vue'
 import {
+  appendChatMessageToMarkdown,
+  listMarkdownFiles,
+  parseMarkdownToChat,
+  readMarkdownFile,
+  saveMarkdownFile,
+} from './lib/markdownFiles'
+import {
   createMessage,
   exportMessagesToMarkdown,
   loadAppTitle,
@@ -33,13 +40,17 @@ const selectedFolderId = ref(null)
 const selectedNotePath = ref(null)
 const isLoadingMessages = ref(true)
 const isLoadingFolders = ref(true)
+const isLoadingFolderNotes = ref(false)
 const isSendingMessage = ref(false)
 const isSavingSettings = ref(false)
 const isBrowsing = ref(false)
 const loadMessageError = ref('')
 const loadFolderError = ref('')
+const loadFolderNotesError = ref('')
 const sendMessageError = ref('')
 const exportStatus = ref('')
+const selectedMarkdownContent = ref('')
+const refreshMessagesRequestId = ref(0)
 const markdownExportPath = ref('')
 const appTitle = ref('デイリー分報')
 const settingsAppTitle = ref('')
@@ -57,6 +68,8 @@ const selectedFolder = computed(() => {
 
   return folders.value.find((folder) => folder.id === selectedFolderId.value) ?? null
 })
+
+const isMarkdownSendDisabled = computed(() => Boolean(selectedFolder.value && !selectedNotePath.value))
 
 const modalSize = computed(() =>
   modalMode.value === 'app-settings' || modalMode.value === 'folder-settings' ? 'wide' : 'default',
@@ -140,11 +153,18 @@ const refreshFolders = async () => {
 }
 
 const refreshFolderNotes = async () => {
+  isLoadingFolderNotes.value = true
+  loadFolderNotesError.value = ''
+
   try {
-    folderNotes.value = await loadStoredFolderNotes({ folderId: selectedFolderId.value })
+    folderNotes.value = selectedFolder.value
+      ? await listMarkdownFiles(currentMarkdownExportPath())
+      : await loadStoredFolderNotes({ folderId: selectedFolderId.value })
     loadFolderError.value = ''
   } catch (error) {
-    loadFolderError.value = error instanceof Error ? error.message : 'ノート一覧の読み込みに失敗しました'
+    loadFolderNotesError.value = error instanceof Error ? error.message : 'ファイル一覧の読み込みに失敗しました'
+  } finally {
+    isLoadingFolderNotes.value = false
   }
 }
 
@@ -155,24 +175,81 @@ const toViewMessage = (row) => ({
   message: row.content,
 })
 
+const toMarkdownViewMessage = (message, index, notePath = selectedNotePath.value) => ({
+  id: `${notePath ?? 'markdown'}:${message.sortOrder ?? index}`,
+  name: '自分',
+  date: [message.date, message.time].filter(Boolean).join(' '),
+  message: message.content,
+})
+
 const refreshMessages = async () => {
+  const requestId = refreshMessagesRequestId.value + 1
+  refreshMessagesRequestId.value = requestId
   isLoadingMessages.value = true
   loadMessageError.value = ''
 
   try {
+    if (selectedFolder.value && selectedNotePath.value) {
+      const projectDir = currentMarkdownExportPath()
+      const relativePath = selectedNotePath.value
+      const markdown = await readMarkdownFile({
+        projectDir,
+        relativePath,
+      })
+      const parsed = await parseMarkdownToChat(markdown)
+
+      if (
+        requestId !== refreshMessagesRequestId.value ||
+        !selectedFolder.value ||
+        currentMarkdownExportPath() !== projectDir ||
+        selectedNotePath.value !== relativePath
+      ) {
+        return
+      }
+
+      selectedMarkdownContent.value = markdown
+      messages.value = parsed.messages.map((message, index) =>
+        toMarkdownViewMessage(message, index, relativePath),
+      )
+
+      await scrollMessagesToBottom()
+      if (requestId !== refreshMessagesRequestId.value) return
+
+      await refreshFolderNotes()
+      return
+    }
+
+    selectedMarkdownContent.value = ''
+
+    if (selectedFolder.value) {
+      if (requestId !== refreshMessagesRequestId.value) return
+
+      messages.value = []
+      await refreshFolderNotes()
+      return
+    }
+
     const rows = await loadStoredMessages({
       folderId: selectedFolderId.value,
       notePath: selectedNotePath.value,
     })
 
+    if (requestId !== refreshMessagesRequestId.value) return
+
     messages.value = rows.map(toViewMessage)
 
     await scrollMessagesToBottom()
+    if (requestId !== refreshMessagesRequestId.value) return
+
     await refreshFolderNotes()
   } catch (error) {
-    loadMessageError.value = error instanceof Error ? error.message : 'メッセージの読み込みに失敗しました'
+    if (requestId !== refreshMessagesRequestId.value) return
+
+    loadMessageError.value = error instanceof Error ? error.message : 'Markdownファイルの読み込みに失敗しました'
   } finally {
-    isLoadingMessages.value = false
+    if (requestId === refreshMessagesRequestId.value) {
+      isLoadingMessages.value = false
+    }
   }
 }
 
@@ -373,6 +450,20 @@ const currentMarkdownExportPath = () => {
   return `${basePath.replace(/[\\/]+$/, '')}/${folderPath.replace(/^[\\/]+/, '')}`
 }
 
+const currentLocalDateParts = () => {
+  const date = new Date()
+  const pad = (value) => String(value).padStart(2, '0')
+
+  return {
+    date: [
+      date.getFullYear(),
+      pad(date.getMonth() + 1),
+      pad(date.getDate()),
+    ].join('-'),
+    time: `${pad(date.getHours())}:${pad(date.getMinutes())}`,
+  }
+}
+
 const sendMessage = async () => {
   const content = draftMessage.value.trim()
 
@@ -383,6 +474,53 @@ const sendMessage = async () => {
   exportStatus.value = ''
 
   try {
+    if (isMarkdownSendDisabled.value) {
+      sendMessageError.value = 'ファイルを選択してから送信してください'
+      return
+    }
+
+    if (selectedFolder.value && selectedNotePath.value) {
+      const projectDir = currentMarkdownExportPath()
+      const relativePath = selectedNotePath.value
+      const { date, time } = currentLocalDateParts()
+      const latestMarkdown = await readMarkdownFile({
+        projectDir,
+        relativePath,
+      })
+      const nextMarkdown = await appendChatMessageToMarkdown({
+        markdown: latestMarkdown,
+        date,
+        time,
+        content,
+      })
+
+      await saveMarkdownFile({
+        projectDir,
+        relativePath,
+        content: nextMarkdown,
+      })
+
+      const parsed = await parseMarkdownToChat(nextMarkdown)
+
+      draftMessage.value = ''
+      exportStatus.value = `${relativePath} に追記しました`
+
+      if (
+        selectedFolder.value &&
+        currentMarkdownExportPath() === projectDir &&
+        selectedNotePath.value === relativePath
+      ) {
+        selectedMarkdownContent.value = nextMarkdown
+        messages.value = parsed.messages.map((message, index) =>
+          toMarkdownViewMessage(message, index, relativePath),
+        )
+        await scrollMessagesToBottom()
+      }
+
+      await refreshFolderNotes()
+      return
+    }
+
     await createMessage(content, {
       folderId: selectedFolderId.value,
       notePath: selectedNotePath.value,
@@ -470,6 +608,8 @@ onMounted(async () => {
       <Sidebar
         :folders="folders"
         :notes="folderNotes"
+        :is-loading-notes="isLoadingFolderNotes"
+        :notes-error-message="loadFolderNotesError"
         :selected-folder-id="selectedFolderId"
         :selected-note-path="selectedNotePath"
         @open-create-folder="openCreateFolderModal"
@@ -487,6 +627,7 @@ onMounted(async () => {
         <div ref="messagesRef" class="messages">
           <p v-if="isLoadingMessages" class="messages-state">メッセージを読み込み中</p>
           <p v-else-if="loadMessageError" class="messages-state is-error">{{ loadMessageError }}</p>
+          <p v-else-if="selectedFolder && selectedNotePath === null" class="messages-state">ファイルを選択してください</p>
           <p v-else-if="messages.length === 0" class="messages-state">まだメッセージはありません</p>
           <template v-else>
             <Message
@@ -501,6 +642,7 @@ onMounted(async () => {
         <SendMessage
           v-model="draftMessage"
           :is-sending="isSendingMessage"
+          :disabled="isMarkdownSendDisabled"
           :error-message="sendMessageError"
           @submit="sendMessage"
         />

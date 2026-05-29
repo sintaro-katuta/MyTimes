@@ -19,6 +19,14 @@ const props = defineProps({
     type: Array,
     default: () => [],
   },
+  isLoadingNotes: {
+    type: Boolean,
+    default: false,
+  },
+  notesErrorMessage: {
+    type: String,
+    default: '',
+  },
   selectedFolderId: {
     type: Number,
     default: null,
@@ -137,6 +145,19 @@ const noteFileName = (path) => {
   return path.split(/[\\/]/).filter(Boolean).at(-1) ?? path
 }
 
+const formatNoteMeta = (note) => {
+  if (typeof note.size === 'number') {
+    const formatter = new Intl.NumberFormat('ja-JP')
+    return `${formatter.format(note.size)} bytes`
+  }
+
+  if (typeof note.messageCount === 'number') {
+    return `${note.messageCount}件`
+  }
+
+  return note.path
+}
+
 const folderIconSrc = (folder) => {
   return folder.iconPath ? convertFileSrc(folder.iconPath) : ''
 }
@@ -238,20 +259,24 @@ watch(
         </div>
         <p class="section-title">ファイル</p>
         <div class="notes">
-          <div v-if="notes.length === 0" class="empty-folders">このプロジェクトにファイルはありません</div>
-          <button
-            v-for="note in notes"
-            :key="note.path"
-            type="button"
-            class="note"
-            :class="{ active: selectedNotePath === note.path }"
-            @click="selectNote(note)"
-          >
-            <div class="note-body">
-              <p class="title">{{ noteFileName(note.path) }}</p>
-              <p class="note-meta">{{ note.messageCount }}件</p>
-            </div>
-          </button>
+          <div v-if="isLoadingNotes" class="empty-folders">ファイルを読み込み中</div>
+          <div v-else-if="notesErrorMessage" class="empty-folders is-error">{{ notesErrorMessage }}</div>
+          <div v-else-if="notes.length === 0" class="empty-folders">このプロジェクトにファイルはありません</div>
+          <template v-else>
+            <button
+              v-for="note in notes"
+              :key="note.path"
+              type="button"
+              class="note"
+              :class="{ active: selectedNotePath === note.path }"
+              @click="selectNote(note)"
+            >
+              <div class="note-body">
+                <p class="title">{{ noteFileName(note.path) }}</p>
+                <p class="note-meta">{{ formatNoteMeta(note) }}</p>
+              </div>
+            </button>
+          </template>
         </div>
       </div>
 
@@ -504,6 +529,10 @@ watch(
 }
 
 .state-text.is-error {
+  color: var(--bg-error);
+}
+
+.empty-folders.is-error {
   color: var(--bg-error);
 }
 
