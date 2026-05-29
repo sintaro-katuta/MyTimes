@@ -68,6 +68,8 @@ const selectedFolder = computed(() => {
   return folders.value.find((folder) => folder.id === selectedFolderId.value) ?? null
 })
 
+const isMarkdownSendDisabled = computed(() => Boolean(selectedFolder.value && !selectedNotePath.value))
+
 const modalSize = computed(() =>
   modalMode.value === 'app-settings' || modalMode.value === 'folder-settings' ? 'wide' : 'default',
 )
@@ -155,7 +157,7 @@ const refreshFolderNotes = async () => {
 
   try {
     folderNotes.value = selectedFolder.value
-      ? await listMarkdownFiles(selectedFolder.value.path)
+      ? await listMarkdownFiles(currentMarkdownExportPath())
       : await loadStoredFolderNotes({ folderId: selectedFolderId.value })
     loadFolderError.value = ''
   } catch (error) {
@@ -186,7 +188,7 @@ const refreshMessages = async () => {
   try {
     if (selectedFolder.value && selectedNotePath.value) {
       const markdown = await readMarkdownFile({
-        projectDir: selectedFolder.value.path,
+        projectDir: currentMarkdownExportPath(),
         relativePath: selectedNotePath.value,
       })
       const parsed = await parseMarkdownToChat(markdown)
@@ -444,17 +446,26 @@ const sendMessage = async () => {
   exportStatus.value = ''
 
   try {
+    if (isMarkdownSendDisabled.value) {
+      sendMessageError.value = 'ファイルを選択してから送信してください'
+      return
+    }
+
     if (selectedFolder.value && selectedNotePath.value) {
       const { date, time } = currentLocalDateParts()
+      const latestMarkdown = await readMarkdownFile({
+        projectDir: currentMarkdownExportPath(),
+        relativePath: selectedNotePath.value,
+      })
       const nextMarkdown = await appendChatMessageToMarkdown({
-        markdown: selectedMarkdownContent.value,
+        markdown: latestMarkdown,
         date,
         time,
         content,
       })
 
       await saveMarkdownFile({
-        projectDir: selectedFolder.value.path,
+        projectDir: currentMarkdownExportPath(),
         relativePath: selectedNotePath.value,
         content: nextMarkdown,
       })
@@ -591,6 +602,7 @@ onMounted(async () => {
         <SendMessage
           v-model="draftMessage"
           :is-sending="isSendingMessage"
+          :disabled="isMarkdownSendDisabled"
           :error-message="sendMessageError"
           @submit="sendMessage"
         />

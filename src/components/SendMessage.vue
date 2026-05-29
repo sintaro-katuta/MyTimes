@@ -11,6 +11,10 @@ const props = defineProps({
     type: Boolean,
     default: false,
   },
+  disabled: {
+    type: Boolean,
+    default: false,
+  },
   errorMessage: {
     type: String,
     default: '',
@@ -36,7 +40,7 @@ const message = computed({
     emit('update:modelValue', value)
   },
 })
-const canSend = computed(() => message.value.trim().length > 0 && !props.isSending)
+const canSend = computed(() => message.value.trim().length > 0 && !props.isSending && !props.disabled)
 
 const resizeTextarea = () => {
   if (!textareaRef.value) return
@@ -97,6 +101,7 @@ watch(
         placeholder="独り言を呟こう"
         aria-label="メッセージを入力"
         rows="1"
+        :disabled="disabled"
         @input="resizeTextarea"
         @keydown="handleTextareaKeydown"
       />
@@ -114,7 +119,7 @@ watch(
             type="button"
             class="send-button"
             :disabled="!canSend"
-            :aria-label="isSending ? 'メッセージを送信中' : 'メッセージを送信'"
+            :aria-label="isSending ? 'メッセージを送信中' : disabled ? 'ファイルを選択してください' : 'メッセージを送信'"
             @click="submitMessage"
           >
             <SendHorizontal :size="18" class="action-icon" />
@@ -214,6 +219,11 @@ textarea {
 
 textarea::placeholder {
   color: var(--icon-muted);
+}
+
+textarea:disabled {
+  cursor: not-allowed;
+  opacity: 0.58;
 }
 
 .message-actions,
