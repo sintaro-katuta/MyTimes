@@ -316,6 +316,49 @@ export const createMessage = async (content, { folderId = null, notePath = null 
   return rows[0]
 }
 
+export const syncMarkdownMessages = async ({ folderId, notePath, messages }) => {
+  const db = await getDatabase()
+  const syncedAt = formatLocalTimestamp(new Date())
+  const normalizedMessages = messages.map((message, index) => ({
+    content: message.content,
+    createdAt: formatParsedMessageTimestamp(message, index),
+  }))
+
+  await db.execute('BEGIN')
+
+  try {
+    await db.execute(
+      `DELETE FROM messages
+       WHERE folder_id = ? AND COALESCE(note_path, '') = ?`,
+      [folderId, notePath],
+    )
+
+    for (const message of normalizedMessages) {
+      await db.execute(
+        `INSERT INTO messages
+           (content, note_path, folder_id, markdown_synced, created_at, updated_at)
+         VALUES (?, ?, ?, 1, ?, ?)`,
+        [message.content, notePath, folderId, message.createdAt, syncedAt],
+      )
+    }
+
+    await db.execute('COMMIT')
+  } catch (error) {
+    await db.execute('ROLLBACK')
+    throw error
+  }
+}
+
+export const clearMarkdownMessages = async ({ folderId, notePath }) => {
+  const db = await getDatabase()
+
+  await db.execute(
+    `DELETE FROM messages
+     WHERE folder_id = ? AND COALESCE(note_path, '') = ?`,
+    [folderId, notePath],
+  )
+}
+
 export const exportMessagesToMarkdown = async (messages, exportDir = '') => {
   const result = await invoke('export_messages_to_markdown', {
     exportDir: exportDir.trim() || null,
@@ -366,6 +409,28 @@ const formatLocalTimestamp = (date) => {
     pad(date.getDate()),
   ].join('-') + `T${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`
 }
+
+const formatParsedMessageTimestamp = (message, index) => {
+  const date = isDateText(message.date) ? message.date : formatLocalDate(new Date())
+  const time = isTimeText(message.time) ? message.time : '00:00'
+  const seconds = String(index % 60).padStart(2, '0')
+
+  return `${date}T${time}:${seconds}`
+}
+
+const formatLocalDate = (date) => {
+  const pad = (value) => String(value).padStart(2, '0')
+
+  return [
+    date.getFullYear(),
+    pad(date.getMonth() + 1),
+    pad(date.getDate()),
+  ].join('-')
+}
+
+const isDateText = (value) => /^\d{4}-\d{2}-\d{2}$/.test(value ?? '')
+
+const isTimeText = (value) => /^\d{2}:\d{2}$/.test(value ?? '')
 
 const getPathBaseName = (path) => {
   return path.split(/[\\/]/).filter(Boolean).at(-1) ?? path

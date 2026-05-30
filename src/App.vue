@@ -14,6 +14,7 @@ import {
   saveMarkdownFile,
 } from './lib/markdownFiles'
 import {
+  clearMarkdownMessages,
   createMessage,
   exportMessagesToMarkdown,
   loadAppTitle,
@@ -27,6 +28,7 @@ import {
   saveFolderMarkdownExportPath,
   saveMarkdownExportPath,
   saveProjectDisplayName,
+  syncMarkdownMessages,
 } from './lib/messages'
 
 const isModalOpen = ref(false)
@@ -45,6 +47,7 @@ const isLoadingFolders = ref(true)
 const isLoadingFolderNotes = ref(false)
 const isSendingMessage = ref(false)
 const isSavingMarkdown = ref(false)
+const isReloadingMarkdown = ref(false)
 const isSavingSettings = ref(false)
 const isBrowsing = ref(false)
 const loadMessageError = ref('')
@@ -54,6 +57,7 @@ const sendMessageError = ref('')
 const markdownEditorError = ref('')
 const exportStatus = ref('')
 const selectedMarkdownContent = ref('')
+const selectedMarkdownSignature = ref('')
 const refreshMessagesRequestId = ref(0)
 const markdownExportPath = ref('')
 const appTitle = ref('デイリー分報')
@@ -80,6 +84,14 @@ const canUseMarkdownModes = computed(() =>
 )
 
 const isMarkdownDirty = computed(() => markdownDraft.value !== selectedMarkdownContent.value)
+
+const isReloadMarkdownDisabled = computed(() =>
+  !selectedFolder.value ||
+  !selectedNotePath.value ||
+  isLoadingMessages.value ||
+  isSavingMarkdown.value ||
+  isReloadingMarkdown.value,
+)
 
 const modalSize = computed(() =>
   modalMode.value === 'app-settings' || modalMode.value === 'folder-settings' ? 'wide' : 'default',
@@ -181,7 +193,7 @@ const refreshFolderNotes = async () => {
 const confirmDiscardMarkdownChanges = () => {
   if (!isMarkdownDirty.value) return true
 
-  return window.confirm('保存していないMarkdownの変更があります。変更を破棄して移動しますか？')
+  return window.confirm('保存していないMarkdownの変更があります。変更を破棄して続行しますか？')
 }
 
 const toViewMessage = (row) => ({
@@ -198,6 +210,51 @@ const toMarkdownViewMessage = (message, index, notePath = selectedNotePath.value
   message: message.content,
 })
 
+const markdownSignature = (markdown) => {
+  let hash = 0x811c9dc5
+
+  for (let index = 0; index < markdown.length; index += 1) {
+    hash ^= markdown.charCodeAt(index)
+    hash = Math.imul(hash, 0x01000193)
+  }
+
+  return hash.toString(16)
+}
+
+const syncParsedMarkdownMessages = async ({ folderId, notePath, parsed }) => {
+  await syncMarkdownMessages({
+    folderId,
+    notePath,
+    messages: parsed.messages,
+  })
+}
+
+const clearSelectedMarkdownMessages = async () => {
+  if (!selectedFolder.value || !selectedNotePath.value) return
+
+  await clearMarkdownMessages({
+    folderId: selectedFolder.value.id,
+    notePath: selectedNotePath.value,
+  })
+}
+
+const applyMarkdownDocument = async ({ markdown, parsed, relativePath, syncCache = true }) => {
+  selectedMarkdownContent.value = markdown
+  markdownDraft.value = markdown
+  selectedMarkdownSignature.value = markdownSignature(markdown)
+  messages.value = parsed.messages.map((message, index) =>
+    toMarkdownViewMessage(message, index, relativePath),
+  )
+
+  if (syncCache && selectedFolder.value) {
+    await syncParsedMarkdownMessages({
+      folderId: selectedFolder.value.id,
+      notePath: relativePath,
+      parsed,
+    })
+  }
+}
+
 const refreshMessages = async () => {
   const requestId = refreshMessagesRequestId.value + 1
   refreshMessagesRequestId.value = requestId
@@ -211,6 +268,7 @@ const refreshMessages = async () => {
 
       selectedMarkdownContent.value = ''
       markdownDraft.value = ''
+      selectedMarkdownSignature.value = ''
       viewMode.value = 'chat'
 
       const markdown = await readMarkdownFile({
@@ -228,11 +286,7 @@ const refreshMessages = async () => {
         return
       }
 
-      selectedMarkdownContent.value = markdown
-      markdownDraft.value = markdown
-      messages.value = parsed.messages.map((message, index) =>
-        toMarkdownViewMessage(message, index, relativePath),
-      )
+      await applyMarkdownDocument({ markdown, parsed, relativePath })
 
       await scrollMessagesToBottom()
       if (requestId !== refreshMessagesRequestId.value) return
@@ -243,6 +297,7 @@ const refreshMessages = async () => {
 
     selectedMarkdownContent.value = ''
     markdownDraft.value = ''
+    selectedMarkdownSignature.value = ''
     viewMode.value = 'chat'
 
     if (selectedFolder.value) {
@@ -271,8 +326,10 @@ const refreshMessages = async () => {
 
     selectedMarkdownContent.value = ''
     markdownDraft.value = ''
+    selectedMarkdownSignature.value = ''
     viewMode.value = 'chat'
     loadMessageError.value = error instanceof Error ? error.message : 'Markdownファイルの読み込みに失敗しました'
+    await clearSelectedMarkdownMessages()
   } finally {
     if (requestId === refreshMessagesRequestId.value) {
       isLoadingMessages.value = false
@@ -285,6 +342,55 @@ const switchViewMode = (mode) => {
 
   viewMode.value = mode
   markdownEditorError.value = ''
+}
+
+const reloadSelectedMarkdown = async () => {
+  if (isReloadMarkdownDisabled.value) return
+  if (!confirmDiscardMarkdownChanges()) return
+
+  const projectDir = currentMarkdownExportPath()
+  const relativePath = selectedNotePath.value
+
+  isReloadingMarkdown.value = true
+  loadMessageError.value = ''
+  markdownEditorError.value = ''
+  exportStatus.value = ''
+
+  try {
+    const markdown = await readMarkdownFile({
+      projectDir,
+      relativePath,
+    })
+    const parsed = await parseMarkdownToChat(markdown)
+    const previousSignature = selectedMarkdownSignature.value
+    const nextSignature = markdownSignature(markdown)
+
+    if (
+      !selectedFolder.value ||
+      currentMarkdownExportPath() !== projectDir ||
+      selectedNotePath.value !== relativePath
+    ) {
+      return
+    }
+
+    await applyMarkdownDocument({ markdown, parsed, relativePath })
+    exportStatus.value = nextSignature === previousSignature
+      ? `${relativePath} は最新です`
+      : `${relativePath} を再読み込みしました`
+    await scrollMessagesToBottom()
+    await refreshFolderNotes()
+  } catch (error) {
+    selectedMarkdownContent.value = ''
+    markdownDraft.value = ''
+    selectedMarkdownSignature.value = ''
+    messages.value = []
+    viewMode.value = 'chat'
+    loadMessageError.value = error instanceof Error ? error.message : 'Markdownファイルの再読み込みに失敗しました'
+    await clearSelectedMarkdownMessages()
+    await refreshFolderNotes()
+  } finally {
+    isReloadingMarkdown.value = false
+  }
 }
 
 const getPathBaseName = (path) => path.split(/[\\/]/).filter(Boolean).at(-1) ?? path
@@ -569,12 +675,18 @@ const sendMessage = async () => {
         selectedNotePath.value === relativePath
       ) {
         selectedMarkdownContent.value = nextMarkdown
+        selectedMarkdownSignature.value = markdownSignature(nextMarkdown)
         if (markdownDraft.value === draftBeforeSend) {
           markdownDraft.value = nextMarkdownDraft ?? nextMarkdown
         }
         messages.value = parsed.messages.map((message, index) =>
           toMarkdownViewMessage(message, index, relativePath),
         )
+        await syncParsedMarkdownMessages({
+          folderId: selectedFolder.value.id,
+          notePath: relativePath,
+          parsed,
+        })
         await scrollMessagesToBottom()
       }
 
@@ -623,6 +735,18 @@ const saveMarkdownDraft = async () => {
   exportStatus.value = ''
 
   try {
+    const latestMarkdown = await readMarkdownFile({
+      projectDir,
+      relativePath,
+    })
+
+    if (
+      markdownSignature(latestMarkdown) !== selectedMarkdownSignature.value &&
+      !window.confirm('外部でMarkdownが変更されています。現在の編集内容で上書きしますか？')
+    ) {
+      return
+    }
+
     await saveMarkdownFile({
       projectDir,
       relativePath,
@@ -637,9 +761,15 @@ const saveMarkdownDraft = async () => {
       selectedNotePath.value === relativePath
     ) {
       selectedMarkdownContent.value = draftToSave
+      selectedMarkdownSignature.value = markdownSignature(draftToSave)
       messages.value = parsed.messages.map((message, index) =>
         toMarkdownViewMessage(message, index, relativePath),
       )
+      await syncParsedMarkdownMessages({
+        folderId: selectedFolder.value.id,
+        notePath: relativePath,
+        parsed,
+      })
       exportStatus.value = `${relativePath} を保存しました`
       await refreshFolderNotes()
     }
@@ -743,26 +873,36 @@ onMounted(async () => {
         <div class="header">
           <Input />
         </div>
-        <div v-if="canUseMarkdownModes" class="view-tabs" role="tablist" aria-label="表示モード">
+        <div v-if="canUseMarkdownModes" class="view-toolbar">
+          <div class="view-tabs" role="tablist" aria-label="表示モード">
+            <button
+              type="button"
+              class="view-tab"
+              :class="{ active: viewMode === 'chat' }"
+              role="tab"
+              :aria-selected="viewMode === 'chat'"
+              @click="switchViewMode('chat')"
+            >
+              チャット
+            </button>
+            <button
+              type="button"
+              class="view-tab"
+              :class="{ active: viewMode === 'markdown' }"
+              role="tab"
+              :aria-selected="viewMode === 'markdown'"
+              @click="switchViewMode('markdown')"
+            >
+              Markdown
+            </button>
+          </div>
           <button
             type="button"
-            class="view-tab"
-            :class="{ active: viewMode === 'chat' }"
-            role="tab"
-            :aria-selected="viewMode === 'chat'"
-            @click="switchViewMode('chat')"
+            class="secondary-button reload-button"
+            :disabled="isReloadMarkdownDisabled"
+            @click="reloadSelectedMarkdown"
           >
-            チャット
-          </button>
-          <button
-            type="button"
-            class="view-tab"
-            :class="{ active: viewMode === 'markdown' }"
-            role="tab"
-            :aria-selected="viewMode === 'markdown'"
-            @click="switchViewMode('markdown')"
-          >
-            Markdown
+            {{ isReloadingMarkdown ? '再読み込み中' : '再読み込み' }}
           </button>
         </div>
         <p v-if="exportStatus" class="export-status">{{ exportStatus }}</p>
@@ -1004,11 +1144,17 @@ onMounted(async () => {
   margin-bottom: 16px;
 }
 
+.view-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 0 0 12px;
+}
+
 .view-tabs {
   display: inline-flex;
-  align-self: flex-start;
   gap: 4px;
-  margin: 0 0 12px;
   padding: 4px;
   border: 1px solid var(--border-default);
   border-radius: 8px;
@@ -1031,6 +1177,10 @@ onMounted(async () => {
 .view-tab.active {
   background: var(--surface-card);
   color: var(--text-primary);
+}
+
+.reload-button {
+  flex: 0 0 auto;
 }
 
 .export-status {
