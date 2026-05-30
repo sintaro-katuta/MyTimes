@@ -76,7 +76,7 @@ const selectedFolder = computed(() => {
 const isMarkdownSendDisabled = computed(() => Boolean(selectedFolder.value && !selectedNotePath.value))
 
 const canUseMarkdownModes = computed(() =>
-  Boolean(selectedFolder.value && selectedNotePath.value && !loadMessageError.value),
+  Boolean(selectedFolder.value && selectedNotePath.value && !isLoadingMessages.value && !loadMessageError.value),
 )
 
 const isMarkdownDirty = computed(() => markdownDraft.value !== selectedMarkdownContent.value)
@@ -208,6 +208,11 @@ const refreshMessages = async () => {
     if (selectedFolder.value && selectedNotePath.value) {
       const projectDir = currentMarkdownExportPath()
       const relativePath = selectedNotePath.value
+
+      selectedMarkdownContent.value = ''
+      markdownDraft.value = ''
+      viewMode.value = 'chat'
+
       const markdown = await readMarkdownFile({
         projectDir,
         relativePath,
@@ -526,7 +531,8 @@ const sendMessage = async () => {
       const projectDir = currentMarkdownExportPath()
       const relativePath = selectedNotePath.value
       const { date, time } = currentLocalDateParts()
-      const shouldSyncDraft = !isMarkdownDirty.value
+      const draftBeforeSend = markdownDraft.value
+      const savedMarkdownBeforeSend = selectedMarkdownContent.value
       const latestMarkdown = await readMarkdownFile({
         projectDir,
         relativePath,
@@ -537,10 +543,10 @@ const sendMessage = async () => {
         time,
         content,
       })
-      const nextMarkdownDraft = shouldSyncDraft
-        ? nextMarkdown
+      const nextMarkdownDraft = draftBeforeSend === savedMarkdownBeforeSend
+        ? null
         : await appendChatMessageToMarkdown({
-          markdown: markdownDraft.value,
+          markdown: draftBeforeSend,
           date,
           time,
           content,
@@ -563,7 +569,9 @@ const sendMessage = async () => {
         selectedNotePath.value === relativePath
       ) {
         selectedMarkdownContent.value = nextMarkdown
-        markdownDraft.value = nextMarkdownDraft
+        if (markdownDraft.value === draftBeforeSend) {
+          markdownDraft.value = nextMarkdownDraft ?? nextMarkdown
+        }
         messages.value = parsed.messages.map((message, index) =>
           toMarkdownViewMessage(message, index, relativePath),
         )
@@ -649,10 +657,12 @@ const revertMarkdownDraft = () => {
 
 const handleSaveSettings = async () => {
   const nextMarkdownExportPath = settingsMarkdownExportPath.value.trim()
+  const shouldReloadMarkdown = Boolean(
+    selectedFolder.value && nextMarkdownExportPath !== markdownExportPath.value.trim(),
+  )
 
   if (
-    selectedFolder.value &&
-    nextMarkdownExportPath !== markdownExportPath.value.trim() &&
+    shouldReloadMarkdown &&
     !confirmDiscardMarkdownChanges()
   ) {
     return
@@ -666,6 +676,9 @@ const handleSaveSettings = async () => {
     await saveMarkdownExportPath(settingsMarkdownExportPath.value)
     await refreshAppTitle()
     await refreshMarkdownExportPath()
+    if (shouldReloadMarkdown) {
+      await refreshMessages()
+    }
     settingsStatus.value = '保存しました'
   } catch (error) {
     settingsStatus.value = error instanceof Error ? error.message : '設定の保存に失敗しました'
