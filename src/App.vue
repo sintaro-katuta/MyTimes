@@ -380,6 +380,14 @@ const reloadSelectedMarkdown = async () => {
     await scrollMessagesToBottom()
     await refreshFolderNotes()
   } catch (error) {
+    if (
+      !selectedFolder.value ||
+      currentMarkdownExportPath() !== projectDir ||
+      selectedNotePath.value !== relativePath
+    ) {
+      return
+    }
+
     selectedMarkdownContent.value = ''
     markdownDraft.value = ''
     selectedMarkdownSignature.value = ''
@@ -643,6 +651,14 @@ const sendMessage = async () => {
         projectDir,
         relativePath,
       })
+      const isDraftDirtyAtSend = draftBeforeSend !== savedMarkdownBeforeSend
+      const latestMarkdownSignature = markdownSignature(latestMarkdown)
+
+      if (isDraftDirtyAtSend && latestMarkdownSignature !== selectedMarkdownSignature.value) {
+        sendMessageError.value = '外部でMarkdownが変更されています。再読み込みしてから送信してください'
+        return
+      }
+
       const nextMarkdown = await appendChatMessageToMarkdown({
         markdown: latestMarkdown,
         date,
