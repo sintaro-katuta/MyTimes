@@ -52,6 +52,56 @@ pub fn save_markdown_file(
     markdown_file_entry(&project_dir, &file_path)
 }
 
+#[tauri::command]
+pub fn create_markdown_file(
+    project_dir: String,
+    relative_path: String,
+    content: String,
+) -> Result<MarkdownFileEntry, String> {
+    let project_dir = canonical_project_dir(&project_dir)?;
+    let file_path = resolve_new_markdown_file(&project_dir, &relative_path)?;
+
+    if let Some(parent) = file_path.parent() {
+        fs::create_dir_all(parent)
+            .map_err(|error| format!("保存先フォルダーの作成に失敗しました: {error}"))?;
+    }
+
+    fs::write(&file_path, content)
+        .map_err(|error| format!("Markdownファイルの作成に失敗しました: {error}"))?;
+
+    markdown_file_entry(&project_dir, &file_path)
+}
+
+#[tauri::command]
+pub fn rename_markdown_file(
+    project_dir: String,
+    current_relative_path: String,
+    next_relative_path: String,
+) -> Result<MarkdownFileEntry, String> {
+    let project_dir = canonical_project_dir(&project_dir)?;
+    let current_file_path = resolve_existing_markdown_file(&project_dir, &current_relative_path)?;
+    let next_file_path = resolve_new_markdown_file(&project_dir, &next_relative_path)?;
+
+    if let Some(parent) = next_file_path.parent() {
+        fs::create_dir_all(parent)
+            .map_err(|error| format!("保存先フォルダーの作成に失敗しました: {error}"))?;
+    }
+
+    fs::rename(&current_file_path, &next_file_path)
+        .map_err(|error| format!("Markdownファイルの名前変更に失敗しました: {error}"))?;
+
+    markdown_file_entry(&project_dir, &next_file_path)
+}
+
+#[tauri::command]
+pub fn delete_markdown_file(project_dir: String, relative_path: String) -> Result<(), String> {
+    let project_dir = canonical_project_dir(&project_dir)?;
+    let file_path = resolve_existing_markdown_file(&project_dir, &relative_path)?;
+
+    fs::remove_file(&file_path)
+        .map_err(|error| format!("Markdownファイルの削除に失敗しました: {error}"))
+}
+
 fn canonical_project_dir(project_dir: &str) -> Result<PathBuf, String> {
     let trimmed = project_dir.trim();
 
@@ -147,6 +197,16 @@ fn resolve_writable_markdown_file(
     validate_existing_writable_file(project_dir, &file_path)?;
 
     Ok(file_path)
+}
+
+fn resolve_new_markdown_file(project_dir: &Path, relative_path: &str) -> Result<PathBuf, String> {
+    let file_path = resolve_writable_markdown_file(project_dir, relative_path)?;
+
+    match fs::symlink_metadata(&file_path) {
+        Ok(_) => Err("同じパスのMarkdownファイルが既に存在します".to_string()),
+        Err(error) if error.kind() == ErrorKind::NotFound => Ok(file_path),
+        Err(error) => Err(format!("Markdownファイル情報の取得に失敗しました: {error}")),
+    }
 }
 
 fn validate_existing_writable_file(project_dir: &Path, file_path: &Path) -> Result<(), String> {
@@ -342,10 +402,107 @@ mod tests {
     }
 
     #[test]
+    fn creates_markdown_file_by_relative_path() {
+        let project = TestProject::new();
+
+        let file = create_markdown_file(
+            project.path_string(),
+            "notes/today.md".to_string(),
+            "# Today".to_string(),
+        )
+        .unwrap();
+
+        assert_eq!(file.path, "notes/today.md");
+        assert_eq!(
+            fs::read_to_string(project.path.join("notes").join("today.md")).unwrap(),
+            "# Today"
+        );
+    }
+
+    #[test]
+    fn rejects_creating_existing_markdown_file() {
+        let project = TestProject::new();
+        fs::write(project.path.join("today.md"), "# Today").unwrap();
+
+        assert!(create_markdown_file(
+            project.path_string(),
+            "today.md".to_string(),
+            "# Next".to_string(),
+        )
+        .is_err());
+    }
+
+    #[test]
+    fn renames_markdown_file_by_relative_path() {
+        let project = TestProject::new();
+        fs::create_dir_all(project.path.join("notes")).unwrap();
+        fs::write(project.path.join("notes").join("today.md"), "# Today").unwrap();
+
+        let file = rename_markdown_file(
+            project.path_string(),
+            "notes/today.md".to_string(),
+            "archive/today.md".to_string(),
+        )
+        .unwrap();
+
+        assert_eq!(file.path, "archive/today.md");
+        assert!(!project.path.join("notes").join("today.md").exists());
+        assert_eq!(
+            fs::read_to_string(project.path.join("archive").join("today.md")).unwrap(),
+            "# Today"
+        );
+    }
+
+    #[test]
+    fn rejects_renaming_to_existing_markdown_file() {
+        let project = TestProject::new();
+        fs::write(project.path.join("today.md"), "# Today").unwrap();
+        fs::write(project.path.join("next.md"), "# Next").unwrap();
+
+        assert!(rename_markdown_file(
+            project.path_string(),
+            "today.md".to_string(),
+            "next.md".to_string(),
+        )
+        .is_err());
+        assert_eq!(
+            fs::read_to_string(project.path.join("today.md")).unwrap(),
+            "# Today"
+        );
+        assert_eq!(
+            fs::read_to_string(project.path.join("next.md")).unwrap(),
+            "# Next"
+        );
+    }
+
+    #[test]
+    fn deletes_markdown_file_by_relative_path() {
+        let project = TestProject::new();
+        fs::write(project.path.join("today.md"), "# Today").unwrap();
+
+        delete_markdown_file(project.path_string(), "today.md".to_string()).unwrap();
+
+        assert!(!project.path.join("today.md").exists());
+    }
+
+    #[test]
     fn rejects_path_traversal() {
         let project = TestProject::new();
 
         assert!(read_markdown_file(project.path_string(), "../secret.md".to_string()).is_err());
+        assert!(create_markdown_file(
+            project.path_string(),
+            "../secret.md".to_string(),
+            "secret".to_string()
+        )
+        .is_err());
+        assert!(rename_markdown_file(
+            project.path_string(),
+            "draft.md".to_string(),
+            "../secret.md".to_string(),
+        )
+        .is_err());
+        assert!(delete_markdown_file(project.path_string(), "../secret.md".to_string()).is_err());
         assert!(save_markdown_file(
             project.path_string(),
             "../secret.md".to_string(),

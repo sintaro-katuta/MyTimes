@@ -5,9 +5,12 @@ import { computed, ref, watch } from 'vue'
 import {
   ChevronDown,
   ChevronRight,
+  FilePlus,
   Folder,
+  Pencil,
   Plus,
   Settings,
+  Trash2,
 } from '@lucide/vue'
 
 const props = defineProps({
@@ -41,6 +44,9 @@ const emit = defineEmits([
   'open-settings',
   'open-create-folder',
   'open-folder-settings',
+  'open-create-note',
+  'open-rename-note',
+  'delete-note',
   'select-folder',
   'select-folder-notes',
   'select-note',
@@ -125,6 +131,10 @@ const openFolderSettings = () => {
   emit('open-folder-settings')
 }
 
+const openCreateNote = () => {
+  emit('open-create-note')
+}
+
 const selectFolderNotes = () => {
   emit('select-folder-notes')
 }
@@ -139,6 +149,14 @@ const selectFolder = (folder) => {
 
 const selectNote = (note) => {
   emit('select-note', note.path)
+}
+
+const openRenameNote = (note) => {
+  emit('open-rename-note', note.path)
+}
+
+const deleteNote = (note) => {
+  emit('delete-note', note.path)
 }
 
 const noteFileName = (path) => {
@@ -225,10 +243,10 @@ watch(
               type="button"
               class="rail-button"
               :class="{ active: selectedFolderId === folder.id, 'has-image': folder.iconPath }"
-            :aria-label="folder.name"
-            :title="folder.path"
-            @click="selectFolder(folder)"
-          >
+              :aria-label="folder.name"
+              :title="folder.path"
+              @click="selectFolder(folder)"
+            >
               <img v-if="folder.iconPath" class="folder-image" :src="folderIconSrc(folder)" alt="" />
               <Folder v-else :size="20" />
             </button>
@@ -256,6 +274,15 @@ watch(
           >
             <Settings :size="16" />
           </button>
+          <button
+            v-if="selectedFolderId !== null"
+            type="button"
+            class="folder-action"
+            aria-label="ノート作成"
+            @click="openCreateNote"
+          >
+            <FilePlus :size="16" />
+          </button>
         </div>
         <p class="section-title">ファイル</p>
         <div class="notes">
@@ -263,19 +290,37 @@ watch(
           <div v-else-if="notesErrorMessage" class="empty-folders is-error">{{ notesErrorMessage }}</div>
           <div v-else-if="notes.length === 0" class="empty-folders">このプロジェクトにファイルはありません</div>
           <template v-else>
-            <button
+            <div
               v-for="note in notes"
               :key="note.path"
-              type="button"
               class="note"
               :class="{ active: selectedNotePath === note.path }"
-              @click="selectNote(note)"
             >
-              <div class="note-body">
-                <p class="title">{{ noteFileName(note.path) }}</p>
-                <p class="note-meta">{{ formatNoteMeta(note) }}</p>
+              <button type="button" class="note-select" @click="selectNote(note)">
+                <div class="note-body">
+                  <p class="title">{{ noteFileName(note.path) }}</p>
+                  <p class="note-meta">{{ formatNoteMeta(note) }}</p>
+                </div>
+              </button>
+              <div v-if="selectedFolderId !== null" class="note-actions">
+                <button
+                  type="button"
+                  class="note-action"
+                  aria-label="ノート名を変更"
+                  @click.stop="openRenameNote(note)"
+                >
+                  <Pencil :size="14" />
+                </button>
+                <button
+                  type="button"
+                  class="note-action"
+                  aria-label="ノートを削除"
+                  @click.stop="deleteNote(note)"
+                >
+                  <Trash2 :size="14" />
+                </button>
               </div>
-            </button>
+            </div>
           </template>
         </div>
       </div>
@@ -482,12 +527,12 @@ watch(
   width: 100%;
   display: flex;
   align-items: center;
-  padding: 10px;
+  gap: 6px;
+  padding: 6px;
   border: none;
   border-radius: 8px;
   background: transparent;
   color: var(--text-secondary);
-  cursor: pointer;
   font: inherit;
   text-align: left;
 }
@@ -498,8 +543,46 @@ watch(
   color: var(--text-primary);
 }
 
+.note-select {
+  min-width: 0;
+  display: flex;
+  flex: 1;
+  padding: 4px;
+  border: none;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  font: inherit;
+  text-align: left;
+}
+
 .note-body {
   min-width: 0;
+}
+
+.note-actions {
+  display: flex;
+  flex: 0 0 auto;
+  gap: 2px;
+}
+
+.note-action {
+  width: 26px;
+  height: 26px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-tertiary);
+  cursor: pointer;
+}
+
+.note-action:hover {
+  background: var(--bg-base-2);
+  color: var(--text-primary);
 }
 
 .title,
