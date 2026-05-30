@@ -89,6 +89,7 @@ const isReloadMarkdownDisabled = computed(() =>
   !selectedFolder.value ||
   !selectedNotePath.value ||
   isLoadingMessages.value ||
+  isSendingMessage.value ||
   isSavingMarkdown.value ||
   isReloadingMarkdown.value,
 )

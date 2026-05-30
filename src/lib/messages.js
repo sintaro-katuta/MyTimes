@@ -31,7 +31,7 @@ export const loadMessages = async ({ folderId = null, notePath = null } = {}) =>
     params.push(notePath)
   }
 
-  if (folderId === null && notePath === null) {
+  if (folderId === null) {
     conditions.push('(folder_id IS NULL OR markdown_synced = 0)')
   }
 
@@ -126,6 +126,8 @@ export const loadFolderNotes = async ({ folderId = null } = {}) => {
   if (folderId !== null) {
     whereClause = 'WHERE folder_id = ?'
     params.push(folderId)
+  } else {
+    whereClause = 'WHERE (folder_id IS NULL OR markdown_synced = 0)'
   }
 
   return db.select(
