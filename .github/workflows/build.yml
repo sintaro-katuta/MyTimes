@@ -21,10 +21,16 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y \
+            build-essential \
+            curl \
+            file \
             libwebkit2gtk-4.1-dev \
             libayatana-appindicator3-dev \
+            libssl-dev \
+            libxdo-dev \
             librsvg2-dev \
-            patchelf
+            patchelf \
+            wget
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
