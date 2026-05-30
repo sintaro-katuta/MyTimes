@@ -31,8 +31,10 @@ import {
 
 const isModalOpen = ref(false)
 const modalMode = ref('app-settings')
+const viewMode = ref('chat')
 const messages = ref([])
 const draftMessage = ref('')
+const markdownDraft = ref('')
 const messagesRef = ref(null)
 const folders = ref([])
 const folderNotes = ref([])
@@ -42,12 +44,14 @@ const isLoadingMessages = ref(true)
 const isLoadingFolders = ref(true)
 const isLoadingFolderNotes = ref(false)
 const isSendingMessage = ref(false)
+const isSavingMarkdown = ref(false)
 const isSavingSettings = ref(false)
 const isBrowsing = ref(false)
 const loadMessageError = ref('')
 const loadFolderError = ref('')
 const loadFolderNotesError = ref('')
 const sendMessageError = ref('')
+const markdownEditorError = ref('')
 const exportStatus = ref('')
 const selectedMarkdownContent = ref('')
 const refreshMessagesRequestId = ref(0)
@@ -70,6 +74,12 @@ const selectedFolder = computed(() => {
 })
 
 const isMarkdownSendDisabled = computed(() => Boolean(selectedFolder.value && !selectedNotePath.value))
+
+const canUseMarkdownModes = computed(() =>
+  Boolean(selectedFolder.value && selectedNotePath.value && !isLoadingMessages.value && !loadMessageError.value),
+)
+
+const isMarkdownDirty = computed(() => markdownDraft.value !== selectedMarkdownContent.value)
 
 const modalSize = computed(() =>
   modalMode.value === 'app-settings' || modalMode.value === 'folder-settings' ? 'wide' : 'default',
@@ -168,6 +178,12 @@ const refreshFolderNotes = async () => {
   }
 }
 
+const confirmDiscardMarkdownChanges = () => {
+  if (!isMarkdownDirty.value) return true
+
+  return window.confirm('保存していないMarkdownの変更があります。変更を破棄して移動しますか？')
+}
+
 const toViewMessage = (row) => ({
   ...row,
   name: '自分',
@@ -192,6 +208,11 @@ const refreshMessages = async () => {
     if (selectedFolder.value && selectedNotePath.value) {
       const projectDir = currentMarkdownExportPath()
       const relativePath = selectedNotePath.value
+
+      selectedMarkdownContent.value = ''
+      markdownDraft.value = ''
+      viewMode.value = 'chat'
+
       const markdown = await readMarkdownFile({
         projectDir,
         relativePath,
@@ -208,6 +229,7 @@ const refreshMessages = async () => {
       }
 
       selectedMarkdownContent.value = markdown
+      markdownDraft.value = markdown
       messages.value = parsed.messages.map((message, index) =>
         toMarkdownViewMessage(message, index, relativePath),
       )
@@ -220,6 +242,8 @@ const refreshMessages = async () => {
     }
 
     selectedMarkdownContent.value = ''
+    markdownDraft.value = ''
+    viewMode.value = 'chat'
 
     if (selectedFolder.value) {
       if (requestId !== refreshMessagesRequestId.value) return
@@ -245,6 +269,9 @@ const refreshMessages = async () => {
   } catch (error) {
     if (requestId !== refreshMessagesRequestId.value) return
 
+    selectedMarkdownContent.value = ''
+    markdownDraft.value = ''
+    viewMode.value = 'chat'
     loadMessageError.value = error instanceof Error ? error.message : 'Markdownファイルの読み込みに失敗しました'
   } finally {
     if (requestId === refreshMessagesRequestId.value) {
@@ -253,12 +280,20 @@ const refreshMessages = async () => {
   }
 }
 
+const switchViewMode = (mode) => {
+  if (mode === viewMode.value) return
+
+  viewMode.value = mode
+  markdownEditorError.value = ''
+}
+
 const getPathBaseName = (path) => path.split(/[\\/]/).filter(Boolean).at(-1) ?? path
 
 const handleCreateFolder = async (close) => {
   const directoryPath = projectDirectoryPath.value.trim()
 
   if (!directoryPath) return
+  if (!confirmDiscardMarkdownChanges()) return
 
   loadFolderError.value = ''
 
@@ -289,6 +324,7 @@ const handleSaveFolderSettings = async (close = null) => {
   const name = renameFolderName.value.trim()
 
   if (!name || !selectedFolder.value) return
+  if (!confirmDiscardMarkdownChanges()) return
 
   loadFolderError.value = ''
 
@@ -411,18 +447,30 @@ const handleBrowseCreateProjectDirectory = async () => {
 }
 
 const selectFolder = async (folderId) => {
+  if (folderId === selectedFolderId.value && selectedNotePath.value === null) return
+  if (!confirmDiscardMarkdownChanges()) return
+
   selectedFolderId.value = folderId
   selectedNotePath.value = null
+  viewMode.value = 'chat'
   await refreshMessages()
 }
 
 const selectNote = async (notePath) => {
+  if (notePath === selectedNotePath.value) return
+  if (!confirmDiscardMarkdownChanges()) return
+
   selectedNotePath.value = notePath
+  viewMode.value = 'chat'
   await refreshMessages()
 }
 
 const selectAllNotesInFolder = async () => {
+  if (selectedNotePath.value === null) return
+  if (!confirmDiscardMarkdownChanges()) return
+
   selectedNotePath.value = null
+  viewMode.value = 'chat'
   await refreshMessages()
 }
 
@@ -483,6 +531,8 @@ const sendMessage = async () => {
       const projectDir = currentMarkdownExportPath()
       const relativePath = selectedNotePath.value
       const { date, time } = currentLocalDateParts()
+      const draftBeforeSend = markdownDraft.value
+      const savedMarkdownBeforeSend = selectedMarkdownContent.value
       const latestMarkdown = await readMarkdownFile({
         projectDir,
         relativePath,
@@ -493,6 +543,14 @@ const sendMessage = async () => {
         time,
         content,
       })
+      const nextMarkdownDraft = draftBeforeSend === savedMarkdownBeforeSend
+        ? null
+        : await appendChatMessageToMarkdown({
+          markdown: draftBeforeSend,
+          date,
+          time,
+          content,
+        })
 
       await saveMarkdownFile({
         projectDir,
@@ -511,6 +569,9 @@ const sendMessage = async () => {
         selectedNotePath.value === relativePath
       ) {
         selectedMarkdownContent.value = nextMarkdown
+        if (markdownDraft.value === draftBeforeSend) {
+          markdownDraft.value = nextMarkdownDraft ?? nextMarkdown
+        }
         messages.value = parsed.messages.map((message, index) =>
           toMarkdownViewMessage(message, index, relativePath),
         )
@@ -550,7 +611,63 @@ const sendMessage = async () => {
   }
 }
 
+const saveMarkdownDraft = async () => {
+  if (!selectedFolder.value || !selectedNotePath.value || isSavingMarkdown.value) return
+
+  const projectDir = currentMarkdownExportPath()
+  const relativePath = selectedNotePath.value
+  const draftToSave = markdownDraft.value
+
+  isSavingMarkdown.value = true
+  markdownEditorError.value = ''
+  exportStatus.value = ''
+
+  try {
+    await saveMarkdownFile({
+      projectDir,
+      relativePath,
+      content: draftToSave,
+    })
+
+    const parsed = await parseMarkdownToChat(draftToSave)
+
+    if (
+      selectedFolder.value &&
+      currentMarkdownExportPath() === projectDir &&
+      selectedNotePath.value === relativePath
+    ) {
+      selectedMarkdownContent.value = draftToSave
+      messages.value = parsed.messages.map((message, index) =>
+        toMarkdownViewMessage(message, index, relativePath),
+      )
+      exportStatus.value = `${relativePath} を保存しました`
+      await refreshFolderNotes()
+    }
+  } catch (error) {
+    markdownEditorError.value = error instanceof Error ? error.message : 'Markdownファイルの保存に失敗しました'
+  } finally {
+    isSavingMarkdown.value = false
+  }
+}
+
+const revertMarkdownDraft = () => {
+  markdownDraft.value = selectedMarkdownContent.value
+  markdownEditorError.value = ''
+}
+
 const handleSaveSettings = async () => {
+  const nextMarkdownExportPath = settingsMarkdownExportPath.value.trim()
+  const shouldReloadMarkdown = Boolean(
+    selectedFolder.value && nextMarkdownExportPath !== markdownExportPath.value.trim(),
+  )
+
+  if (
+    shouldReloadMarkdown &&
+    !confirmDiscardMarkdownChanges()
+  ) {
+    return
+  }
+
   isSavingSettings.value = true
   settingsStatus.value = ''
 
@@ -559,6 +676,9 @@ const handleSaveSettings = async () => {
     await saveMarkdownExportPath(settingsMarkdownExportPath.value)
     await refreshAppTitle()
     await refreshMarkdownExportPath()
+    if (shouldReloadMarkdown) {
+      await refreshMessages()
+    }
     settingsStatus.value = '保存しました'
   } catch (error) {
     settingsStatus.value = error instanceof Error ? error.message : '設定の保存に失敗しました'
@@ -623,8 +743,33 @@ onMounted(async () => {
         <div class="header">
           <Input />
         </div>
+        <div v-if="canUseMarkdownModes" class="view-tabs" role="tablist" aria-label="表示モード">
+          <button
+            type="button"
+            class="view-tab"
+            :class="{ active: viewMode === 'chat' }"
+            role="tab"
+            :aria-selected="viewMode === 'chat'"
+            @click="switchViewMode('chat')"
+          >
+            チャット
+          </button>
+          <button
+            type="button"
+            class="view-tab"
+            :class="{ active: viewMode === 'markdown' }"
+            role="tab"
+            :aria-selected="viewMode === 'markdown'"
+            @click="switchViewMode('markdown')"
+          >
+            Markdown
+          </button>
+        </div>
         <p v-if="exportStatus" class="export-status">{{ exportStatus }}</p>
-        <div ref="messagesRef" class="messages">
+        <p v-if="viewMode === 'chat' && isMarkdownDirty" class="export-status is-warning">
+          Markdownに未保存の変更があります
+        </p>
+        <div v-if="viewMode === 'chat'" ref="messagesRef" class="messages">
           <p v-if="isLoadingMessages" class="messages-state">メッセージを読み込み中</p>
           <p v-else-if="loadMessageError" class="messages-state is-error">{{ loadMessageError }}</p>
           <p v-else-if="selectedFolder && selectedNotePath === null" class="messages-state">ファイルを選択してください</p>
@@ -639,7 +784,38 @@ onMounted(async () => {
             />
           </template>
         </div>
+        <div v-else class="markdown-editor">
+          <div class="markdown-editor-toolbar">
+            <p class="markdown-editor-path">{{ selectedNotePath }}</p>
+            <div class="markdown-editor-actions">
+              <button
+                type="button"
+                class="secondary-button"
+                :disabled="isSavingMarkdown || !isMarkdownDirty"
+                @click="revertMarkdownDraft"
+              >
+                破棄
+              </button>
+              <button
+                type="button"
+                class="primary-button"
+                :disabled="isSavingMarkdown || !isMarkdownDirty"
+                @click="saveMarkdownDraft"
+              >
+                {{ isSavingMarkdown ? '保存中' : '保存' }}
+              </button>
+            </div>
+          </div>
+          <textarea
+            v-model="markdownDraft"
+            class="markdown-textarea"
+            aria-label="Markdown本文"
+            spellcheck="false"
+          />
+          <p v-if="markdownEditorError" class="settings-status is-error" role="alert">{{ markdownEditorError }}</p>
+        </div>
         <SendMessage
+          v-if="viewMode === 'chat'"
           v-model="draftMessage"
           :is-sending="isSendingMessage"
           :disabled="isMarkdownSendDisabled"
@@ -828,10 +1004,43 @@ onMounted(async () => {
   margin-bottom: 16px;
 }
 
+.view-tabs {
+  display: inline-flex;
+  align-self: flex-start;
+  gap: 4px;
+  margin: 0 0 12px;
+  padding: 4px;
+  border: 1px solid var(--border-default);
+  border-radius: 8px;
+  background: var(--surface-panel);
+}
+
+.view-tab {
+  min-width: 88px;
+  height: 32px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-tertiary);
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.view-tab:hover,
+.view-tab.active {
+  background: var(--surface-card);
+  color: var(--text-primary);
+}
+
 .export-status {
   margin: -6px 0 12px;
   color: var(--text-tertiary);
   font-size: 12px;
+}
+
+.export-status.is-warning {
+  color: var(--text-secondary);
 }
 
 .modal-title {
@@ -954,5 +1163,59 @@ onMounted(async () => {
 
 .messages-state.is-error {
   color: var(--bg-error);
+}
+
+.markdown-editor {
+  flex: 1;
+  display: flex;
+  min-height: 0;
+  flex-direction: column;
+  gap: 10px;
+  margin-bottom: 16px;
+}
+
+.markdown-editor-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.markdown-editor-path {
+  min-width: 0;
+  margin: 0;
+  overflow: hidden;
+  color: var(--text-tertiary);
+  font-size: 12px;
+  font-weight: 700;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.markdown-editor-actions {
+  display: flex;
+  flex: 0 0 auto;
+  gap: 8px;
+}
+
+.markdown-textarea {
+  flex: 1;
+  min-height: 0;
+  box-sizing: border-box;
+  width: 100%;
+  border: 1px solid var(--border-default);
+  border-radius: 8px;
+  padding: 14px;
+  resize: none;
+  background: var(--surface-input);
+  color: var(--text-primary);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+  font-size: 14px;
+  line-height: 1.6;
+}
+
+.markdown-textarea:focus-visible {
+  outline: 3px solid var(--focus-ring);
+  outline-offset: 2px;
 }
 </style>
