@@ -5,7 +5,6 @@ import { computed, ref, watch } from 'vue'
 import {
   ChevronDown,
   ChevronRight,
-  FilePlus,
   Folder,
   Pencil,
   Plus,
@@ -274,15 +273,6 @@ watch(
           >
             <Settings :size="16" />
           </button>
-          <button
-            v-if="selectedFolderId !== null"
-            type="button"
-            class="folder-action"
-            aria-label="ノート作成"
-            @click="openCreateNote"
-          >
-            <FilePlus :size="16" />
-          </button>
         </div>
         <p class="section-title">ファイル</p>
         <div class="notes">
@@ -323,6 +313,15 @@ watch(
             </div>
           </template>
         </div>
+        <button
+          v-if="selectedFolderId !== null"
+          type="button"
+          class="new-note-button"
+          @click="openCreateNote"
+        >
+          <Plus :size="24" />
+          <span>新しいノート</span>
+        </button>
       </div>
 
     </div>
@@ -520,7 +519,31 @@ watch(
 
 .notes {
   min-height: 0;
+  flex: 1;
   overflow-y: auto;
+}
+
+.new-note-button {
+  width: 100%;
+  min-height: 52px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  margin-top: 8px;
+  padding: 12px 16px;
+  border: none;
+  border-radius: 10px;
+  background: var(--bg-primary);
+  color: #fff;
+  cursor: pointer;
+  font: inherit;
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.new-note-button:hover {
+  background: var(--bg-primary-hover);
 }
 
 .note {
