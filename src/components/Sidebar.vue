@@ -548,10 +548,12 @@ watch(
 
 .note {
   width: 100%;
+  box-sizing: border-box;
   display: flex;
   align-items: center;
   gap: 6px;
   padding: 6px;
+  overflow: hidden;
   border: none;
   border-radius: 8px;
   background: transparent;
@@ -568,6 +570,7 @@ watch(
 
 .note-select {
   min-width: 0;
+  width: 100%;
   display: flex;
   flex: 1;
   padding: 4px;
@@ -581,12 +584,14 @@ watch(
 
 .note-body {
   min-width: 0;
+  flex: 1;
 }
 
 .note-actions {
   display: flex;
   flex: 0 0 auto;
   gap: 2px;
+  margin-left: auto;
 }
 
 .note-action {
