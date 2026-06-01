@@ -254,8 +254,16 @@ const startRenameNote = async (note) => {
   noteRenameInput.value = noteFileName(note.path)
 
   await nextTick()
-  noteRenameInputRef.value?.focus()
-  noteRenameInputRef.value?.select()
+  focusNoteRenameInput()
+}
+
+const focusNoteRenameInput = () => {
+  const input = Array.isArray(noteRenameInputRef.value)
+    ? noteRenameInputRef.value.find(Boolean)
+    : noteRenameInputRef.value
+
+  input?.focus()
+  input?.select()
 }
 
 const cancelRenameNote = () => {
