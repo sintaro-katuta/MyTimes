@@ -1,6 +1,6 @@
 <script setup>
 import { convertFileSrc } from '@tauri-apps/api/core'
-import { computed, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 
 import {
   ChevronDown,
@@ -52,6 +52,12 @@ const emit = defineEmits([
 ])
 
 const expandedFolderIds = ref(new Set())
+const noteContextMenu = ref({
+  isOpen: false,
+  x: 0,
+  y: 0,
+  note: null,
+})
 
 const foldersByParent = computed(() => {
   return props.folders.reduce((groups, folder) => {
@@ -154,6 +160,75 @@ const deleteNote = (note) => {
   emit('delete-note', note.path)
 }
 
+const closeNoteContextMenu = () => {
+  noteContextMenu.value = {
+    isOpen: false,
+    x: 0,
+    y: 0,
+    note: null,
+  }
+}
+
+const openNoteContextMenu = (event, note) => {
+  if (props.selectedFolderId === null) return
+
+  openNoteContextMenuAt({
+    x: event.clientX,
+    y: event.clientY,
+    note,
+  })
+}
+
+const openNoteContextMenuAt = ({ x, y, note }) => {
+  if (props.selectedFolderId === null) return
+
+  const menuWidth = 156
+  const menuHeight = 88
+  const viewportPadding = 8
+
+  noteContextMenu.value = {
+    isOpen: true,
+    x: Math.max(
+      viewportPadding,
+      Math.min(x, window.innerWidth - menuWidth - viewportPadding),
+    ),
+    y: Math.max(
+      viewportPadding,
+      Math.min(y, window.innerHeight - menuHeight - viewportPadding),
+    ),
+    note,
+  }
+}
+
+const handleNoteMenuKeydown = (event, note) => {
+  if (event.key !== 'ContextMenu' && !(event.shiftKey && event.key === 'F10')) return
+
+  event.preventDefault()
+  const rect = event.currentTarget.getBoundingClientRect()
+
+  openNoteContextMenuAt({
+    x: rect.right,
+    y: rect.top,
+    note,
+  })
+}
+
+const handleRenameNoteFromMenu = () => {
+  const note = noteContextMenu.value.note
+  closeNoteContextMenu()
+  if (!note) return
+
+  openRenameNote(note)
+}
+
+const handleDeleteNoteFromMenu = () => {
+  const note = noteContextMenu.value.note
+  closeNoteContextMenu()
+  if (!note) return
+
+  deleteNote(note)
+}
+
 const noteFileName = (path) => {
   return path.split(/[\\/]/).filter(Boolean).at(-1) ?? path
 }
@@ -173,6 +248,26 @@ const toggleFolder = (folder) => {
 
   expandedFolderIds.value = nextExpandedIds
 }
+
+const handleDocumentClick = () => {
+  closeNoteContextMenu()
+}
+
+const handleDocumentKeydown = (event) => {
+  if (event.key === 'Escape') {
+    closeNoteContextMenu()
+  }
+}
+
+onMounted(() => {
+  document.addEventListener('click', handleDocumentClick)
+  document.addEventListener('keydown', handleDocumentKeydown)
+})
+
+onBeforeUnmount(() => {
+  document.removeEventListener('click', handleDocumentClick)
+  document.removeEventListener('keydown', handleDocumentKeydown)
+})
 
 watch(
   () => [props.selectedFolderId, props.folders.length],
@@ -254,31 +349,22 @@ watch(
               v-for="note in notes"
               :key="note.path"
               class="note"
-              :class="{ active: selectedNotePath === note.path }"
+              :class="{
+                active: selectedNotePath === note.path,
+                'menu-open': noteContextMenu.isOpen && noteContextMenu.note?.path === note.path,
+              }"
+              @contextmenu.prevent="openNoteContextMenu($event, note)"
             >
-              <button type="button" class="note-select" @click="selectNote(note)">
+              <button
+                type="button"
+                class="note-select"
+                @click="selectNote(note)"
+                @keydown="handleNoteMenuKeydown($event, note)"
+              >
                 <div class="note-body">
                   <p class="title">{{ noteFileName(note.path) }}</p>
                 </div>
               </button>
-              <div v-if="selectedFolderId !== null" class="note-actions">
-                <button
-                  type="button"
-                  class="note-action"
-                  aria-label="ノート名を変更"
-                  @click.stop="openRenameNote(note)"
-                >
-                  <Pencil :size="14" />
-                </button>
-                <button
-                  type="button"
-                  class="note-action"
-                  aria-label="ノートを削除"
-                  @click.stop="deleteNote(note)"
-                >
-                  <Trash2 :size="14" />
-                </button>
-              </div>
             </div>
           </template>
         </div>
@@ -290,6 +376,28 @@ watch(
         >
           <Plus :size="24" />
           <span>新しいノート</span>
+        </button>
+      </div>
+      <div
+        v-if="noteContextMenu.isOpen"
+        class="note-context-menu"
+        :style="{ left: `${noteContextMenu.x}px`, top: `${noteContextMenu.y}px` }"
+        role="menu"
+        @click.stop
+        @contextmenu.prevent
+      >
+        <button type="button" class="note-context-menu-item" role="menuitem" @click="handleRenameNoteFromMenu">
+          <Pencil :size="14" />
+          <span>名前を変更</span>
+        </button>
+        <button
+          type="button"
+          class="note-context-menu-item is-danger"
+          role="menuitem"
+          @click="handleDeleteNoteFromMenu"
+        >
+          <Trash2 :size="14" />
+          <span>削除</span>
         </button>
       </div>
 
@@ -532,7 +640,8 @@ watch(
 }
 
 .note:hover,
-.note.active {
+.note.active,
+.note.menu-open {
   background-color: var(--bg-base-3);
   color: var(--text-primary);
 }
@@ -556,30 +665,44 @@ watch(
   flex: 1;
 }
 
-.note-actions {
+.note-context-menu {
+  position: fixed;
+  z-index: 40;
+  width: 156px;
+  box-sizing: border-box;
   display: flex;
-  flex: 0 0 auto;
+  flex-direction: column;
   gap: 2px;
-  margin-left: auto;
+  padding: 6px;
+  border: 1px solid var(--border-subtle);
+  border-radius: 8px;
+  background: var(--bg-base-1);
+  box-shadow: 0 12px 32px rgb(0 0 0 / 28%);
 }
 
-.note-action {
-  width: 26px;
-  height: 26px;
+.note-context-menu-item {
+  min-height: 34px;
   display: flex;
   align-items: center;
-  justify-content: center;
-  padding: 0;
+  gap: 8px;
+  padding: 8px 10px;
   border: none;
   border-radius: 6px;
   background: transparent;
-  color: var(--text-tertiary);
+  color: var(--text-secondary);
   cursor: pointer;
+  font: inherit;
+  font-size: 13px;
+  text-align: left;
 }
 
-.note-action:hover {
+.note-context-menu-item:hover {
   background: var(--bg-base-2);
   color: var(--text-primary);
+}
+
+.note-context-menu-item.is-danger:hover {
+  color: var(--bg-error);
 }
 
 .title {
