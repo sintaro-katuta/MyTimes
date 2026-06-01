@@ -158,19 +158,6 @@ const noteFileName = (path) => {
   return path.split(/[\\/]/).filter(Boolean).at(-1) ?? path
 }
 
-const formatNoteMeta = (note) => {
-  if (typeof note.size === 'number') {
-    const formatter = new Intl.NumberFormat('ja-JP')
-    return `${formatter.format(note.size)} bytes`
-  }
-
-  if (typeof note.messageCount === 'number') {
-    return `${note.messageCount}件`
-  }
-
-  return note.path
-}
-
 const folderIconSrc = (folder) => {
   return folder.iconPath ? convertFileSrc(folder.iconPath) : ''
 }
@@ -272,7 +259,6 @@ watch(
               <button type="button" class="note-select" @click="selectNote(note)">
                 <div class="note-body">
                   <p class="title">{{ noteFileName(note.path) }}</p>
-                  <p class="note-meta">{{ formatNoteMeta(note) }}</p>
                 </div>
               </button>
               <div v-if="selectedFolderId !== null" class="note-actions">
@@ -596,8 +582,7 @@ watch(
   color: var(--text-primary);
 }
 
-.title,
-.note-meta {
+.title {
   margin: 0;
 }
 
@@ -609,7 +594,6 @@ watch(
   white-space: nowrap;
 }
 
-.note-meta,
 .state-text,
 .empty-folders {
   color: var(--text-tertiary);
