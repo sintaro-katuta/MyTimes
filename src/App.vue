@@ -74,7 +74,6 @@ const folderIconPath = ref('')
 const folderMarkdownExportPath = ref('')
 const settingsStatus = ref('')
 const notePathInput = ref('')
-const noteActionPath = ref('')
 const noteActionError = ref('')
 
 const selectedFolder = computed(() => {
@@ -137,17 +136,6 @@ const openCreateNoteModal = () => {
 
   modalMode.value = 'create-note'
   notePathInput.value = ''
-  noteActionPath.value = ''
-  noteActionError.value = ''
-  isModalOpen.value = true
-}
-
-const openRenameNoteModal = (notePath) => {
-  if (!selectedFolder.value) return
-
-  modalMode.value = 'rename-note'
-  notePathInput.value = notePath
-  noteActionPath.value = notePath
   noteActionError.value = ''
   isModalOpen.value = true
 }
@@ -499,27 +487,42 @@ const handleCreateNote = async (close) => {
   }
 }
 
-const handleRenameNote = async (close) => {
-  if (!selectedFolder.value || !noteActionPath.value || isSavingNote.value) return
+const handleRenameNoteInline = async ({ currentRelativePath, nextRelativePath }) => {
+  await renameNotePath({
+    currentRelativePath,
+    nextRelativePath,
+    setError: (message) => {
+      loadFolderNotesError.value = message
+    },
+  })
+}
 
-  const currentRelativePath = noteActionPath.value
-  const nextRelativePath = normalizeMarkdownNotePath(notePathInput.value)
+const renameNotePath = async ({
+  currentRelativePath,
+  nextRelativePath,
+  close = null,
+  setError = null,
+}) => {
+  if (!selectedFolder.value || !currentRelativePath || isSavingNote.value) return false
 
-  if (!nextRelativePath || nextRelativePath === currentRelativePath) {
-    close()
-    return
+  const normalizedNextRelativePath = normalizeMarkdownNotePath(nextRelativePath)
+
+  if (!normalizedNextRelativePath || normalizedNextRelativePath === currentRelativePath) {
+    close?.()
+    return true
   }
 
-  if (!confirmDiscardMarkdownChanges()) return
+  if (!confirmDiscardMarkdownChanges()) return false
 
   isSavingNote.value = true
   noteActionError.value = ''
+  loadFolderNotesError.value = ''
 
   try {
     const file = await renameMarkdownFile({
       projectDir: currentMarkdownExportPath(),
       currentRelativePath,
-      nextRelativePath,
+      nextRelativePath: normalizedNextRelativePath,
     })
 
     await clearMarkdownMessages({
@@ -534,10 +537,12 @@ const handleRenameNote = async (close) => {
     await refreshFolderNotes()
     await refreshMessages()
     notePathInput.value = ''
-    noteActionPath.value = ''
-    close()
+    close?.()
+    return true
   } catch (error) {
-    noteActionError.value = error instanceof Error ? error.message : 'ノート名の変更に失敗しました'
+    const message = error instanceof Error ? error.message : 'ノート名の変更に失敗しました'
+    setError?.(message)
+    return false
   } finally {
     isSavingNote.value = false
   }
@@ -1025,7 +1030,7 @@ onMounted(async () => {
         @open-create-folder="openCreateFolderModal"
         @open-folder-settings="openFolderSettingsModal"
         @open-create-note="openCreateNoteModal"
-        @open-rename-note="openRenameNoteModal"
+        @rename-note="handleRenameNoteInline"
         @delete-note="handleDeleteNote"
         @select-folder="selectFolder"
         @select-note="selectNote"
@@ -1137,9 +1142,7 @@ onMounted(async () => {
                 ? 'プロジェクト設定'
                 : modalMode === 'create-note'
                   ? 'ノート作成'
-                  : modalMode === 'rename-note'
-                    ? 'ノート名変更'
-                    : 'プロジェクト登録'
+                  : 'プロジェクト登録'
           }}
         </h2>
       </template>
@@ -1292,21 +1295,6 @@ onMounted(async () => {
           />
           <p v-if="noteActionError" class="settings-status is-error">{{ noteActionError }}</p>
         </form>
-        <form
-          v-else-if="modalMode === 'rename-note'"
-          class="settings-form"
-          @submit.prevent="handleRenameNote(closeModal)"
-        >
-          <label class="field-label" for="rename-note-path">ノートファイル名</label>
-          <input
-            id="rename-note-path"
-            v-model="notePathInput"
-            class="path-input"
-            type="text"
-            placeholder="2026-05-30.md"
-          />
-          <p v-if="noteActionError" class="settings-status is-error">{{ noteActionError }}</p>
-        </form>
       </template>
       <template v-if="modalMode === 'create-project'" #footer="{ close }">
         <button type="button" class="secondary-button" @click="close">キャンセル</button>
@@ -1321,17 +1309,6 @@ onMounted(async () => {
           @click="handleCreateNote(close)"
         >
           {{ isSavingNote ? '作成中' : '作成' }}
-        </button>
-      </template>
-      <template v-else-if="modalMode === 'rename-note'" #footer="{ close }">
-        <button type="button" class="secondary-button" @click="close">キャンセル</button>
-        <button
-          type="button"
-          class="primary-button"
-          :disabled="isSavingNote || !notePathInput.trim()"
-          @click="handleRenameNote(close)"
-        >
-          {{ isSavingNote ? '変更中' : '変更' }}
         </button>
       </template>
     </Modal>

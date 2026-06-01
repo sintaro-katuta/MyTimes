@@ -1,6 +1,6 @@
 <script setup>
 import { convertFileSrc } from '@tauri-apps/api/core'
-import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 
 import {
   ChevronDown,
@@ -44,7 +44,7 @@ const emit = defineEmits([
   'open-create-folder',
   'open-folder-settings',
   'open-create-note',
-  'open-rename-note',
+  'rename-note',
   'delete-note',
   'select-folder',
   'select-folder-notes',
@@ -58,6 +58,9 @@ const noteContextMenu = ref({
   y: 0,
   note: null,
 })
+const editingNotePath = ref('')
+const noteRenameInput = ref('')
+const noteRenameInputRef = ref(null)
 
 const foldersByParent = computed(() => {
   return props.folders.reduce((groups, folder) => {
@@ -152,10 +155,6 @@ const selectNote = (note) => {
   emit('select-note', note.path)
 }
 
-const openRenameNote = (note) => {
-  emit('open-rename-note', note.path)
-}
-
 const deleteNote = (note) => {
   emit('delete-note', note.path)
 }
@@ -218,7 +217,7 @@ const handleRenameNoteFromMenu = () => {
   closeNoteContextMenu()
   if (!note) return
 
-  openRenameNote(note)
+  startRenameNote(note)
 }
 
 const handleDeleteNoteFromMenu = () => {
@@ -231,6 +230,54 @@ const handleDeleteNoteFromMenu = () => {
 
 const noteFileName = (path) => {
   return path.split(/[\\/]/).filter(Boolean).at(-1) ?? path
+}
+
+const noteDirectoryPath = (path) => {
+  const parts = path.split(/[\\/]/).filter(Boolean)
+
+  parts.pop()
+  return parts.join('/')
+}
+
+const notePathFromInlineName = (currentPath, inputValue) => {
+  const value = inputValue.trim().replaceAll('\\', '/').replace(/^\/+/, '')
+
+  if (!value) return ''
+  if (value.includes('/')) return value
+
+  const directoryPath = noteDirectoryPath(currentPath)
+  return directoryPath ? `${directoryPath}/${value}` : value
+}
+
+const startRenameNote = async (note) => {
+  editingNotePath.value = note.path
+  noteRenameInput.value = noteFileName(note.path)
+
+  await nextTick()
+  noteRenameInputRef.value?.focus()
+  noteRenameInputRef.value?.select()
+}
+
+const cancelRenameNote = () => {
+  editingNotePath.value = ''
+  noteRenameInput.value = ''
+}
+
+const commitRenameNote = (note) => {
+  if (editingNotePath.value !== note.path) return
+
+  const nextRelativePath = notePathFromInlineName(note.path, noteRenameInput.value)
+
+  if (!nextRelativePath || nextRelativePath === note.path) {
+    cancelRenameNote()
+    return
+  }
+
+  emit('rename-note', {
+    currentRelativePath: note.path,
+    nextRelativePath,
+  })
+  cancelRenameNote()
 }
 
 const folderIconSrc = (folder) => {
@@ -352,10 +399,12 @@ watch(
               :class="{
                 active: selectedNotePath === note.path,
                 'menu-open': noteContextMenu.isOpen && noteContextMenu.note?.path === note.path,
+                editing: editingNotePath === note.path,
               }"
               @contextmenu.prevent="openNoteContextMenu($event, note)"
             >
               <button
+                v-if="editingNotePath !== note.path"
                 type="button"
                 class="note-select"
                 @click="selectNote(note)"
@@ -365,6 +414,18 @@ watch(
                   <p class="title">{{ noteFileName(note.path) }}</p>
                 </div>
               </button>
+              <input
+                v-else
+                ref="noteRenameInputRef"
+                v-model="noteRenameInput"
+                class="note-rename-input"
+                type="text"
+                aria-label="ノート名"
+                @blur="commitRenameNote(note)"
+                @keydown.enter.prevent="commitRenameNote(note)"
+                @keydown.esc.prevent="cancelRenameNote"
+                @click.stop
+              />
             </div>
           </template>
         </div>
@@ -641,7 +702,8 @@ watch(
 
 .note:hover,
 .note.active,
-.note.menu-open {
+.note.menu-open,
+.note.editing {
   background-color: var(--bg-base-3);
   color: var(--text-primary);
 }
@@ -663,6 +725,24 @@ watch(
 .note-body {
   min-width: 0;
   flex: 1;
+}
+
+.note-rename-input {
+  min-width: 0;
+  width: 100%;
+  box-sizing: border-box;
+  padding: 4px 6px;
+  border: 1px solid var(--border-subtle);
+  border-radius: 5px;
+  background: var(--bg-base-2);
+  color: var(--text-primary);
+  font: inherit;
+  font-size: 13px;
+  outline: none;
+}
+
+.note-rename-input:focus {
+  border-color: var(--text-secondary);
 }
 
 .note-context-menu {
