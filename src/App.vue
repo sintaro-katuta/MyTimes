@@ -82,7 +82,7 @@ const selectedFolder = computed(() => {
   return folders.value.find((folder) => folder.id === selectedFolderId.value) ?? null
 })
 
-const isMarkdownSendDisabled = computed(() => Boolean(selectedFolder.value && !selectedNotePath.value))
+const isMarkdownSendDisabled = computed(() => !selectedFolder.value)
 
 const canUseMarkdownModes = computed(() =>
   Boolean(selectedFolder.value && selectedNotePath.value && !isLoadingMessages.value && !loadMessageError.value),
@@ -314,14 +314,6 @@ const refreshMessages = async () => {
     markdownDraft.value = ''
     selectedMarkdownSignature.value = ''
     viewMode.value = 'chat'
-
-    if (selectedFolder.value) {
-      if (requestId !== refreshMessagesRequestId.value) return
-
-      messages.value = []
-      await refreshFolderNotes()
-      return
-    }
 
     const rows = await loadStoredMessages({
       folderId: selectedFolderId.value,
@@ -1080,7 +1072,6 @@ onMounted(async () => {
         <div v-if="viewMode === 'chat'" ref="messagesRef" class="messages">
           <p v-if="isLoadingMessages" class="messages-state">メッセージを読み込み中</p>
           <p v-else-if="loadMessageError" class="messages-state is-error">{{ loadMessageError }}</p>
-          <p v-else-if="selectedFolder && selectedNotePath === null" class="messages-state">ファイルを選択してください</p>
           <p v-else-if="messages.length === 0" class="messages-state">まだメッセージはありません</p>
           <template v-else>
             <Message

@@ -9,6 +9,7 @@ import {
   Pencil,
   Plus,
   Settings,
+  SquareStack,
   Trash2,
 } from '@lucide/vue'
 
@@ -143,7 +144,7 @@ const openCreateNote = () => {
   emit('open-create-note')
 }
 
-const selectFolderNotes = () => {
+const selectTimeline = () => {
   emit('select-folder-notes')
 }
 
@@ -381,8 +382,18 @@ watch(
     <div class="panel">
       <div class="section notes-section">
         <div class="folder-header">
-          <button type="button" class="folder-title-button" @click="selectFolderNotes">
+          <button type="button" class="folder-title-button" @click="selectTimeline">
             {{ selectedFolderName }}
+          </button>
+          <button
+            v-if="selectedFolderId !== null"
+            type="button"
+            class="folder-action"
+            :class="{ active: selectedNotePath === null }"
+            aria-label="タイムライン"
+            @click="selectTimeline"
+          >
+            <SquareStack :size="16" />
           </button>
           <button
             v-if="selectedFolderId !== null"
@@ -652,6 +663,11 @@ watch(
 }
 
 .folder-action:hover {
+  background: var(--bg-base-3);
+  color: var(--text-primary);
+}
+
+.folder-action.active {
   background: var(--bg-base-3);
   color: var(--text-primary);
 }
