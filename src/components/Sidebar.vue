@@ -101,7 +101,7 @@ const visibleFolders = computed(() => {
 })
 
 const selectedFolderName = computed(() => {
-  if (props.selectedFolderId === null) return 'ルート'
+  if (props.selectedFolderId === null) return 'フォルダー未選択'
 
   return props.folders.find((folder) => folder.id === props.selectedFolderId)?.name ?? '選択中プロジェクト'
 })
@@ -136,10 +136,6 @@ const openCreateNote = () => {
 
 const selectFolderNotes = () => {
   emit('select-folder-notes')
-}
-
-const selectAllMessages = () => {
-  emit('select-folder', null)
 }
 
 const selectFolder = (folder) => {
@@ -211,19 +207,6 @@ watch(
       </div>
 
       <div class="folder-icons" aria-label="プロジェクト一覧">
-        <div class="rail-item">
-          <span v-if="selectedFolderId === null" class="active-indicator" aria-hidden="true" />
-          <button
-            type="button"
-            class="rail-button"
-            :class="{ active: selectedFolderId === null }"
-            aria-label="すべて"
-            @click="selectAllMessages"
-          >
-            <Folder :size="20" />
-          </button>
-        </div>
-
         <template v-for="folder in visibleFolders" :key="folder.id">
           <button
             v-if="folder.hasChildren"

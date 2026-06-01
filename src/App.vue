@@ -21,7 +21,6 @@ import {
   createMessage,
   exportMessagesToMarkdown,
   loadAppTitle,
-  loadFolderNotes as loadStoredFolderNotes,
   loadFolders as loadStoredFolders,
   loadMarkdownExportPath,
   loadMessages as loadStoredMessages,
@@ -188,12 +187,12 @@ const refreshFolders = async () => {
   try {
     const rows = await loadStoredFolders()
     folders.value = rows
+    const rootFolderId = rows.find((folder) => Boolean(folder.isRoot))?.id ?? null
 
-    if (
-      selectedFolderId.value !== null &&
-      !rows.some((folder) => folder.id === selectedFolderId.value)
-    ) {
-      selectedFolderId.value = null
+    if (selectedFolderId.value === null) {
+      selectedFolderId.value = rootFolderId
+    } else if (!rows.some((folder) => folder.id === selectedFolderId.value)) {
+      selectedFolderId.value = rootFolderId
     }
   } catch (error) {
     loadFolderError.value = error instanceof Error ? error.message : 'プロジェクト一覧の読み込みに失敗しました'
@@ -209,7 +208,7 @@ const refreshFolderNotes = async () => {
   try {
     folderNotes.value = selectedFolder.value
       ? await listMarkdownFiles(currentMarkdownExportPath())
-      : await loadStoredFolderNotes({ folderId: selectedFolderId.value })
+      : []
     loadFolderError.value = ''
   } catch (error) {
     loadFolderNotesError.value = error instanceof Error ? error.message : 'ファイル一覧の読み込みに失敗しました'
@@ -748,6 +747,8 @@ const currentMarkdownExportPath = () => {
 
   const folderPath = selectedFolder.value.markdownExportPath?.trim() || selectedFolder.value.path
 
+  if (!folderPath) return basePath
+
   if (isAbsolutePath(folderPath) || !basePath) {
     return folderPath
   }
@@ -1000,12 +1001,12 @@ const handleBrowseMarkdownExportPath = async () => {
 }
 
 onMounted(async () => {
+  await refreshMarkdownExportPath().catch((error) => {
+    loadMessageError.value = error instanceof Error ? error.message : '設定の読み込みに失敗しました'
+  })
   await refreshFolders()
   await refreshMessages()
   refreshAppTitle().catch((error) => {
-    loadMessageError.value = error instanceof Error ? error.message : '設定の読み込みに失敗しました'
-  })
-  refreshMarkdownExportPath().catch((error) => {
     loadMessageError.value = error instanceof Error ? error.message : '設定の読み込みに失敗しました'
   })
 })

@@ -31,10 +31,6 @@ export const loadMessages = async ({ folderId = null, notePath = null } = {}) =>
     params.push(notePath)
   }
 
-  if (folderId === null) {
-    conditions.push('(folder_id IS NULL OR markdown_synced = 0)')
-  }
-
   const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : ''
 
   return db.select(
@@ -51,9 +47,9 @@ export const loadFolders = async () => {
 
   return db.select(
     `SELECT id, name, parent_id AS parentId, path, markdown_export_path AS markdownExportPath,
-            icon_path AS iconPath
+            icon_path AS iconPath, path = '' AS isRoot
      FROM folders
-     ORDER BY path ASC, id ASC`,
+     ORDER BY CASE WHEN path = '' THEN 0 ELSE 1 END, path ASC, id ASC`,
   )
 }
 
@@ -82,7 +78,7 @@ export const registerProject = async ({ directoryPath, displayName = '', iconPat
 
   const rows = await db.select(
     `SELECT id, name, parent_id AS parentId, path, markdown_export_path AS markdownExportPath,
-            icon_path AS iconPath
+            icon_path AS iconPath, path = '' AS isRoot
      FROM folders
      WHERE path = ?
      LIMIT 1`,
@@ -108,7 +104,7 @@ export const saveProjectDisplayName = async (folderId, displayName) => {
 
   const rows = await db.select(
     `SELECT id, name, parent_id AS parentId, path, markdown_export_path AS markdownExportPath,
-            icon_path AS iconPath
+            icon_path AS iconPath, path = '' AS isRoot
      FROM folders
      WHERE id = ?
      LIMIT 1`,
@@ -126,8 +122,6 @@ export const loadFolderNotes = async ({ folderId = null } = {}) => {
   if (folderId !== null) {
     whereClause = 'WHERE folder_id = ?'
     params.push(folderId)
-  } else {
-    whereClause = 'WHERE (folder_id IS NULL OR markdown_synced = 0)'
   }
 
   return db.select(
@@ -195,7 +189,7 @@ export const createFolder = async (name, parentFolder = null, iconPath = '') => 
   if (!folderName) return null
 
   const createdAt = formatLocalTimestamp(new Date())
-  const path = parentFolder ? `${parentFolder.path}/${folderName}` : folderName
+  const path = parentFolder?.path ? `${parentFolder.path}/${folderName}` : folderName
 
   await db.execute(
     `INSERT INTO folders (name, parent_id, path, markdown_export_path, icon_path, created_at, updated_at)
@@ -205,7 +199,7 @@ export const createFolder = async (name, parentFolder = null, iconPath = '') => 
 
   const rows = await db.select(
     `SELECT id, name, parent_id AS parentId, path, markdown_export_path AS markdownExportPath,
-            icon_path AS iconPath
+            icon_path AS iconPath, path = '' AS isRoot
      FROM folders
      WHERE path = ?
      ORDER BY id DESC
@@ -266,7 +260,7 @@ export const renameFolder = async (folder, name) => {
 
   const renamedRows = await db.select(
     `SELECT id, name, parent_id AS parentId, path, markdown_export_path AS markdownExportPath,
-            icon_path AS iconPath
+            icon_path AS iconPath, path = '' AS isRoot
      FROM folders
      WHERE id = ?
      LIMIT 1`,
