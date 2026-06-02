@@ -1,6 +1,6 @@
 use serde::Serialize;
 use std::fs::{self, OpenOptions};
-use std::io::ErrorKind;
+use std::io::{self, ErrorKind};
 use std::path::{Component, Path, PathBuf};
 use std::time::UNIX_EPOCH;
 
@@ -97,9 +97,7 @@ pub fn rename_markdown_file(
             .map_err(|error| format!("保存先フォルダーの作成に失敗しました: {error}"))?;
     }
 
-    fs::hard_link(&current_file_path, &next_file_path)
-        .map_err(|error| format!("Markdownファイルの名前変更に失敗しました: {error}"))?;
-    fs::remove_file(&current_file_path)
+    move_file_without_replacing(&current_file_path, &next_file_path)
         .map_err(|error| format!("Markdownファイルの名前変更に失敗しました: {error}"))?;
 
     markdown_file_entry(&project_dir, &next_file_path)
@@ -179,6 +177,35 @@ fn resolve_existing_markdown_file(
     }
 
     Ok(canonical)
+}
+
+fn move_file_without_replacing(from: &Path, to: &Path) -> io::Result<()> {
+    let mut source = OpenOptions::new().read(true).open(from)?;
+    let mut destination = match OpenOptions::new().write(true).create_new(true).open(to) {
+        Ok(file) => file,
+        Err(error) => {
+            return Err(error);
+        }
+    };
+
+    if let Err(error) = io::copy(&mut source, &mut destination) {
+        let _ = fs::remove_file(to);
+        return Err(error);
+    }
+
+    if let Ok(metadata) = source.metadata() {
+        if let Err(error) = destination.set_permissions(metadata.permissions()) {
+            let _ = fs::remove_file(to);
+            return Err(error);
+        }
+    }
+
+    if let Err(error) = fs::remove_file(from) {
+        let _ = fs::remove_file(to);
+        return Err(error);
+    }
+
+    Ok(())
 }
 
 fn resolve_writable_markdown_file(

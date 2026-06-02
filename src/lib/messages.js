@@ -21,7 +21,9 @@ export const loadMessages = async ({ folderId = null, notePath = null } = {}) =>
   const params = []
   const conditions = []
 
-  if (folderId !== null) {
+  if (folderId === null) {
+    conditions.push('(folder_id IS NULL OR markdown_synced = 0)')
+  } else {
     conditions.push('folder_id = ?')
     params.push(folderId)
   }

@@ -85,9 +85,8 @@ const selectedFolder = computed(() => {
 })
 
 const isMarkdownSendDisabled = computed(() =>
-  !selectedFolder.value ||
-  !selectedNotePath.value ||
-  isSavingNote.value,
+  isSavingNote.value ||
+  Boolean(selectedFolder.value && !selectedNotePath.value),
 )
 
 const canUseMarkdownModes = computed(() =>
@@ -175,6 +174,33 @@ const scrollMessagesToBottom = async () => {
   messagesRef.value.scrollTop = messagesRef.value.scrollHeight
 }
 
+const normalizePathSeparators = (path) => path.trim().replaceAll('\\', '/')
+
+const isAbsolutePathText = (path) => path.startsWith('/') || /^[A-Za-z]:\//.test(path)
+
+const relativeNotePathFromProject = (notePath, projectDir) => {
+  const normalizedNotePath = normalizePathSeparators(notePath)
+
+  if (!normalizedNotePath) return ''
+
+  if (!isAbsolutePathText(normalizedNotePath)) {
+    return normalizedNotePath.replace(/^\/+/, '')
+  }
+
+  const normalizedProjectDir = normalizePathSeparators(projectDir).replace(/\/+$/, '')
+  const normalizedProjectDirForCompare = normalizedProjectDir.toLowerCase()
+  const normalizedNotePathForCompare = normalizedNotePath.toLowerCase()
+
+  if (
+    !normalizedProjectDir ||
+    !normalizedNotePathForCompare.startsWith(`${normalizedProjectDirForCompare}/`)
+  ) {
+    return ''
+  }
+
+  return normalizedNotePath.slice(normalizedProjectDir.length + 1)
+}
+
 const refreshFolders = async () => {
   isLoadingFolders.value = true
   loadFolderError.value = ''
@@ -210,17 +236,38 @@ const refreshFolderNotes = async () => {
       return
     }
 
-    const storedNotes = await loadStoredFolderNotes({ folderId: selectedFolder.value.id })
+    const folderId = selectedFolder.value.id
     const projectDir = currentMarkdownExportPath().trim()
+    const storedNotes = await loadStoredFolderNotes({ folderId })
     const fileNotes = projectDir ? await listMarkdownFiles(projectDir) : []
     const mergedNotes = new Map()
 
     for (const note of storedNotes) {
-      mergedNotes.set(note.path, note)
+      const relativePath = relativeNotePathFromProject(note.path, projectDir)
+
+      if (relativePath) {
+        if (relativePath !== note.path) {
+          await updateMarkdownMessagePath({
+            folderId,
+            currentNotePath: note.path,
+            nextNotePath: relativePath,
+          })
+        }
+
+        mergedNotes.set(relativePath, { ...note, path: relativePath })
+      }
     }
 
     for (const note of fileNotes) {
       mergedNotes.set(note.path, note)
+    }
+
+    if (
+      !selectedFolder.value ||
+      selectedFolder.value.id !== folderId ||
+      currentMarkdownExportPath().trim() !== projectDir
+    ) {
+      return
     }
 
     folderNotes.value = [...mergedNotes.values()].sort((left, right) => left.path.localeCompare(right.path))
@@ -513,15 +560,29 @@ const handleCreateNote = async (close) => {
   if (!relativePath) return
   if (!confirmDiscardMarkdownChanges()) return
 
+  const folderId = selectedFolder.value.id
+  const projectDir = currentMarkdownExportPath()
   isSavingNote.value = true
   noteActionError.value = ''
 
   try {
     const file = await createMarkdownFile({
-      projectDir: currentMarkdownExportPath(),
+      projectDir,
       relativePath,
       content: '',
     })
+
+    const selectionStillSame = Boolean(
+      selectedFolder.value &&
+      selectedFolder.value.id === folderId &&
+      currentMarkdownExportPath() === projectDir,
+    )
+
+    if (!selectionStillSame) {
+      notePathInput.value = ''
+      close?.()
+      return
+    }
 
     selectedNotePath.value = file.path
     await refreshFolderNotes()
@@ -1046,9 +1107,8 @@ const handleSaveSettings = async () => {
     await saveMarkdownExportPath(settingsMarkdownExportPath.value)
     await refreshAppTitle()
     await refreshMarkdownExportPath()
-    if (shouldReloadMarkdown) {
-      await refreshMessages()
-    }
+    await refreshFolders()
+    await refreshMessages()
     settingsStatus.value = '保存しました'
   } catch (error) {
     settingsStatus.value = error instanceof Error ? error.message : '設定の保存に失敗しました'
