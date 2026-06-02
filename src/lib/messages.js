@@ -359,6 +359,18 @@ export const clearMarkdownMessages = async ({ folderId, notePath }) => {
   )
 }
 
+export const updateMarkdownMessagePath = async ({ folderId, currentNotePath, nextNotePath }) => {
+  const db = await getDatabase()
+  const updatedAt = formatLocalTimestamp(new Date())
+
+  await db.execute(
+    `UPDATE messages
+     SET note_path = ?, updated_at = ?
+     WHERE folder_id = ? AND COALESCE(note_path, '') = ?`,
+    [nextNotePath, updatedAt, folderId, currentNotePath],
+  )
+}
+
 export const exportMessagesToMarkdown = async (messages, exportDir = '') => {
   const result = await invoke('export_messages_to_markdown', {
     exportDir: exportDir.trim() || null,

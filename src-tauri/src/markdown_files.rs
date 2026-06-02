@@ -1,5 +1,5 @@
 use serde::Serialize;
-use std::fs;
+use std::fs::{self, OpenOptions};
 use std::io::ErrorKind;
 use std::path::{Component, Path, PathBuf};
 use std::time::UNIX_EPOCH;
@@ -66,8 +66,18 @@ pub fn create_markdown_file(
             .map_err(|error| format!("保存先フォルダーの作成に失敗しました: {error}"))?;
     }
 
-    fs::write(&file_path, content)
-        .map_err(|error| format!("Markdownファイルの作成に失敗しました: {error}"))?;
+    OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(&file_path)
+        .and_then(|mut file| std::io::Write::write_all(&mut file, content.as_bytes()))
+        .map_err(|error| {
+            if error.kind() == ErrorKind::AlreadyExists {
+                "同じパスのMarkdownファイルが既に存在します".to_string()
+            } else {
+                format!("Markdownファイルの作成に失敗しました: {error}")
+            }
+        })?;
 
     markdown_file_entry(&project_dir, &file_path)
 }
@@ -87,7 +97,9 @@ pub fn rename_markdown_file(
             .map_err(|error| format!("保存先フォルダーの作成に失敗しました: {error}"))?;
     }
 
-    fs::rename(&current_file_path, &next_file_path)
+    fs::hard_link(&current_file_path, &next_file_path)
+        .map_err(|error| format!("Markdownファイルの名前変更に失敗しました: {error}"))?;
+    fs::remove_file(&current_file_path)
         .map_err(|error| format!("Markdownファイルの名前変更に失敗しました: {error}"))?;
 
     markdown_file_entry(&project_dir, &next_file_path)
