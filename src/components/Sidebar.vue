@@ -5,6 +5,7 @@ import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import {
   ChevronDown,
   ChevronRight,
+  FileText,
   Folder,
   Pencil,
   Plus,
@@ -61,6 +62,7 @@ const noteContextMenu = ref({
 const editingNotePath = ref('')
 const noteRenameInput = ref('')
 const noteRenameInputRef = ref(null)
+const expandedNoteDirectoryPaths = ref(new Set())
 
 const foldersByParent = computed(() => {
   return props.folders.reduce((groups, folder) => {
@@ -113,6 +115,122 @@ const selectedFolderName = computed(() => {
   if (props.selectedFolderId === null) return 'フォルダー未選択'
 
   return props.folders.find((folder) => folder.id === props.selectedFolderId)?.name ?? '選択中プロジェクト'
+})
+
+const noteDirectoryPaths = computed(() => {
+  const paths = new Set()
+
+  for (const note of props.notes) {
+    const parts = note.path.split(/[\\/]/).filter(Boolean)
+
+    parts.pop()
+
+    let currentPath = ''
+    for (const part of parts) {
+      currentPath = currentPath ? `${currentPath}/${part}` : part
+      paths.add(currentPath)
+    }
+  }
+
+  return paths
+})
+
+const noteTreeItems = computed(() => {
+  const root = {
+    children: [],
+    childrenByPath: new Map(),
+  }
+
+  const ensureDirectory = ({ parent, name, path, depth }) => {
+    if (parent.childrenByPath.has(path)) {
+      return parent.childrenByPath.get(path)
+    }
+
+    const directory = {
+      type: 'directory',
+      id: `directory:${path}`,
+      name,
+      path,
+      depth,
+      children: [],
+      childrenByPath: new Map(),
+    }
+
+    parent.childrenByPath.set(path, directory)
+    parent.children.push(directory)
+    return directory
+  }
+
+  for (const note of props.notes) {
+    const parts = note.path.split(/[\\/]/).filter(Boolean)
+    const fileName = parts.pop() ?? note.path
+    let parent = root
+    let currentPath = ''
+
+    parts.forEach((part, index) => {
+      currentPath = currentPath ? `${currentPath}/${part}` : part
+      parent = ensureDirectory({
+        parent,
+        name: part,
+        path: currentPath,
+        depth: index,
+      })
+    })
+
+    parent.children.push({
+      type: 'file',
+      id: `file:${note.path}`,
+      name: fileName,
+      path: note.path,
+      note,
+      depth: parts.length,
+    })
+  }
+
+  const sortTreeItems = (items) => {
+    items.sort((left, right) => {
+      if (left.type !== right.type) {
+        return left.type === 'directory' ? -1 : 1
+      }
+
+      return left.name.localeCompare(right.name, 'ja-JP')
+    })
+
+    items.forEach((item) => {
+      if (item.type === 'directory') {
+        sortTreeItems(item.children)
+      }
+    })
+  }
+
+  sortTreeItems(root.children)
+  return root.children
+})
+
+const visibleNoteTreeItems = computed(() => {
+  const items = []
+
+  const appendItems = (treeItems) => {
+    for (const item of treeItems) {
+      if (item.type === 'directory') {
+        const isExpanded = expandedNoteDirectoryPaths.value.has(item.path)
+
+        items.push({
+          ...item,
+          isExpanded,
+        })
+
+        if (isExpanded) {
+          appendItems(item.children)
+        }
+      } else {
+        items.push(item)
+      }
+    }
+  }
+
+  appendItems(noteTreeItems.value)
+  return items
 })
 
 const expandAncestors = (folderId) => {
@@ -304,6 +422,18 @@ const toggleFolder = (folder) => {
   expandedFolderIds.value = nextExpandedIds
 }
 
+const toggleNoteDirectory = (directory) => {
+  const nextExpandedPaths = new Set(expandedNoteDirectoryPaths.value)
+
+  if (nextExpandedPaths.has(directory.path)) {
+    nextExpandedPaths.delete(directory.path)
+  } else {
+    nextExpandedPaths.add(directory.path)
+  }
+
+  expandedNoteDirectoryPaths.value = nextExpandedPaths
+}
+
 const handleDocumentClick = () => {
   closeNoteContextMenu()
 }
@@ -331,6 +461,51 @@ watch(
 
     expandAncestors(folderId)
   },
+)
+
+watch(
+  noteDirectoryPaths,
+  (paths, previousPaths) => {
+    const nextExpandedPaths = new Set(expandedNoteDirectoryPaths.value)
+
+    for (const path of paths) {
+      if (!previousPaths || !previousPaths.has(path)) {
+        nextExpandedPaths.add(path)
+      }
+    }
+
+    for (const path of nextExpandedPaths) {
+      if (!paths.has(path)) {
+        nextExpandedPaths.delete(path)
+      }
+    }
+
+    expandedNoteDirectoryPaths.value = nextExpandedPaths
+  },
+  { immediate: true },
+)
+
+watch(
+  () => props.selectedNotePath,
+  (notePath) => {
+    if (!notePath) return
+
+    const parts = notePath.split(/[\\/]/).filter(Boolean)
+
+    parts.pop()
+    if (parts.length === 0) return
+
+    const nextExpandedPaths = new Set(expandedNoteDirectoryPaths.value)
+    let currentPath = ''
+
+    for (const part of parts) {
+      currentPath = currentPath ? `${currentPath}/${part}` : part
+      nextExpandedPaths.add(currentPath)
+    }
+
+    expandedNoteDirectoryPaths.value = nextExpandedPaths
+  },
+  { immediate: true },
 )
 </script>
 
@@ -401,25 +576,42 @@ watch(
           <div v-else-if="notes.length === 0" class="empty-folders">このプロジェクトにファイルはありません</div>
           <template v-else>
             <div
-              v-for="note in notes"
-              :key="note.path"
+              v-for="item in visibleNoteTreeItems"
+              :key="item.id"
               class="note"
               :class="{
-                active: selectedNotePath === note.path,
-                'menu-open': noteContextMenu.isOpen && noteContextMenu.note?.path === note.path,
-                editing: editingNotePath === note.path,
+                'is-directory': item.type === 'directory',
+                active: item.type === 'file' && selectedNotePath === item.path,
+                'menu-open': item.type === 'file' && noteContextMenu.isOpen && noteContextMenu.note?.path === item.path,
+                editing: item.type === 'file' && editingNotePath === item.path,
               }"
-              @contextmenu.prevent="openNoteContextMenu($event, note)"
+              :style="{ '--note-depth': item.depth }"
+              @contextmenu.prevent="item.type === 'file' ? openNoteContextMenu($event, item.note) : undefined"
             >
               <button
-                v-if="editingNotePath !== note.path"
+                v-if="item.type === 'directory'"
+                type="button"
+                class="note-directory"
+                :aria-expanded="item.isExpanded"
+                :aria-label="item.isExpanded ? `${item.name}を折りたたむ` : `${item.name}を展開する`"
+                @click="toggleNoteDirectory(item)"
+              >
+                <ChevronDown v-if="item.isExpanded" :size="14" />
+                <ChevronRight v-else :size="14" />
+                <Folder :size="15" />
+                <span class="note-directory-name">{{ item.name }}</span>
+              </button>
+              <button
+                v-else-if="editingNotePath !== item.path"
                 type="button"
                 class="note-select"
-                @click="selectNote(note)"
-                @keydown="handleNoteMenuKeydown($event, note)"
+                :title="item.path"
+                @click="selectNote(item.note)"
+                @keydown="handleNoteMenuKeydown($event, item.note)"
               >
+                <FileText class="note-file-icon" :size="15" />
                 <div class="note-body">
-                  <p class="title">{{ noteFileName(note.path) }}</p>
+                  <p class="title">{{ item.name }}</p>
                 </div>
               </button>
               <input
@@ -429,8 +621,8 @@ watch(
                 class="note-rename-input"
                 type="text"
                 aria-label="ノート名"
-                @blur="commitRenameNote(note)"
-                @keydown.enter.prevent="commitRenameNote(note)"
+                @blur="commitRenameNote(item.note)"
+                @keydown.enter.prevent="commitRenameNote(item.note)"
                 @keydown.esc.prevent="cancelRenameNote"
                 @click.stop
               />
@@ -706,6 +898,7 @@ watch(
   color: var(--text-secondary);
   font: inherit;
   text-align: left;
+  --note-depth: 0;
 }
 
 .note:hover,
@@ -721,13 +914,51 @@ watch(
   width: 100%;
   display: flex;
   flex: 1;
+  align-items: center;
+  gap: 8px;
   padding: 4px;
+  padding-left: calc(4px + var(--note-depth) * 16px);
   border: none;
   background: transparent;
   color: inherit;
   cursor: pointer;
   font: inherit;
   text-align: left;
+}
+
+.note-directory {
+  min-width: 0;
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px;
+  padding-left: calc(4px + var(--note-depth) * 16px);
+  border: none;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  text-align: left;
+}
+
+.note-directory-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.note-file-icon {
+  flex: 0 0 auto;
+  color: var(--text-tertiary);
+}
+
+.note.active .note-file-icon,
+.note:hover .note-file-icon {
+  color: var(--text-primary);
 }
 
 .note-body {
@@ -740,6 +971,7 @@ watch(
   width: 100%;
   box-sizing: border-box;
   padding: 4px 6px;
+  margin-left: calc(var(--note-depth) * 16px);
   border: 1px solid var(--border-subtle);
   border-radius: 5px;
   background: var(--bg-base-2);
