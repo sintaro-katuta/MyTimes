@@ -63,6 +63,7 @@ const markdownEditorError = ref('')
 const exportStatus = ref('')
 const selectedMarkdownContent = ref('')
 const selectedMarkdownSignature = ref('')
+const isSelectedNoteDbFallback = ref(false)
 const refreshMessagesRequestId = ref(0)
 const markdownExportPath = ref('')
 const appTitle = ref('デイリー分報')
@@ -86,11 +87,18 @@ const selectedFolder = computed(() => {
 
 const isMarkdownSendDisabled = computed(() =>
   isSavingNote.value ||
+  isSelectedNoteDbFallback.value ||
   Boolean(selectedFolder.value && !selectedNotePath.value),
 )
 
 const canUseMarkdownModes = computed(() =>
-  Boolean(selectedFolder.value && selectedNotePath.value && !isLoadingMessages.value && !loadMessageError.value),
+  Boolean(
+    selectedFolder.value &&
+    selectedNotePath.value &&
+    !isSelectedNoteDbFallback.value &&
+    !isLoadingMessages.value &&
+    !loadMessageError.value,
+  ),
 )
 
 const isMarkdownDirty = computed(() => markdownDraft.value !== selectedMarkdownContent.value)
@@ -98,6 +106,7 @@ const isMarkdownDirty = computed(() => markdownDraft.value !== selectedMarkdownC
 const isReloadMarkdownDisabled = computed(() =>
   !selectedFolder.value ||
   !selectedNotePath.value ||
+  isSelectedNoteDbFallback.value ||
   isLoadingMessages.value ||
   isSendingMessage.value ||
   isSavingMarkdown.value ||
@@ -359,6 +368,7 @@ const refreshMessages = async () => {
       selectedMarkdownContent.value = ''
       markdownDraft.value = ''
       selectedMarkdownSignature.value = ''
+      isSelectedNoteDbFallback.value = false
       viewMode.value = 'chat'
 
       let markdown = ''
@@ -388,6 +398,7 @@ const refreshMessages = async () => {
         }
 
         messages.value = rows.map(toViewMessage)
+        isSelectedNoteDbFallback.value = true
         await scrollMessagesToBottom()
         if (requestId !== refreshMessagesRequestId.value) return
 
@@ -406,6 +417,7 @@ const refreshMessages = async () => {
       }
 
       await applyMarkdownDocument({ markdown, parsed, relativePath })
+      isSelectedNoteDbFallback.value = false
 
       await scrollMessagesToBottom()
       if (requestId !== refreshMessagesRequestId.value) return
@@ -417,6 +429,7 @@ const refreshMessages = async () => {
     selectedMarkdownContent.value = ''
     markdownDraft.value = ''
     selectedMarkdownSignature.value = ''
+    isSelectedNoteDbFallback.value = false
     viewMode.value = 'chat'
 
     const rows = await loadStoredMessages({
@@ -438,6 +451,7 @@ const refreshMessages = async () => {
     selectedMarkdownContent.value = ''
     markdownDraft.value = ''
     selectedMarkdownSignature.value = ''
+    isSelectedNoteDbFallback.value = false
     viewMode.value = 'chat'
     loadMessageError.value = error instanceof Error ? error.message : 'Markdownファイルの読み込みに失敗しました'
     await clearSelectedMarkdownMessages()
@@ -926,7 +940,7 @@ const sendMessage = async () => {
       return
     }
 
-    if (selectedFolder.value && selectedNotePath.value) {
+    if (selectedFolder.value && selectedNotePath.value && !isSelectedNoteDbFallback.value) {
       const projectDir = currentMarkdownExportPath()
       const relativePath = selectedNotePath.value
       const { date, time } = currentLocalDateParts()
@@ -1025,7 +1039,15 @@ const sendMessage = async () => {
 }
 
 const saveMarkdownDraft = async () => {
-  if (!selectedFolder.value || !selectedNotePath.value || isSavingMarkdown.value || isSavingNote.value) return
+  if (
+    !selectedFolder.value ||
+    !selectedNotePath.value ||
+    isSelectedNoteDbFallback.value ||
+    isSavingMarkdown.value ||
+    isSavingNote.value
+  ) {
+    return
+  }
 
   const projectDir = currentMarkdownExportPath()
   const relativePath = selectedNotePath.value
@@ -1088,8 +1110,11 @@ const revertMarkdownDraft = () => {
 
 const handleSaveSettings = async () => {
   const nextMarkdownExportPath = settingsMarkdownExportPath.value.trim()
+  const previousMarkdownExportPath = markdownExportPath.value.trim()
+  const previousSelectedFolderId = selectedFolderId.value
+  const previousSelectedNotePath = selectedNotePath.value
   const shouldReloadMarkdown = Boolean(
-    selectedFolder.value && nextMarkdownExportPath !== markdownExportPath.value.trim(),
+    selectedFolder.value && nextMarkdownExportPath !== previousMarkdownExportPath,
   )
 
   if (
@@ -1108,7 +1133,14 @@ const handleSaveSettings = async () => {
     await refreshAppTitle()
     await refreshMarkdownExportPath()
     await refreshFolders()
-    await refreshMessages()
+    const selectionChanged = (
+      selectedFolderId.value !== previousSelectedFolderId ||
+      selectedNotePath.value !== previousSelectedNotePath
+    )
+
+    if (nextMarkdownExportPath !== previousMarkdownExportPath || selectionChanged) {
+      await refreshMessages()
+    }
     settingsStatus.value = '保存しました'
   } catch (error) {
     settingsStatus.value = error instanceof Error ? error.message : '設定の保存に失敗しました'

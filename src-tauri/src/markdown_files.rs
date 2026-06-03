@@ -90,15 +90,21 @@ pub fn rename_markdown_file(
 ) -> Result<MarkdownFileEntry, String> {
     let project_dir = canonical_project_dir(&project_dir)?;
     let current_file_path = resolve_existing_markdown_file(&project_dir, &current_relative_path)?;
-    let next_file_path = resolve_new_markdown_file(&project_dir, &next_relative_path)?;
+    let next_file_path = resolve_writable_markdown_file(&project_dir, &next_relative_path)?;
 
     if let Some(parent) = next_file_path.parent() {
         fs::create_dir_all(parent)
             .map_err(|error| format!("保存先フォルダーの作成に失敗しました: {error}"))?;
     }
 
-    move_file_without_replacing(&current_file_path, &next_file_path)
-        .map_err(|error| format!("Markdownファイルの名前変更に失敗しました: {error}"))?;
+    if paths_point_to_same_file(&current_file_path, &next_file_path) {
+        rename_same_file_with_temporary_path(&current_file_path, &next_file_path)
+            .map_err(|error| format!("Markdownファイルの名前変更に失敗しました: {error}"))?;
+    } else {
+        resolve_new_markdown_file(&project_dir, &next_relative_path)?;
+        move_file_without_replacing(&current_file_path, &next_file_path)
+            .map_err(|error| format!("Markdownファイルの名前変更に失敗しました: {error}"))?;
+    }
 
     markdown_file_entry(&project_dir, &next_file_path)
 }
@@ -206,6 +212,55 @@ fn move_file_without_replacing(from: &Path, to: &Path) -> io::Result<()> {
     }
 
     Ok(())
+}
+
+fn paths_point_to_same_file(left: &Path, right: &Path) -> bool {
+    match (left.canonicalize(), right.canonicalize()) {
+        (Ok(left), Ok(right)) => left == right,
+        _ => false,
+    }
+}
+
+fn rename_same_file_with_temporary_path(from: &Path, to: &Path) -> io::Result<()> {
+    if from == to {
+        return Ok(());
+    }
+
+    let temporary_path = temporary_rename_path(from)?;
+
+    fs::rename(from, &temporary_path)?;
+
+    if let Err(error) = fs::rename(&temporary_path, to) {
+        let _ = fs::rename(&temporary_path, from);
+        return Err(error);
+    }
+
+    Ok(())
+}
+
+fn temporary_rename_path(path: &Path) -> io::Result<PathBuf> {
+    let parent = path.parent().ok_or_else(|| {
+        io::Error::new(ErrorKind::InvalidInput, "保存先フォルダーを解決できません")
+    })?;
+    let stem = path
+        .file_stem()
+        .and_then(|value| value.to_str())
+        .filter(|value| !value.is_empty())
+        .unwrap_or("markdown");
+
+    for index in 0..1000 {
+        let candidate = parent.join(format!(".{stem}.mytimes-rename-{index}.tmp"));
+
+        if fs::symlink_metadata(&candidate).is_err_and(|error| error.kind() == ErrorKind::NotFound)
+        {
+            return Ok(candidate);
+        }
+    }
+
+    Err(io::Error::new(
+        ErrorKind::AlreadyExists,
+        "一時ファイル名を確保できません",
+    ))
 }
 
 fn resolve_writable_markdown_file(
