@@ -8,9 +8,12 @@ import Message from './components/Message.vue'
 import Input from './components/Input.vue'
 import {
   appendChatMessageToMarkdown,
+  createMarkdownFile,
+  deleteMarkdownFile,
   listMarkdownFiles,
   parseMarkdownToChat,
   readMarkdownFile,
+  renameMarkdownFile,
   saveMarkdownFile,
 } from './lib/markdownFiles'
 import {
@@ -18,8 +21,8 @@ import {
   createMessage,
   exportMessagesToMarkdown,
   loadAppTitle,
-  loadFolderNotes as loadStoredFolderNotes,
   loadFolders as loadStoredFolders,
+  loadFolderNotes as loadStoredFolderNotes,
   loadMarkdownExportPath,
   loadMessages as loadStoredMessages,
   registerProject,
@@ -29,6 +32,7 @@ import {
   saveMarkdownExportPath,
   saveProjectDisplayName,
   syncMarkdownMessages,
+  updateMarkdownMessagePath,
 } from './lib/messages'
 
 const isModalOpen = ref(false)
@@ -48,6 +52,7 @@ const isLoadingFolderNotes = ref(false)
 const isSendingMessage = ref(false)
 const isSavingMarkdown = ref(false)
 const isReloadingMarkdown = ref(false)
+const isSavingNote = ref(false)
 const isSavingSettings = ref(false)
 const isBrowsing = ref(false)
 const loadMessageError = ref('')
@@ -58,6 +63,7 @@ const markdownEditorError = ref('')
 const exportStatus = ref('')
 const selectedMarkdownContent = ref('')
 const selectedMarkdownSignature = ref('')
+const isSelectedNoteDbFallback = ref(false)
 const refreshMessagesRequestId = ref(0)
 const markdownExportPath = ref('')
 const appTitle = ref('デイリー分報')
@@ -70,6 +76,8 @@ const renameFolderName = ref('')
 const folderIconPath = ref('')
 const folderMarkdownExportPath = ref('')
 const settingsStatus = ref('')
+const notePathInput = ref('')
+const noteActionError = ref('')
 
 const selectedFolder = computed(() => {
   if (selectedFolderId.value === null) return null
@@ -77,10 +85,20 @@ const selectedFolder = computed(() => {
   return folders.value.find((folder) => folder.id === selectedFolderId.value) ?? null
 })
 
-const isMarkdownSendDisabled = computed(() => Boolean(selectedFolder.value && !selectedNotePath.value))
+const isMarkdownSendDisabled = computed(() =>
+  isSavingNote.value ||
+  isSelectedNoteDbFallback.value ||
+  Boolean(selectedFolder.value && !selectedNotePath.value),
+)
 
 const canUseMarkdownModes = computed(() =>
-  Boolean(selectedFolder.value && selectedNotePath.value && !isLoadingMessages.value && !loadMessageError.value),
+  Boolean(
+    selectedFolder.value &&
+    selectedNotePath.value &&
+    !isSelectedNoteDbFallback.value &&
+    !isLoadingMessages.value &&
+    !loadMessageError.value,
+  ),
 )
 
 const isMarkdownDirty = computed(() => markdownDraft.value !== selectedMarkdownContent.value)
@@ -88,10 +106,12 @@ const isMarkdownDirty = computed(() => markdownDraft.value !== selectedMarkdownC
 const isReloadMarkdownDisabled = computed(() =>
   !selectedFolder.value ||
   !selectedNotePath.value ||
+  isSelectedNoteDbFallback.value ||
   isLoadingMessages.value ||
   isSendingMessage.value ||
   isSavingMarkdown.value ||
-  isReloadingMarkdown.value,
+  isReloadingMarkdown.value ||
+  isSavingNote.value,
 )
 
 const modalSize = computed(() =>
@@ -126,6 +146,15 @@ const openFolderSettingsModal = () => {
   isModalOpen.value = true
 }
 
+const openCreateNoteModal = () => {
+  if (!selectedFolder.value) return
+
+  modalMode.value = 'create-note'
+  notePathInput.value = ''
+  noteActionError.value = ''
+  isModalOpen.value = true
+}
+
 const closeModal = () => {
   isModalOpen.value = false
 }
@@ -154,6 +183,33 @@ const scrollMessagesToBottom = async () => {
   messagesRef.value.scrollTop = messagesRef.value.scrollHeight
 }
 
+const normalizePathSeparators = (path) => path.trim().replaceAll('\\', '/')
+
+const isAbsolutePathText = (path) => path.startsWith('/') || /^[A-Za-z]:\//.test(path)
+
+const relativeNotePathFromProject = (notePath, projectDir) => {
+  const normalizedNotePath = normalizePathSeparators(notePath)
+
+  if (!normalizedNotePath) return ''
+
+  if (!isAbsolutePathText(normalizedNotePath)) {
+    return normalizedNotePath.replace(/^\/+/, '')
+  }
+
+  const normalizedProjectDir = normalizePathSeparators(projectDir).replace(/\/+$/, '')
+  const normalizedProjectDirForCompare = normalizedProjectDir.toLowerCase()
+  const normalizedNotePathForCompare = normalizedNotePath.toLowerCase()
+
+  if (
+    !normalizedProjectDir ||
+    !normalizedNotePathForCompare.startsWith(`${normalizedProjectDirForCompare}/`)
+  ) {
+    return ''
+  }
+
+  return normalizedNotePath.slice(normalizedProjectDir.length + 1)
+}
+
 const refreshFolders = async () => {
   isLoadingFolders.value = true
   loadFolderError.value = ''
@@ -161,12 +217,16 @@ const refreshFolders = async () => {
   try {
     const rows = await loadStoredFolders()
     folders.value = rows
+    const rootFolderId = rows.find((folder) => Boolean(folder.isRoot))?.id ?? null
 
-    if (
-      selectedFolderId.value !== null &&
-      !rows.some((folder) => folder.id === selectedFolderId.value)
-    ) {
-      selectedFolderId.value = null
+    const shouldSelectRoot = Boolean(rootFolderId && markdownExportPath.value.trim())
+
+    if (selectedFolderId.value === null) {
+      if (shouldSelectRoot) {
+        selectedFolderId.value = rootFolderId
+      }
+    } else if (!rows.some((folder) => folder.id === selectedFolderId.value)) {
+      selectedFolderId.value = shouldSelectRoot ? rootFolderId : null
     }
   } catch (error) {
     loadFolderError.value = error instanceof Error ? error.message : 'プロジェクト一覧の読み込みに失敗しました'
@@ -180,9 +240,46 @@ const refreshFolderNotes = async () => {
   loadFolderNotesError.value = ''
 
   try {
-    folderNotes.value = selectedFolder.value
-      ? await listMarkdownFiles(currentMarkdownExportPath())
-      : await loadStoredFolderNotes({ folderId: selectedFolderId.value })
+    if (!selectedFolder.value) {
+      folderNotes.value = []
+      return
+    }
+
+    const folderId = selectedFolder.value.id
+    const projectDir = currentMarkdownExportPath().trim()
+    const storedNotes = await loadStoredFolderNotes({ folderId })
+    const fileNotes = projectDir ? await listMarkdownFiles(projectDir) : []
+    const mergedNotes = new Map()
+
+    for (const note of storedNotes) {
+      const relativePath = relativeNotePathFromProject(note.path, projectDir)
+
+      if (relativePath) {
+        if (relativePath !== note.path) {
+          await updateMarkdownMessagePath({
+            folderId,
+            currentNotePath: note.path,
+            nextNotePath: relativePath,
+          })
+        }
+
+        mergedNotes.set(relativePath, { ...note, path: relativePath })
+      }
+    }
+
+    for (const note of fileNotes) {
+      mergedNotes.set(note.path, note)
+    }
+
+    if (
+      !selectedFolder.value ||
+      selectedFolder.value.id !== folderId ||
+      currentMarkdownExportPath().trim() !== projectDir
+    ) {
+      return
+    }
+
+    folderNotes.value = [...mergedNotes.values()].sort((left, right) => left.path.localeCompare(right.path))
     loadFolderError.value = ''
   } catch (error) {
     loadFolderNotesError.value = error instanceof Error ? error.message : 'ファイル一覧の読み込みに失敗しました'
@@ -264,23 +361,55 @@ const refreshMessages = async () => {
 
   try {
     if (selectedFolder.value && selectedNotePath.value) {
+      const folderId = selectedFolder.value.id
       const projectDir = currentMarkdownExportPath()
       const relativePath = selectedNotePath.value
 
       selectedMarkdownContent.value = ''
       markdownDraft.value = ''
       selectedMarkdownSignature.value = ''
+      isSelectedNoteDbFallback.value = false
       viewMode.value = 'chat'
 
-      const markdown = await readMarkdownFile({
-        projectDir,
-        relativePath,
-      })
-      const parsed = await parseMarkdownToChat(markdown)
+      let markdown = ''
+      let parsed = null
+
+      try {
+        markdown = await readMarkdownFile({
+          projectDir,
+          relativePath,
+        })
+        parsed = await parseMarkdownToChat(markdown)
+      } catch (error) {
+        const rows = await loadStoredMessages({ folderId, notePath: relativePath })
+
+        if (rows.length === 0) {
+          throw error
+        }
+
+        if (
+          requestId !== refreshMessagesRequestId.value ||
+          !selectedFolder.value ||
+          selectedFolder.value.id !== folderId ||
+          currentMarkdownExportPath() !== projectDir ||
+          selectedNotePath.value !== relativePath
+        ) {
+          return
+        }
+
+        messages.value = rows.map(toViewMessage)
+        isSelectedNoteDbFallback.value = true
+        await scrollMessagesToBottom()
+        if (requestId !== refreshMessagesRequestId.value) return
+
+        await refreshFolderNotes()
+        return
+      }
 
       if (
         requestId !== refreshMessagesRequestId.value ||
         !selectedFolder.value ||
+        selectedFolder.value.id !== folderId ||
         currentMarkdownExportPath() !== projectDir ||
         selectedNotePath.value !== relativePath
       ) {
@@ -288,6 +417,7 @@ const refreshMessages = async () => {
       }
 
       await applyMarkdownDocument({ markdown, parsed, relativePath })
+      isSelectedNoteDbFallback.value = false
 
       await scrollMessagesToBottom()
       if (requestId !== refreshMessagesRequestId.value) return
@@ -299,15 +429,8 @@ const refreshMessages = async () => {
     selectedMarkdownContent.value = ''
     markdownDraft.value = ''
     selectedMarkdownSignature.value = ''
+    isSelectedNoteDbFallback.value = false
     viewMode.value = 'chat'
-
-    if (selectedFolder.value) {
-      if (requestId !== refreshMessagesRequestId.value) return
-
-      messages.value = []
-      await refreshFolderNotes()
-      return
-    }
 
     const rows = await loadStoredMessages({
       folderId: selectedFolderId.value,
@@ -328,6 +451,7 @@ const refreshMessages = async () => {
     selectedMarkdownContent.value = ''
     markdownDraft.value = ''
     selectedMarkdownSignature.value = ''
+    isSelectedNoteDbFallback.value = false
     viewMode.value = 'chat'
     loadMessageError.value = error instanceof Error ? error.message : 'Markdownファイルの読み込みに失敗しました'
     await clearSelectedMarkdownMessages()
@@ -404,6 +528,13 @@ const reloadSelectedMarkdown = async () => {
 
 const getPathBaseName = (path) => path.split(/[\\/]/).filter(Boolean).at(-1) ?? path
 
+const normalizeMarkdownNotePath = (value) => {
+  const normalized = value.trim().replaceAll('\\', '/').replace(/^\/+/, '')
+
+  if (!normalized) return ''
+  return normalized.toLowerCase().endsWith('.md') ? normalized : `${normalized}.md`
+}
+
 const handleCreateFolder = async (close) => {
   const directoryPath = projectDirectoryPath.value.trim()
 
@@ -432,6 +563,171 @@ const handleCreateFolder = async (close) => {
     close()
   } catch (error) {
     loadFolderError.value = error instanceof Error ? error.message : 'プロジェクトの登録に失敗しました'
+  }
+}
+
+const handleCreateNote = async (close) => {
+  if (!selectedFolder.value || isSavingNote.value) return
+
+  const relativePath = normalizeMarkdownNotePath(notePathInput.value)
+
+  if (!relativePath) return
+  if (!confirmDiscardMarkdownChanges()) return
+
+  const folderId = selectedFolder.value.id
+  const projectDir = currentMarkdownExportPath()
+  isSavingNote.value = true
+  noteActionError.value = ''
+
+  try {
+    const file = await createMarkdownFile({
+      projectDir,
+      relativePath,
+      content: '',
+    })
+
+    const selectionStillSame = Boolean(
+      selectedFolder.value &&
+      selectedFolder.value.id === folderId &&
+      currentMarkdownExportPath() === projectDir,
+    )
+
+    if (!selectionStillSame) {
+      notePathInput.value = ''
+      close?.()
+      return
+    }
+
+    selectedNotePath.value = file.path
+    await refreshFolderNotes()
+    await refreshMessages()
+    viewMode.value = 'markdown'
+    notePathInput.value = ''
+    close()
+  } catch (error) {
+    noteActionError.value = error instanceof Error ? error.message : 'ノートの作成に失敗しました'
+  } finally {
+    isSavingNote.value = false
+  }
+}
+
+const handleRenameNoteInline = async ({ currentRelativePath, nextRelativePath }) => {
+  await renameNotePath({
+    currentRelativePath,
+    nextRelativePath,
+    setError: (message) => {
+      loadFolderNotesError.value = message
+    },
+  })
+}
+
+const renameNotePath = async ({
+  currentRelativePath,
+  nextRelativePath,
+  close = null,
+  setError = null,
+}) => {
+  if (!selectedFolder.value || !currentRelativePath || isSavingNote.value) return false
+
+  const normalizedNextRelativePath = normalizeMarkdownNotePath(nextRelativePath)
+
+  if (!normalizedNextRelativePath || normalizedNextRelativePath === currentRelativePath) {
+    close?.()
+    return true
+  }
+
+  if (!confirmDiscardMarkdownChanges()) return false
+
+  const folderId = selectedFolder.value.id
+  const projectDir = currentMarkdownExportPath()
+  const wasSelectedNote = selectedNotePath.value === currentRelativePath
+  isSavingNote.value = true
+  noteActionError.value = ''
+  loadFolderNotesError.value = ''
+
+  try {
+    const file = await renameMarkdownFile({
+      projectDir,
+      currentRelativePath,
+      nextRelativePath: normalizedNextRelativePath,
+    })
+
+    await updateMarkdownMessagePath({
+      folderId,
+      currentNotePath: currentRelativePath,
+      nextNotePath: file.path,
+    })
+
+    const selectionStillSame = Boolean(
+      selectedFolder.value &&
+      selectedFolder.value.id === folderId &&
+      currentMarkdownExportPath() === projectDir,
+    )
+
+    if (!selectionStillSame) {
+      close?.()
+      return true
+    }
+
+    if (wasSelectedNote && selectedNotePath.value === currentRelativePath) {
+      selectedNotePath.value = file.path
+    }
+
+    await refreshFolderNotes()
+    await refreshMessages()
+    notePathInput.value = ''
+    close?.()
+    return true
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'ノート名の変更に失敗しました'
+    setError?.(message)
+    return false
+  } finally {
+    isSavingNote.value = false
+  }
+}
+
+const handleDeleteNote = async (notePath) => {
+  if (!selectedFolder.value || !notePath || isSavingNote.value) return
+  if (!confirmDiscardMarkdownChanges()) return
+  if (!window.confirm(`${notePath} を削除しますか？この操作は元に戻せません。`)) return
+
+  const folderId = selectedFolder.value.id
+  const projectDir = currentMarkdownExportPath()
+  const wasSelectedNote = selectedNotePath.value === notePath
+  isSavingNote.value = true
+  loadFolderNotesError.value = ''
+  loadMessageError.value = ''
+
+  try {
+    await deleteMarkdownFile({
+      projectDir: currentMarkdownExportPath(),
+      relativePath: notePath,
+    })
+    await clearMarkdownMessages({
+      folderId,
+      notePath,
+    })
+
+    const selectionStillSame = Boolean(
+      selectedFolder.value &&
+      selectedFolder.value.id === folderId &&
+      currentMarkdownExportPath() === projectDir,
+    )
+
+    if (!selectionStillSame) return
+
+    if (wasSelectedNote && selectedNotePath.value === notePath) {
+      selectedNotePath.value = null
+      viewMode.value = 'chat'
+    }
+
+    await refreshFolderNotes()
+    await refreshMessages()
+  } catch (error) {
+    loadFolderNotesError.value = error instanceof Error ? error.message : 'ノートの削除に失敗しました'
+  } finally {
+    isSavingNote.value = false
   }
 }
 
@@ -606,6 +902,8 @@ const currentMarkdownExportPath = () => {
 
   const folderPath = selectedFolder.value.markdownExportPath?.trim() || selectedFolder.value.path
 
+  if (!folderPath) return basePath
+
   if (isAbsolutePath(folderPath) || !basePath) {
     return folderPath
   }
@@ -642,7 +940,7 @@ const sendMessage = async () => {
       return
     }
 
-    if (selectedFolder.value && selectedNotePath.value) {
+    if (selectedFolder.value && selectedNotePath.value && !isSelectedNoteDbFallback.value) {
       const projectDir = currentMarkdownExportPath()
       const relativePath = selectedNotePath.value
       const { date, time } = currentLocalDateParts()
@@ -741,7 +1039,15 @@ const sendMessage = async () => {
 }
 
 const saveMarkdownDraft = async () => {
-  if (!selectedFolder.value || !selectedNotePath.value || isSavingMarkdown.value) return
+  if (
+    !selectedFolder.value ||
+    !selectedNotePath.value ||
+    isSelectedNoteDbFallback.value ||
+    isSavingMarkdown.value ||
+    isSavingNote.value
+  ) {
+    return
+  }
 
   const projectDir = currentMarkdownExportPath()
   const relativePath = selectedNotePath.value
@@ -804,8 +1110,11 @@ const revertMarkdownDraft = () => {
 
 const handleSaveSettings = async () => {
   const nextMarkdownExportPath = settingsMarkdownExportPath.value.trim()
+  const previousMarkdownExportPath = markdownExportPath.value.trim()
+  const previousSelectedFolderId = selectedFolderId.value
+  const previousSelectedNotePath = selectedNotePath.value
   const shouldReloadMarkdown = Boolean(
-    selectedFolder.value && nextMarkdownExportPath !== markdownExportPath.value.trim(),
+    selectedFolder.value && nextMarkdownExportPath !== previousMarkdownExportPath,
   )
 
   if (
@@ -823,7 +1132,13 @@ const handleSaveSettings = async () => {
     await saveMarkdownExportPath(settingsMarkdownExportPath.value)
     await refreshAppTitle()
     await refreshMarkdownExportPath()
-    if (shouldReloadMarkdown) {
+    await refreshFolders()
+    const selectionChanged = (
+      selectedFolderId.value !== previousSelectedFolderId ||
+      selectedNotePath.value !== previousSelectedNotePath
+    )
+
+    if (nextMarkdownExportPath !== previousMarkdownExportPath || selectionChanged) {
       await refreshMessages()
     }
     settingsStatus.value = '保存しました'
@@ -858,12 +1173,12 @@ const handleBrowseMarkdownExportPath = async () => {
 }
 
 onMounted(async () => {
+  await refreshMarkdownExportPath().catch((error) => {
+    loadMessageError.value = error instanceof Error ? error.message : '設定の読み込みに失敗しました'
+  })
   await refreshFolders()
   await refreshMessages()
   refreshAppTitle().catch((error) => {
-    loadMessageError.value = error instanceof Error ? error.message : '設定の読み込みに失敗しました'
-  })
-  refreshMarkdownExportPath().catch((error) => {
     loadMessageError.value = error instanceof Error ? error.message : '設定の読み込みに失敗しました'
   })
 })
@@ -881,6 +1196,9 @@ onMounted(async () => {
         :selected-note-path="selectedNotePath"
         @open-create-folder="openCreateFolderModal"
         @open-folder-settings="openFolderSettingsModal"
+        @open-create-note="openCreateNoteModal"
+        @rename-note="handleRenameNoteInline"
+        @delete-note="handleDeleteNote"
         @select-folder="selectFolder"
         @select-note="selectNote"
         @select-folder-notes="selectAllNotesInFolder"
@@ -929,7 +1247,6 @@ onMounted(async () => {
         <div v-if="viewMode === 'chat'" ref="messagesRef" class="messages">
           <p v-if="isLoadingMessages" class="messages-state">メッセージを読み込み中</p>
           <p v-else-if="loadMessageError" class="messages-state is-error">{{ loadMessageError }}</p>
-          <p v-else-if="selectedFolder && selectedNotePath === null" class="messages-state">ファイルを選択してください</p>
           <p v-else-if="messages.length === 0" class="messages-state">まだメッセージはありません</p>
           <template v-else>
             <Message
@@ -948,7 +1265,7 @@ onMounted(async () => {
               <button
                 type="button"
                 class="secondary-button"
-                :disabled="isSavingMarkdown || !isMarkdownDirty"
+                :disabled="isSavingMarkdown || isSavingNote || !isMarkdownDirty"
                 @click="revertMarkdownDraft"
               >
                 破棄
@@ -956,7 +1273,7 @@ onMounted(async () => {
               <button
                 type="button"
                 class="primary-button"
-                :disabled="isSavingMarkdown || !isMarkdownDirty"
+                :disabled="isSavingMarkdown || isSavingNote || !isMarkdownDirty"
                 @click="saveMarkdownDraft"
               >
                 {{ isSavingMarkdown ? '保存中' : '保存' }}
@@ -968,6 +1285,7 @@ onMounted(async () => {
             class="markdown-textarea"
             aria-label="Markdown本文"
             spellcheck="false"
+            :disabled="isSavingNote"
           />
           <p v-if="markdownEditorError" class="settings-status is-error" role="alert">{{ markdownEditorError }}</p>
         </div>
@@ -989,7 +1307,9 @@ onMounted(async () => {
               ? 'アプリ設定'
               : modalMode === 'folder-settings'
                 ? 'プロジェクト設定'
-                : 'プロジェクト登録'
+                : modalMode === 'create-note'
+                  ? 'ノート作成'
+                  : 'プロジェクト登録'
           }}
         </h2>
       </template>
@@ -1127,10 +1447,36 @@ onMounted(async () => {
           </div>
           <p v-if="loadFolderError" class="settings-status is-error">{{ loadFolderError }}</p>
         </form>
+        <form
+          v-else-if="modalMode === 'create-note'"
+          class="settings-form"
+          @submit.prevent="handleCreateNote(closeModal)"
+        >
+          <label class="field-label" for="note-path">ノートファイル名</label>
+          <input
+            id="note-path"
+            v-model="notePathInput"
+            class="path-input"
+            type="text"
+            placeholder="2026-05-30.md"
+          />
+          <p v-if="noteActionError" class="settings-status is-error">{{ noteActionError }}</p>
+        </form>
       </template>
       <template v-if="modalMode === 'create-project'" #footer="{ close }">
         <button type="button" class="secondary-button" @click="close">キャンセル</button>
         <button type="button" class="primary-button" @click="handleCreateFolder(close)">登録</button>
+      </template>
+      <template v-else-if="modalMode === 'create-note'" #footer="{ close }">
+        <button type="button" class="secondary-button" @click="close">キャンセル</button>
+        <button
+          type="button"
+          class="primary-button"
+          :disabled="isSavingNote || !notePathInput.trim()"
+          @click="handleCreateNote(close)"
+        >
+          {{ isSavingNote ? '作成中' : '作成' }}
+        </button>
       </template>
     </Modal>
   </div>

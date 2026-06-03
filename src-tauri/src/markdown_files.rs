@@ -1,6 +1,6 @@
 use serde::Serialize;
-use std::fs;
-use std::io::ErrorKind;
+use std::fs::{self, OpenOptions};
+use std::io::{self, ErrorKind};
 use std::path::{Component, Path, PathBuf};
 use std::time::UNIX_EPOCH;
 
@@ -50,6 +50,72 @@ pub fn save_markdown_file(
         .map_err(|error| format!("Markdownファイルの保存に失敗しました: {error}"))?;
 
     markdown_file_entry(&project_dir, &file_path)
+}
+
+#[tauri::command]
+pub fn create_markdown_file(
+    project_dir: String,
+    relative_path: String,
+    content: String,
+) -> Result<MarkdownFileEntry, String> {
+    let project_dir = canonical_project_dir(&project_dir)?;
+    let file_path = resolve_new_markdown_file(&project_dir, &relative_path)?;
+
+    if let Some(parent) = file_path.parent() {
+        fs::create_dir_all(parent)
+            .map_err(|error| format!("保存先フォルダーの作成に失敗しました: {error}"))?;
+    }
+
+    OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(&file_path)
+        .and_then(|mut file| std::io::Write::write_all(&mut file, content.as_bytes()))
+        .map_err(|error| {
+            if error.kind() == ErrorKind::AlreadyExists {
+                "同じパスのMarkdownファイルが既に存在します".to_string()
+            } else {
+                format!("Markdownファイルの作成に失敗しました: {error}")
+            }
+        })?;
+
+    markdown_file_entry(&project_dir, &file_path)
+}
+
+#[tauri::command]
+pub fn rename_markdown_file(
+    project_dir: String,
+    current_relative_path: String,
+    next_relative_path: String,
+) -> Result<MarkdownFileEntry, String> {
+    let project_dir = canonical_project_dir(&project_dir)?;
+    let current_file_path = resolve_existing_markdown_file(&project_dir, &current_relative_path)?;
+    let next_file_path = resolve_writable_markdown_file(&project_dir, &next_relative_path)?;
+
+    if let Some(parent) = next_file_path.parent() {
+        fs::create_dir_all(parent)
+            .map_err(|error| format!("保存先フォルダーの作成に失敗しました: {error}"))?;
+    }
+
+    if paths_point_to_same_file(&current_file_path, &next_file_path) {
+        rename_same_file_with_temporary_path(&current_file_path, &next_file_path)
+            .map_err(|error| format!("Markdownファイルの名前変更に失敗しました: {error}"))?;
+    } else {
+        resolve_new_markdown_file(&project_dir, &next_relative_path)?;
+        move_file_without_replacing(&current_file_path, &next_file_path)
+            .map_err(|error| format!("Markdownファイルの名前変更に失敗しました: {error}"))?;
+    }
+
+    markdown_file_entry(&project_dir, &next_file_path)
+}
+
+#[tauri::command]
+pub fn delete_markdown_file(project_dir: String, relative_path: String) -> Result<(), String> {
+    let project_dir = canonical_project_dir(&project_dir)?;
+    let file_path = resolve_existing_markdown_file(&project_dir, &relative_path)?;
+
+    fs::remove_file(&file_path)
+        .map_err(|error| format!("Markdownファイルの削除に失敗しました: {error}"))
 }
 
 fn canonical_project_dir(project_dir: &str) -> Result<PathBuf, String> {
@@ -119,6 +185,84 @@ fn resolve_existing_markdown_file(
     Ok(canonical)
 }
 
+fn move_file_without_replacing(from: &Path, to: &Path) -> io::Result<()> {
+    let mut source = OpenOptions::new().read(true).open(from)?;
+    let mut destination = match OpenOptions::new().write(true).create_new(true).open(to) {
+        Ok(file) => file,
+        Err(error) => {
+            return Err(error);
+        }
+    };
+
+    if let Err(error) = io::copy(&mut source, &mut destination) {
+        let _ = fs::remove_file(to);
+        return Err(error);
+    }
+
+    if let Ok(metadata) = source.metadata() {
+        if let Err(error) = destination.set_permissions(metadata.permissions()) {
+            let _ = fs::remove_file(to);
+            return Err(error);
+        }
+    }
+
+    if let Err(error) = fs::remove_file(from) {
+        let _ = fs::remove_file(to);
+        return Err(error);
+    }
+
+    Ok(())
+}
+
+fn paths_point_to_same_file(left: &Path, right: &Path) -> bool {
+    match (left.canonicalize(), right.canonicalize()) {
+        (Ok(left), Ok(right)) => left == right,
+        _ => false,
+    }
+}
+
+fn rename_same_file_with_temporary_path(from: &Path, to: &Path) -> io::Result<()> {
+    if from == to {
+        return Ok(());
+    }
+
+    let temporary_path = temporary_rename_path(from)?;
+
+    fs::rename(from, &temporary_path)?;
+
+    if let Err(error) = fs::rename(&temporary_path, to) {
+        let _ = fs::rename(&temporary_path, from);
+        return Err(error);
+    }
+
+    Ok(())
+}
+
+fn temporary_rename_path(path: &Path) -> io::Result<PathBuf> {
+    let parent = path.parent().ok_or_else(|| {
+        io::Error::new(ErrorKind::InvalidInput, "保存先フォルダーを解決できません")
+    })?;
+    let stem = path
+        .file_stem()
+        .and_then(|value| value.to_str())
+        .filter(|value| !value.is_empty())
+        .unwrap_or("markdown");
+
+    for index in 0..1000 {
+        let candidate = parent.join(format!(".{stem}.mytimes-rename-{index}.tmp"));
+
+        if fs::symlink_metadata(&candidate).is_err_and(|error| error.kind() == ErrorKind::NotFound)
+        {
+            return Ok(candidate);
+        }
+    }
+
+    Err(io::Error::new(
+        ErrorKind::AlreadyExists,
+        "一時ファイル名を確保できません",
+    ))
+}
+
 fn resolve_writable_markdown_file(
     project_dir: &Path,
     relative_path: &str,
@@ -147,6 +291,16 @@ fn resolve_writable_markdown_file(
     validate_existing_writable_file(project_dir, &file_path)?;
 
     Ok(file_path)
+}
+
+fn resolve_new_markdown_file(project_dir: &Path, relative_path: &str) -> Result<PathBuf, String> {
+    let file_path = resolve_writable_markdown_file(project_dir, relative_path)?;
+
+    match fs::symlink_metadata(&file_path) {
+        Ok(_) => Err("同じパスのMarkdownファイルが既に存在します".to_string()),
+        Err(error) if error.kind() == ErrorKind::NotFound => Ok(file_path),
+        Err(error) => Err(format!("Markdownファイル情報の取得に失敗しました: {error}")),
+    }
 }
 
 fn validate_existing_writable_file(project_dir: &Path, file_path: &Path) -> Result<(), String> {
@@ -342,10 +496,107 @@ mod tests {
     }
 
     #[test]
+    fn creates_markdown_file_by_relative_path() {
+        let project = TestProject::new();
+
+        let file = create_markdown_file(
+            project.path_string(),
+            "notes/today.md".to_string(),
+            "# Today".to_string(),
+        )
+        .unwrap();
+
+        assert_eq!(file.path, "notes/today.md");
+        assert_eq!(
+            fs::read_to_string(project.path.join("notes").join("today.md")).unwrap(),
+            "# Today"
+        );
+    }
+
+    #[test]
+    fn rejects_creating_existing_markdown_file() {
+        let project = TestProject::new();
+        fs::write(project.path.join("today.md"), "# Today").unwrap();
+
+        assert!(create_markdown_file(
+            project.path_string(),
+            "today.md".to_string(),
+            "# Next".to_string(),
+        )
+        .is_err());
+    }
+
+    #[test]
+    fn renames_markdown_file_by_relative_path() {
+        let project = TestProject::new();
+        fs::create_dir_all(project.path.join("notes")).unwrap();
+        fs::write(project.path.join("notes").join("today.md"), "# Today").unwrap();
+
+        let file = rename_markdown_file(
+            project.path_string(),
+            "notes/today.md".to_string(),
+            "archive/today.md".to_string(),
+        )
+        .unwrap();
+
+        assert_eq!(file.path, "archive/today.md");
+        assert!(!project.path.join("notes").join("today.md").exists());
+        assert_eq!(
+            fs::read_to_string(project.path.join("archive").join("today.md")).unwrap(),
+            "# Today"
+        );
+    }
+
+    #[test]
+    fn rejects_renaming_to_existing_markdown_file() {
+        let project = TestProject::new();
+        fs::write(project.path.join("today.md"), "# Today").unwrap();
+        fs::write(project.path.join("next.md"), "# Next").unwrap();
+
+        assert!(rename_markdown_file(
+            project.path_string(),
+            "today.md".to_string(),
+            "next.md".to_string(),
+        )
+        .is_err());
+        assert_eq!(
+            fs::read_to_string(project.path.join("today.md")).unwrap(),
+            "# Today"
+        );
+        assert_eq!(
+            fs::read_to_string(project.path.join("next.md")).unwrap(),
+            "# Next"
+        );
+    }
+
+    #[test]
+    fn deletes_markdown_file_by_relative_path() {
+        let project = TestProject::new();
+        fs::write(project.path.join("today.md"), "# Today").unwrap();
+
+        delete_markdown_file(project.path_string(), "today.md".to_string()).unwrap();
+
+        assert!(!project.path.join("today.md").exists());
+    }
+
+    #[test]
     fn rejects_path_traversal() {
         let project = TestProject::new();
 
         assert!(read_markdown_file(project.path_string(), "../secret.md".to_string()).is_err());
+        assert!(create_markdown_file(
+            project.path_string(),
+            "../secret.md".to_string(),
+            "secret".to_string()
+        )
+        .is_err());
+        assert!(rename_markdown_file(
+            project.path_string(),
+            "draft.md".to_string(),
+            "../secret.md".to_string(),
+        )
+        .is_err());
+        assert!(delete_markdown_file(project.path_string(), "../secret.md".to_string()).is_err());
         assert!(save_markdown_file(
             project.path_string(),
             "../secret.md".to_string(),

@@ -5,7 +5,10 @@ mod markdown_message_escape;
 
 use markdown_chat::{append_chat_message_to_markdown, parse_markdown_to_chat};
 use markdown_export::export_messages_to_markdown;
-use markdown_files::{list_markdown_files, read_markdown_file, save_markdown_file};
+use markdown_files::{
+    create_markdown_file, delete_markdown_file, list_markdown_files, read_markdown_file,
+    rename_markdown_file, save_markdown_file,
+};
 use tauri_plugin_sql::{Migration, MigrationKind};
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -29,6 +32,12 @@ pub fn run() {
             sql: include_str!("../migrations/3_add_folder_icon_path.sql"),
             kind: MigrationKind::Up,
         },
+        Migration {
+            version: 4,
+            description: "add_root_folder",
+            sql: include_str!("../migrations/4_add_root_folder.sql"),
+            kind: MigrationKind::Up,
+        },
     ];
 
     tauri::Builder::default()
@@ -38,7 +47,10 @@ pub fn run() {
             append_chat_message_to_markdown,
             list_markdown_files,
             read_markdown_file,
-            save_markdown_file
+            save_markdown_file,
+            create_markdown_file,
+            rename_markdown_file,
+            delete_markdown_file
         ])
         .plugin(tauri_plugin_dialog::init())
         .plugin(

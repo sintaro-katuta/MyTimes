@@ -12,6 +12,18 @@ export const saveMarkdownFile = async ({ projectDir, relativePath, content }) =>
   return invoke('save_markdown_file', { projectDir, relativePath, content })
 }
 
+export const createMarkdownFile = async ({ projectDir, relativePath, content = '' }) => {
+  return invoke('create_markdown_file', { projectDir, relativePath, content })
+}
+
+export const renameMarkdownFile = async ({ projectDir, currentRelativePath, nextRelativePath }) => {
+  return invoke('rename_markdown_file', { projectDir, currentRelativePath, nextRelativePath })
+}
+
+export const deleteMarkdownFile = async ({ projectDir, relativePath }) => {
+  return invoke('delete_markdown_file', { projectDir, relativePath })
+}
+
 export const parseMarkdownToChat = async (markdown) => {
   return invoke('parse_markdown_to_chat', { markdown })
 }
