@@ -88,7 +88,7 @@ const selectedFolder = computed(() => {
 const isMarkdownSendDisabled = computed(() =>
   isSavingNote.value ||
   isSelectedNoteDbFallback.value ||
-  Boolean(selectedFolder.value && !selectedNotePath.value),
+  !selectedFolder.value,
 )
 
 const canUseMarkdownModes = computed(() =>
@@ -535,6 +535,8 @@ const normalizeMarkdownNotePath = (value) => {
   return normalized.toLowerCase().endsWith('.md') ? normalized : `${normalized}.md`
 }
 
+const dailyNotePath = (date) => `${date}.md`
+
 const handleCreateFolder = async (close) => {
   const directoryPath = projectDirectoryPath.value.trim()
 
@@ -936,24 +938,54 @@ const sendMessage = async () => {
 
   try {
     if (isMarkdownSendDisabled.value) {
-      sendMessageError.value = 'ファイルを選択してから送信してください'
+      sendMessageError.value = 'プロジェクトを選択してから送信してください'
       return
     }
 
-    if (selectedFolder.value && selectedNotePath.value && !isSelectedNoteDbFallback.value) {
+    if (selectedFolder.value && !isSelectedNoteDbFallback.value) {
       const projectDir = currentMarkdownExportPath()
-      const relativePath = selectedNotePath.value
       const { date, time } = currentLocalDateParts()
+      const isTimelinePost = selectedNotePath.value === null
+      const relativePath = selectedNotePath.value ?? dailyNotePath(date)
       const draftBeforeSend = markdownDraft.value
       const savedMarkdownBeforeSend = selectedMarkdownContent.value
-      const latestMarkdown = await readMarkdownFile({
-        projectDir,
-        relativePath,
-      })
+      let latestMarkdown = ''
+
+      try {
+        latestMarkdown = await readMarkdownFile({
+          projectDir,
+          relativePath,
+        })
+      } catch (error) {
+        if (!isTimelinePost) throw error
+
+        try {
+          await createMarkdownFile({
+            projectDir,
+            relativePath,
+            content: '',
+          })
+          latestMarkdown = ''
+        } catch (createError) {
+          try {
+            latestMarkdown = await readMarkdownFile({
+              projectDir,
+              relativePath,
+            })
+          } catch {
+            throw createError
+          }
+        }
+      }
+
       const isDraftDirtyAtSend = draftBeforeSend !== savedMarkdownBeforeSend
       const latestMarkdownSignature = markdownSignature(latestMarkdown)
 
-      if (isDraftDirtyAtSend && latestMarkdownSignature !== selectedMarkdownSignature.value) {
+      if (
+        !isTimelinePost &&
+        isDraftDirtyAtSend &&
+        latestMarkdownSignature !== selectedMarkdownSignature.value
+      ) {
         sendMessageError.value = '外部でMarkdownが変更されています。再読み込みしてから送信してください'
         return
       }
@@ -1006,6 +1038,14 @@ const sendMessage = async () => {
       }
 
       await refreshFolderNotes()
+      if (
+        selectedFolder.value &&
+        currentMarkdownExportPath() === projectDir &&
+        isTimelinePost &&
+        selectedNotePath.value === null
+      ) {
+        await refreshMessages()
+      }
       return
     }
 

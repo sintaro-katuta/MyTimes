@@ -119,7 +119,7 @@ watch(
             type="button"
             class="send-button"
             :disabled="!canSend"
-            :aria-label="isSending ? 'メッセージを送信中' : disabled ? 'ファイルを選択してください' : 'メッセージを送信'"
+            :aria-label="isSending ? 'メッセージを送信中' : disabled ? 'プロジェクトを選択してください' : 'メッセージを送信'"
             @click="submitMessage"
           >
             <SendHorizontal :size="18" class="action-icon" />
