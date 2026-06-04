@@ -296,6 +296,43 @@ export const saveFolderMarkdownExportPath = async (folderId, markdownExportPath)
   )
 }
 
+export const deleteFolder = async (folderId) => {
+  const db = await getDatabase()
+  const folders = await db.select(
+    `SELECT id, path
+     FROM folders
+     WHERE id = ?
+     LIMIT 1`,
+    [folderId],
+  )
+  const folder = folders[0]
+
+  if (!folder || folder.path === '') return
+
+  const descendantFolders = await db.select(
+    `SELECT id
+     FROM folders
+     WHERE path = ? OR path LIKE ?`,
+    [folder.path, `${folder.path}/%`],
+  )
+  const folderIds = descendantFolders.map((row) => row.id)
+
+  if (folderIds.length === 0) return
+
+  const placeholders = folderIds.map(() => '?').join(', ')
+
+  await db.execute('BEGIN')
+
+  try {
+    await db.execute(`DELETE FROM messages WHERE folder_id IN (${placeholders})`, folderIds)
+    await db.execute(`DELETE FROM folders WHERE id IN (${placeholders})`, folderIds)
+    await db.execute('COMMIT')
+  } catch (error) {
+    await db.execute('ROLLBACK')
+    throw error
+  }
+}
+
 export const createMessage = async (content, { folderId = null, notePath = null } = {}) => {
   const db = await getDatabase()
   const createdAt = formatLocalTimestamp(new Date())

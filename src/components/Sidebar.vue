@@ -44,6 +44,7 @@ const emit = defineEmits([
   'open-settings',
   'open-create-folder',
   'open-folder-settings',
+  'open-folder-context-menu',
   'open-create-note',
   'rename-note',
   'delete-note',
@@ -255,6 +256,16 @@ const openCreateFolder = () => {
 
 const openFolderSettings = () => {
   emit('open-folder-settings')
+}
+
+const openFolderContextMenu = (event, folder) => {
+  emit('open-folder-context-menu', {
+    folder,
+    position: {
+      x: event.clientX,
+      y: event.clientY,
+    },
+  })
 }
 
 const openCreateNote = () => {
@@ -540,6 +551,7 @@ watch(
               :aria-label="folder.name"
               :title="folder.path"
               @click="selectFolder(folder)"
+              @contextmenu.prevent="openFolderContextMenu($event, folder)"
             >
               <img v-if="folder.iconPath" class="folder-image" :src="folderIconSrc(folder)" alt="" />
               <Folder v-else :size="20" />
