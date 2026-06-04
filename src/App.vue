@@ -943,6 +943,7 @@ const sendMessage = async () => {
     }
 
     if (selectedFolder.value && !isSelectedNoteDbFallback.value) {
+      const folderId = selectedFolder.value.id
       const projectDir = currentMarkdownExportPath()
       const { date, time } = currentLocalDateParts()
       const isTimelinePost = selectedNotePath.value === null
@@ -950,6 +951,7 @@ const sendMessage = async () => {
       const draftBeforeSend = markdownDraft.value
       const savedMarkdownBeforeSend = selectedMarkdownContent.value
       let latestMarkdown = ''
+      let didCreateDailyNote = false
 
       try {
         latestMarkdown = await readMarkdownFile({
@@ -966,6 +968,7 @@ const sendMessage = async () => {
             content: '',
           })
           latestMarkdown = ''
+          didCreateDailyNote = true
         } catch (createError) {
           try {
             latestMarkdown = await readMarkdownFile({
@@ -1014,7 +1017,21 @@ const sendMessage = async () => {
       const parsed = await parseMarkdownToChat(nextMarkdown)
 
       draftMessage.value = ''
-      exportStatus.value = `${relativePath} に追記しました`
+      exportStatus.value = didCreateDailyNote
+        ? `${relativePath} を作成して追記しました`
+        : `${relativePath} に追記しました`
+
+      if (
+        selectedFolder.value &&
+        selectedFolder.value.id === folderId &&
+        currentMarkdownExportPath() === projectDir
+      ) {
+        await syncParsedMarkdownMessages({
+          folderId,
+          notePath: relativePath,
+          parsed,
+        })
+      }
 
       if (
         selectedFolder.value &&
@@ -1029,11 +1046,6 @@ const sendMessage = async () => {
         messages.value = parsed.messages.map((message, index) =>
           toMarkdownViewMessage(message, index, relativePath),
         )
-        await syncParsedMarkdownMessages({
-          folderId: selectedFolder.value.id,
-          notePath: relativePath,
-          parsed,
-        })
         await scrollMessagesToBottom()
       }
 
