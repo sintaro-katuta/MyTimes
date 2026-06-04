@@ -927,6 +927,43 @@ const currentLocalDateParts = () => {
   }
 }
 
+const messageDateTimeParts = (value) => {
+  const normalized = String(value ?? '').replace('T', ' ')
+  const date = normalized.slice(0, 10)
+  const time = normalized.slice(11, 16)
+
+  if (/^\d{4}-\d{2}-\d{2}$/.test(date) && /^\d{2}:\d{2}$/.test(time)) {
+    return { date, time }
+  }
+
+  return currentLocalDateParts()
+}
+
+const appendPendingTimelineMessagesToMarkdown = async ({ markdown, folderId, relativePath }) => {
+  const rows = await loadStoredMessages({ folderId, notePath: relativePath })
+  const pendingRows = rows.filter((row) =>
+    !Number(row.markdown_synced) &&
+    (row.note_path === null || row.note_path === undefined),
+  )
+  let nextMarkdown = markdown
+
+  for (const row of pendingRows) {
+    const { date, time } = messageDateTimeParts(row.created_at)
+
+    nextMarkdown = await appendChatMessageToMarkdown({
+      markdown: nextMarkdown,
+      date,
+      time,
+      content: row.content,
+    })
+  }
+
+  return {
+    markdown: nextMarkdown,
+    count: pendingRows.length,
+  }
+}
+
 const sendMessage = async () => {
   const content = draftMessage.value.trim()
 
@@ -952,6 +989,7 @@ const sendMessage = async () => {
       const savedMarkdownBeforeSend = selectedMarkdownContent.value
       let latestMarkdown = ''
       let didCreateDailyNote = false
+      let pendingTimelineMessageCount = 0
 
       try {
         latestMarkdown = await readMarkdownFile({
@@ -981,6 +1019,17 @@ const sendMessage = async () => {
         }
       }
 
+      if (isTimelinePost) {
+        const pendingTimelineMessages = await appendPendingTimelineMessagesToMarkdown({
+          markdown: latestMarkdown,
+          folderId,
+          relativePath,
+        })
+
+        latestMarkdown = pendingTimelineMessages.markdown
+        pendingTimelineMessageCount = pendingTimelineMessages.count
+      }
+
       const isDraftDirtyAtSend = draftBeforeSend !== savedMarkdownBeforeSend
       const latestMarkdownSignature = markdownSignature(latestMarkdown)
 
@@ -999,7 +1048,7 @@ const sendMessage = async () => {
         time,
         content,
       })
-      const nextMarkdownDraft = draftBeforeSend === savedMarkdownBeforeSend
+      const nextMarkdownDraft = isTimelinePost || draftBeforeSend === savedMarkdownBeforeSend
         ? null
         : await appendChatMessageToMarkdown({
           markdown: draftBeforeSend,
@@ -1019,13 +1068,9 @@ const sendMessage = async () => {
       draftMessage.value = ''
       exportStatus.value = didCreateDailyNote
         ? `${relativePath} を作成して追記しました`
-        : `${relativePath} に追記しました`
-
-      await syncParsedMarkdownMessages({
-        folderId,
-        notePath: relativePath,
-        parsed,
-      })
+        : pendingTimelineMessageCount > 0
+          ? `${relativePath} に未同期の投稿${pendingTimelineMessageCount}件と新規投稿を追記しました`
+          : `${relativePath} に追記しました`
 
       if (
         selectedFolder.value &&
@@ -1043,8 +1088,22 @@ const sendMessage = async () => {
         await scrollMessagesToBottom()
       }
 
+      let syncErrorMessage = ''
+
+      try {
+        await syncParsedMarkdownMessages({
+          folderId,
+          notePath: relativePath,
+          parsed,
+        })
+      } catch (error) {
+        syncErrorMessage = error instanceof Error ? error.message : 'DBキャッシュ同期に失敗しました'
+        sendMessageError.value = `Markdownには保存しましたが、表示キャッシュの同期に失敗しました: ${syncErrorMessage}`
+      }
+
       await refreshFolderNotes()
       if (
+        !syncErrorMessage &&
         selectedFolder.value &&
         currentMarkdownExportPath() === projectDir &&
         isTimelinePost &&
