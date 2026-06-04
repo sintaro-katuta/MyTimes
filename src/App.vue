@@ -88,7 +88,7 @@ const selectedFolder = computed(() => {
 const isMarkdownSendDisabled = computed(() =>
   isSavingNote.value ||
   isSelectedNoteDbFallback.value ||
-  Boolean(selectedFolder.value && !selectedNotePath.value),
+  !selectedFolder.value,
 )
 
 const canUseMarkdownModes = computed(() =>
@@ -535,6 +535,8 @@ const normalizeMarkdownNotePath = (value) => {
   return normalized.toLowerCase().endsWith('.md') ? normalized : `${normalized}.md`
 }
 
+const dailyNotePath = (date) => `${date}.md`
+
 const handleCreateFolder = async (close) => {
   const directoryPath = projectDirectoryPath.value.trim()
 
@@ -925,6 +927,43 @@ const currentLocalDateParts = () => {
   }
 }
 
+const messageDateTimeParts = (value) => {
+  const normalized = String(value ?? '').replace('T', ' ')
+  const date = normalized.slice(0, 10)
+  const time = normalized.slice(11, 16)
+
+  if (/^\d{4}-\d{2}-\d{2}$/.test(date) && /^\d{2}:\d{2}$/.test(time)) {
+    return { date, time }
+  }
+
+  return currentLocalDateParts()
+}
+
+const appendPendingTimelineMessagesToMarkdown = async ({ markdown, folderId, relativePath }) => {
+  const rows = await loadStoredMessages({ folderId, notePath: relativePath })
+  const pendingRows = rows.filter((row) =>
+    !Number(row.markdown_synced) &&
+    (row.note_path === null || row.note_path === undefined),
+  )
+  let nextMarkdown = markdown
+
+  for (const row of pendingRows) {
+    const { date, time } = messageDateTimeParts(row.created_at)
+
+    nextMarkdown = await appendChatMessageToMarkdown({
+      markdown: nextMarkdown,
+      date,
+      time,
+      content: row.content,
+    })
+  }
+
+  return {
+    markdown: nextMarkdown,
+    count: pendingRows.length,
+  }
+}
+
 const sendMessage = async () => {
   const content = draftMessage.value.trim()
 
@@ -936,24 +975,69 @@ const sendMessage = async () => {
 
   try {
     if (isMarkdownSendDisabled.value) {
-      sendMessageError.value = 'ファイルを選択してから送信してください'
+      sendMessageError.value = 'プロジェクトを選択してから送信してください'
       return
     }
 
-    if (selectedFolder.value && selectedNotePath.value && !isSelectedNoteDbFallback.value) {
+    if (selectedFolder.value && !isSelectedNoteDbFallback.value) {
+      const folderId = selectedFolder.value.id
       const projectDir = currentMarkdownExportPath()
-      const relativePath = selectedNotePath.value
       const { date, time } = currentLocalDateParts()
+      const isTimelinePost = selectedNotePath.value === null
+      const relativePath = selectedNotePath.value ?? dailyNotePath(date)
       const draftBeforeSend = markdownDraft.value
       const savedMarkdownBeforeSend = selectedMarkdownContent.value
-      const latestMarkdown = await readMarkdownFile({
-        projectDir,
-        relativePath,
-      })
+      let latestMarkdown = ''
+      let didCreateDailyNote = false
+      let pendingTimelineMessageCount = 0
+
+      try {
+        latestMarkdown = await readMarkdownFile({
+          projectDir,
+          relativePath,
+        })
+      } catch (error) {
+        if (!isTimelinePost) throw error
+
+        try {
+          await createMarkdownFile({
+            projectDir,
+            relativePath,
+            content: '',
+          })
+          latestMarkdown = ''
+          didCreateDailyNote = true
+        } catch (createError) {
+          try {
+            latestMarkdown = await readMarkdownFile({
+              projectDir,
+              relativePath,
+            })
+          } catch {
+            throw createError
+          }
+        }
+      }
+
+      if (isTimelinePost) {
+        const pendingTimelineMessages = await appendPendingTimelineMessagesToMarkdown({
+          markdown: latestMarkdown,
+          folderId,
+          relativePath,
+        })
+
+        latestMarkdown = pendingTimelineMessages.markdown
+        pendingTimelineMessageCount = pendingTimelineMessages.count
+      }
+
       const isDraftDirtyAtSend = draftBeforeSend !== savedMarkdownBeforeSend
       const latestMarkdownSignature = markdownSignature(latestMarkdown)
 
-      if (isDraftDirtyAtSend && latestMarkdownSignature !== selectedMarkdownSignature.value) {
+      if (
+        !isTimelinePost &&
+        isDraftDirtyAtSend &&
+        latestMarkdownSignature !== selectedMarkdownSignature.value
+      ) {
         sendMessageError.value = '外部でMarkdownが変更されています。再読み込みしてから送信してください'
         return
       }
@@ -964,7 +1048,7 @@ const sendMessage = async () => {
         time,
         content,
       })
-      const nextMarkdownDraft = draftBeforeSend === savedMarkdownBeforeSend
+      const nextMarkdownDraft = isTimelinePost || draftBeforeSend === savedMarkdownBeforeSend
         ? null
         : await appendChatMessageToMarkdown({
           markdown: draftBeforeSend,
@@ -982,7 +1066,11 @@ const sendMessage = async () => {
       const parsed = await parseMarkdownToChat(nextMarkdown)
 
       draftMessage.value = ''
-      exportStatus.value = `${relativePath} に追記しました`
+      exportStatus.value = didCreateDailyNote
+        ? `${relativePath} を作成して追記しました`
+        : pendingTimelineMessageCount > 0
+          ? `${relativePath} に未同期の投稿${pendingTimelineMessageCount}件と新規投稿を追記しました`
+          : `${relativePath} に追記しました`
 
       if (
         selectedFolder.value &&
@@ -997,15 +1085,32 @@ const sendMessage = async () => {
         messages.value = parsed.messages.map((message, index) =>
           toMarkdownViewMessage(message, index, relativePath),
         )
-        await syncParsedMarkdownMessages({
-          folderId: selectedFolder.value.id,
-          notePath: relativePath,
-          parsed,
-        })
         await scrollMessagesToBottom()
       }
 
+      let syncErrorMessage = ''
+
+      try {
+        await syncParsedMarkdownMessages({
+          folderId,
+          notePath: relativePath,
+          parsed,
+        })
+      } catch (error) {
+        syncErrorMessage = error instanceof Error ? error.message : 'DBキャッシュ同期に失敗しました'
+        sendMessageError.value = `Markdownには保存しましたが、表示キャッシュの同期に失敗しました: ${syncErrorMessage}`
+      }
+
       await refreshFolderNotes()
+      if (
+        !syncErrorMessage &&
+        selectedFolder.value &&
+        currentMarkdownExportPath() === projectDir &&
+        isTimelinePost &&
+        selectedNotePath.value === null
+      ) {
+        await refreshMessages()
+      }
       return
     }
 

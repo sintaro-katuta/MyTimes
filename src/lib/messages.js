@@ -331,7 +331,8 @@ export const syncMarkdownMessages = async ({ folderId, notePath, messages }) => 
   try {
     await db.execute(
       `DELETE FROM messages
-       WHERE folder_id = ? AND COALESCE(note_path, '') = ?`,
+       WHERE folder_id = ?
+         AND COALESCE(note_path, strftime('%Y-%m-%d.md', created_at)) = ?`,
       [folderId, notePath],
     )
 
