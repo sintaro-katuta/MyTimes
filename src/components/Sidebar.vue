@@ -1033,6 +1033,10 @@ watch(
   color: var(--text-primary);
 }
 
+.note-context-menu-item.is-danger {
+  color: var(--bg-error);
+}
+
 .note-context-menu-item.is-danger:hover {
   color: var(--bg-error);
 }
