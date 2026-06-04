@@ -1021,17 +1021,11 @@ const sendMessage = async () => {
         ? `${relativePath} を作成して追記しました`
         : `${relativePath} に追記しました`
 
-      if (
-        selectedFolder.value &&
-        selectedFolder.value.id === folderId &&
-        currentMarkdownExportPath() === projectDir
-      ) {
-        await syncParsedMarkdownMessages({
-          folderId,
-          notePath: relativePath,
-          parsed,
-        })
-      }
+      await syncParsedMarkdownMessages({
+        folderId,
+        notePath: relativePath,
+        parsed,
+      })
 
       if (
         selectedFolder.value &&
