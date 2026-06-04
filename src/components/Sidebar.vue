@@ -1,7 +1,7 @@
 <script setup>
 import { convertFileSrc } from '@tauri-apps/api/core'
 import { LogicalPosition } from '@tauri-apps/api/dpi'
-import { Menu } from '@tauri-apps/api/menu'
+import { IconMenuItem, Menu, NativeIcon } from '@tauri-apps/api/menu'
 import { computed, nextTick, ref, watch } from 'vue'
 
 import {
@@ -296,23 +296,27 @@ const openNoteContextMenuAt = async ({ x, y, note }) => {
   if (props.selectedFolderId === null) return
 
   try {
+    const menuItems = await Promise.all([
+      IconMenuItem.new({
+        id: 'rename',
+        text: '名前を変更',
+        icon: NativeIcon.User,
+        action: (id) => {
+          void handleNoteContextMenuAction(id, note)
+        },
+      }),
+      IconMenuItem.new({
+        id: 'delete',
+        text: '削除',
+        icon: NativeIcon.TrashFull,
+        action: (id) => {
+          void handleNoteContextMenuAction(id, note)
+        },
+      }),
+    ])
+
     const menu = await Menu.new({
-      items: [
-        {
-          id: 'rename',
-          text: '名前を変更',
-          action: (id) => {
-            void handleNoteContextMenuAction(id, note)
-          },
-        },
-        {
-          id: 'delete',
-          text: '削除',
-          action: (id) => {
-            void handleNoteContextMenuAction(id, note)
-          },
-        },
-      ],
+      items: menuItems,
     })
 
     await menu.popup(new LogicalPosition(x, y))

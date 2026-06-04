@@ -1,7 +1,7 @@
 <script setup>
 import { open } from '@tauri-apps/plugin-dialog'
 import { LogicalPosition } from '@tauri-apps/api/dpi'
-import { Menu } from '@tauri-apps/api/menu'
+import { IconMenuItem, Menu, NativeIcon } from '@tauri-apps/api/menu'
 import { computed, nextTick, onMounted, ref } from 'vue'
 import Modal from './components/Modal.vue'
 import Sidebar from './components/Sidebar.vue'
@@ -863,22 +863,53 @@ const handleFolderContextMenuAction = async (action, folder) => {
 }
 
 const openFolderContextMenu = async ({ folder, position }) => {
-  const menuItems = [
-    { id: 'rename', text: '名前を変更' },
-    { id: 'path', text: 'パスを変更' },
-    { id: 'image', text: '画像を変更' },
-    { id: 'settings', text: 'プロジェクト設定' },
-    { id: 'delete', text: '削除', enabled: !folder.isRoot },
-  ]
-
   try {
-    const menu = await Menu.new({
-      items: menuItems.map((item) => ({
-        ...item,
+    const menuItems = await Promise.all([
+      IconMenuItem.new({
+        id: 'rename',
+        text: '名前を変更',
+        icon: NativeIcon.User,
         action: (id) => {
           void handleFolderContextMenuAction(id, folder)
         },
-      })),
+      }),
+      IconMenuItem.new({
+        id: 'path',
+        text: 'パスを変更',
+        icon: NativeIcon.Path,
+        action: (id) => {
+          void handleFolderContextMenuAction(id, folder)
+        },
+      }),
+      IconMenuItem.new({
+        id: 'image',
+        text: '画像を変更',
+        icon: NativeIcon.QuickLook,
+        action: (id) => {
+          void handleFolderContextMenuAction(id, folder)
+        },
+      }),
+      IconMenuItem.new({
+        id: 'settings',
+        text: 'プロジェクト設定',
+        icon: NativeIcon.PreferencesGeneral,
+        action: (id) => {
+          void handleFolderContextMenuAction(id, folder)
+        },
+      }),
+      IconMenuItem.new({
+        id: 'delete',
+        text: '削除',
+        icon: NativeIcon.TrashFull,
+        enabled: !folder.isRoot,
+        action: (id) => {
+          void handleFolderContextMenuAction(id, folder)
+        },
+      }),
+    ])
+
+    const menu = await Menu.new({
+      items: menuItems,
     })
 
     await menu.popup(new LogicalPosition(position.x, position.y))
