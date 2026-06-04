@@ -37,6 +37,7 @@ import {
   syncMarkdownMessages,
   updateMarkdownMessagePath,
 } from './lib/messages'
+import { loadPenMenuIcon } from './lib/menuIcons'
 
 const isModalOpen = ref(false)
 const modalMode = ref('app-settings')
@@ -864,11 +865,12 @@ const handleFolderContextMenuAction = async (action, folder) => {
 
 const openFolderContextMenu = async ({ folder, position }) => {
   try {
+    const penIcon = await loadPenMenuIcon()
     const menuItems = await Promise.all([
       IconMenuItem.new({
         id: 'rename',
         text: '名前を変更',
-        icon: NativeIcon.User,
+        icon: penIcon,
         action: (id) => {
           void handleFolderContextMenuAction(id, folder)
         },

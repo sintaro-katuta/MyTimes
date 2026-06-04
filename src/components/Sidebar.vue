@@ -12,6 +12,7 @@ import {
   Plus,
   Settings,
 } from '@lucide/vue'
+import { loadPenMenuIcon } from '../lib/menuIcons'
 
 const props = defineProps({
   folders: {
@@ -296,11 +297,12 @@ const openNoteContextMenuAt = async ({ x, y, note }) => {
   if (props.selectedFolderId === null) return
 
   try {
+    const penIcon = await loadPenMenuIcon()
     const menuItems = await Promise.all([
       IconMenuItem.new({
         id: 'rename',
         text: '名前を変更',
-        icon: NativeIcon.User,
+        icon: penIcon,
         action: (id) => {
           void handleNoteContextMenuAction(id, note)
         },
