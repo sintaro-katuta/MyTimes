@@ -1,7 +1,7 @@
 <script setup>
 import { open } from '@tauri-apps/plugin-dialog'
 import { LogicalPosition } from '@tauri-apps/api/dpi'
-import { IconMenuItem, Menu, NativeIcon } from '@tauri-apps/api/menu'
+import { Menu, NativeIcon } from '@tauri-apps/api/menu'
 import { computed, nextTick, onMounted, ref } from 'vue'
 import Modal from './components/Modal.vue'
 import Sidebar from './components/Sidebar.vue'
@@ -37,6 +37,7 @@ import {
   syncMarkdownMessages,
   updateMarkdownMessagePath,
 } from './lib/messages'
+import { createMenuItem } from './lib/menuItems'
 import { loadPenMenuIcon } from './lib/menuIcons'
 
 const isModalOpen = ref(false)
@@ -819,9 +820,9 @@ const deleteFolderFromMenu = async (folder) => {
   loadMessageError.value = ''
 
   try {
-    await deleteFolder(folder.id)
+    const deletedFolderIds = await deleteFolder(folder.id)
 
-    if (selectedFolderId.value === folder.id) {
+    if (deletedFolderIds.includes(selectedFolderId.value)) {
       selectedNotePath.value = null
       viewMode.value = 'chat'
     }
@@ -865,9 +866,12 @@ const handleFolderContextMenuAction = async (action, folder) => {
 
 const openFolderContextMenu = async ({ folder, position }) => {
   try {
-    const penIcon = await loadPenMenuIcon()
+    const penIcon = await loadPenMenuIcon().catch((error) => {
+      console.warn('ペンアイコンの読み込みに失敗しました', error)
+      return null
+    })
     const menuItems = await Promise.all([
-      IconMenuItem.new({
+      createMenuItem({
         id: 'rename',
         text: '名前を変更',
         icon: penIcon,
@@ -875,7 +879,7 @@ const openFolderContextMenu = async ({ folder, position }) => {
           void handleFolderContextMenuAction(id, folder)
         },
       }),
-      IconMenuItem.new({
+      createMenuItem({
         id: 'path',
         text: 'パスを変更',
         icon: NativeIcon.Path,
@@ -883,7 +887,7 @@ const openFolderContextMenu = async ({ folder, position }) => {
           void handleFolderContextMenuAction(id, folder)
         },
       }),
-      IconMenuItem.new({
+      createMenuItem({
         id: 'image',
         text: '画像を変更',
         icon: NativeIcon.QuickLook,
@@ -891,7 +895,7 @@ const openFolderContextMenu = async ({ folder, position }) => {
           void handleFolderContextMenuAction(id, folder)
         },
       }),
-      IconMenuItem.new({
+      createMenuItem({
         id: 'settings',
         text: 'プロジェクト設定',
         icon: NativeIcon.PreferencesGeneral,
@@ -899,7 +903,7 @@ const openFolderContextMenu = async ({ folder, position }) => {
           void handleFolderContextMenuAction(id, folder)
         },
       }),
-      IconMenuItem.new({
+      createMenuItem({
         id: 'delete',
         text: '削除',
         icon: NativeIcon.TrashFull,

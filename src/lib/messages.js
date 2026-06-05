@@ -307,17 +307,23 @@ export const deleteFolder = async (folderId) => {
   )
   const folder = folders[0]
 
-  if (!folder || folder.path === '') return
+  if (!folder || folder.path === '') return []
 
-  const descendantFolders = await db.select(
-    `SELECT id
-     FROM folders
-     WHERE path = ? OR path LIKE ?`,
-    [folder.path, `${folder.path}/%`],
-  )
-  const folderIds = descendantFolders.map((row) => row.id)
+  const folderIds = [folder.id]
+  let pendingFolderIds = [folder.id]
 
-  if (folderIds.length === 0) return
+  while (pendingFolderIds.length > 0) {
+    const placeholders = pendingFolderIds.map(() => '?').join(', ')
+    const childFolders = await db.select(
+      `SELECT id
+       FROM folders
+       WHERE parent_id IN (${placeholders})`,
+      pendingFolderIds,
+    )
+
+    pendingFolderIds = childFolders.map((row) => row.id)
+    folderIds.push(...pendingFolderIds)
+  }
 
   const placeholders = folderIds.map(() => '?').join(', ')
 
@@ -331,6 +337,8 @@ export const deleteFolder = async (folderId) => {
     await db.execute('ROLLBACK')
     throw error
   }
+
+  return folderIds
 }
 
 export const createMessage = async (content, { folderId = null, notePath = null } = {}) => {

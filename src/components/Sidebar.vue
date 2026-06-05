@@ -1,7 +1,7 @@
 <script setup>
 import { convertFileSrc } from '@tauri-apps/api/core'
 import { LogicalPosition } from '@tauri-apps/api/dpi'
-import { IconMenuItem, Menu, NativeIcon } from '@tauri-apps/api/menu'
+import { Menu, NativeIcon } from '@tauri-apps/api/menu'
 import { computed, nextTick, ref, watch } from 'vue'
 
 import {
@@ -12,6 +12,7 @@ import {
   Plus,
   Settings,
 } from '@lucide/vue'
+import { createMenuItem } from '../lib/menuItems'
 import { loadPenMenuIcon } from '../lib/menuIcons'
 
 const props = defineProps({
@@ -297,9 +298,12 @@ const openNoteContextMenuAt = async ({ x, y, note }) => {
   if (props.selectedFolderId === null) return
 
   try {
-    const penIcon = await loadPenMenuIcon()
+    const penIcon = await loadPenMenuIcon().catch((error) => {
+      console.warn('ペンアイコンの読み込みに失敗しました', error)
+      return null
+    })
     const menuItems = await Promise.all([
-      IconMenuItem.new({
+      createMenuItem({
         id: 'rename',
         text: '名前を変更',
         icon: penIcon,
@@ -307,7 +311,7 @@ const openNoteContextMenuAt = async ({ x, y, note }) => {
           void handleNoteContextMenuAction(id, note)
         },
       }),
-      IconMenuItem.new({
+      createMenuItem({
         id: 'delete',
         text: '削除',
         icon: NativeIcon.TrashFull,
