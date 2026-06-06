@@ -806,7 +806,13 @@ const browseFolderIconFromMenu = async (folder) => {
 const deleteFolderFromMenu = async (folder) => {
   if (!folder) return
   if (!confirmDiscardMarkdownChanges()) return
-  if (!window.confirm(`${folder.name} を削除しますか？この操作は元に戻せません。`)) return
+  if (
+    !window.confirm(
+      `${folder.name} のプロジェクト登録と履歴を削除しますか？\nファイルやフォルダーは削除されません。`,
+    )
+  ) {
+    return
+  }
 
   loadFolderError.value = ''
   loadFolderNotesError.value = ''
@@ -830,7 +836,7 @@ const deleteFolderFromMenu = async (folder) => {
 }
 
 const handleFolderContextMenuAction = async (action, folder) => {
-  if (action === 'rename') {
+  if (action === 'folder-rename') {
     await openFolderSettingsModalFromMenu(folder)
     await nextTick()
     document.getElementById('rename-folder-name')?.focus()
@@ -838,17 +844,17 @@ const handleFolderContextMenuAction = async (action, folder) => {
     return
   }
 
-  if (action === 'path') {
+  if (action === 'folder-path') {
     await browseFolderPathFromMenu(folder)
     return
   }
 
-  if (action === 'image') {
+  if (action === 'folder-image') {
     await browseFolderIconFromMenu(folder)
     return
   }
 
-  if (action === 'delete') {
+  if (action === 'folder-delete') {
     await deleteFolderFromMenu(folder)
   }
 }
@@ -857,28 +863,28 @@ const openFolderContextMenu = async ({ folder, position }) => {
   try {
     const menuItems = await Promise.all([
       MenuItem.new({
-        id: 'rename',
+        id: 'folder-rename',
         text: '名前を変更',
         action: (id) => {
           void handleFolderContextMenuAction(id, folder)
         },
       }),
       MenuItem.new({
-        id: 'path',
+        id: 'folder-path',
         text: 'パスを変更',
         action: (id) => {
           void handleFolderContextMenuAction(id, folder)
         },
       }),
       MenuItem.new({
-        id: 'image',
+        id: 'folder-image',
         text: '画像を変更',
         action: (id) => {
           void handleFolderContextMenuAction(id, folder)
         },
       }),
       MenuItem.new({
-        id: 'delete',
+        id: 'folder-delete',
         text: '削除',
         action: (id) => {
           void handleFolderContextMenuAction(id, folder)

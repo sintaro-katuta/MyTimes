@@ -298,14 +298,14 @@ const openNoteContextMenuAt = async ({ x, y, note }) => {
   try {
     const menuItems = await Promise.all([
       MenuItem.new({
-        id: 'rename',
+        id: 'note-rename',
         text: '名前を変更',
         action: (id) => {
           void handleNoteContextMenuAction(id, note)
         },
       }),
       MenuItem.new({
-        id: 'delete',
+        id: 'note-delete',
         text: '削除',
         action: (id) => {
           void handleNoteContextMenuAction(id, note)
@@ -337,13 +337,13 @@ const handleNoteMenuKeydown = async (event, note) => {
 }
 
 const handleNoteContextMenuAction = async (action, note) => {
-  if (action === 'rename') {
+  if (action === 'note-rename') {
     if (!note) return
     startRenameNote(note)
     return
   }
 
-  if (action === 'delete') {
+  if (action === 'note-delete') {
     if (!note) return
     deleteNote(note)
   }
