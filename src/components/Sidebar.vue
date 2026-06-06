@@ -1,7 +1,7 @@
 <script setup>
 import { convertFileSrc } from '@tauri-apps/api/core'
 import { LogicalPosition } from '@tauri-apps/api/dpi'
-import { Menu, MenuItem } from '@tauri-apps/api/menu'
+import { Menu } from '@tauri-apps/api/menu'
 import { computed, nextTick, ref, watch } from 'vue'
 
 import {
@@ -58,6 +58,7 @@ const editingNotePath = ref('')
 const noteRenameInput = ref('')
 const noteRenameInputRef = ref(null)
 const expandedNoteDirectoryPaths = ref(new Set())
+const noteContextMenuTarget = ref(null)
 
 const foldersByParent = computed(() => {
   return props.folders.reduce((groups, folder) => {
@@ -292,31 +293,42 @@ const openNoteContextMenu = async (event, note) => {
   })
 }
 
+let noteContextMenuPromise = null
+
+const getNoteContextMenu = () => {
+  if (!noteContextMenuPromise) {
+    noteContextMenuPromise = Menu.new({
+      items: [
+        {
+          id: 'note-rename',
+          text: '名前を変更',
+          action: (id) => {
+            void handleNoteContextMenuAction(id, noteContextMenuTarget.value)
+          },
+        },
+        {
+          id: 'note-delete',
+          text: '削除',
+          action: (id) => {
+            void handleNoteContextMenuAction(id, noteContextMenuTarget.value)
+          },
+        },
+      ],
+    }).catch((error) => {
+      noteContextMenuPromise = null
+      throw error
+    })
+  }
+
+  return noteContextMenuPromise
+}
+
 const openNoteContextMenuAt = async ({ x, y, note }) => {
   if (props.selectedFolderId === null) return
 
   try {
-    const menuItems = await Promise.all([
-      MenuItem.new({
-        id: 'note-rename',
-        text: '名前を変更',
-        action: (id) => {
-          void handleNoteContextMenuAction(id, note)
-        },
-      }),
-      MenuItem.new({
-        id: 'note-delete',
-        text: '削除',
-        action: (id) => {
-          void handleNoteContextMenuAction(id, note)
-        },
-      }),
-    ])
-
-    const menu = await Menu.new({
-      items: menuItems,
-    })
-
+    noteContextMenuTarget.value = note
+    const menu = await getNoteContextMenu()
     await menu.popup(new LogicalPosition(x, y))
   } catch (error) {
     console.error(error)

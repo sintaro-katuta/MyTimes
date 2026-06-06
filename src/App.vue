@@ -1,7 +1,7 @@
 <script setup>
 import { open } from '@tauri-apps/plugin-dialog'
 import { LogicalPosition } from '@tauri-apps/api/dpi'
-import { Menu, MenuItem } from '@tauri-apps/api/menu'
+import { Menu } from '@tauri-apps/api/menu'
 import { computed, nextTick, onMounted, ref } from 'vue'
 import Modal from './components/Modal.vue'
 import Sidebar from './components/Sidebar.vue'
@@ -49,6 +49,7 @@ const folders = ref([])
 const folderNotes = ref([])
 const selectedFolderId = ref(null)
 const selectedNotePath = ref(null)
+const folderContextMenuTarget = ref(null)
 const isLoadingMessages = ref(true)
 const isLoadingFolders = ref(true)
 const isLoadingFolderNotes = ref(false)
@@ -859,43 +860,54 @@ const handleFolderContextMenuAction = async (action, folder) => {
   }
 }
 
+let folderContextMenuPromise = null
+
+const getFolderContextMenu = () => {
+  if (!folderContextMenuPromise) {
+    folderContextMenuPromise = Menu.new({
+      items: [
+        {
+          id: 'folder-rename',
+          text: '名前を変更',
+          action: (id) => {
+            void handleFolderContextMenuAction(id, folderContextMenuTarget.value)
+          },
+        },
+        {
+          id: 'folder-path',
+          text: 'パスを変更',
+          action: (id) => {
+            void handleFolderContextMenuAction(id, folderContextMenuTarget.value)
+          },
+        },
+        {
+          id: 'folder-image',
+          text: '画像を変更',
+          action: (id) => {
+            void handleFolderContextMenuAction(id, folderContextMenuTarget.value)
+          },
+        },
+        {
+          id: 'folder-delete',
+          text: '削除',
+          action: (id) => {
+            void handleFolderContextMenuAction(id, folderContextMenuTarget.value)
+          },
+        },
+      ],
+    }).catch((error) => {
+      folderContextMenuPromise = null
+      throw error
+    })
+  }
+
+  return folderContextMenuPromise
+}
+
 const openFolderContextMenu = async ({ folder, position }) => {
   try {
-    const menuItems = await Promise.all([
-      MenuItem.new({
-        id: 'folder-rename',
-        text: '名前を変更',
-        action: (id) => {
-          void handleFolderContextMenuAction(id, folder)
-        },
-      }),
-      MenuItem.new({
-        id: 'folder-path',
-        text: 'パスを変更',
-        action: (id) => {
-          void handleFolderContextMenuAction(id, folder)
-        },
-      }),
-      MenuItem.new({
-        id: 'folder-image',
-        text: '画像を変更',
-        action: (id) => {
-          void handleFolderContextMenuAction(id, folder)
-        },
-      }),
-      MenuItem.new({
-        id: 'folder-delete',
-        text: '削除',
-        action: (id) => {
-          void handleFolderContextMenuAction(id, folder)
-        },
-      }),
-    ])
-
-    const menu = await Menu.new({
-      items: menuItems,
-    })
-
+    folderContextMenuTarget.value = folder
+    const menu = await getFolderContextMenu()
     await menu.popup(new LogicalPosition(position.x, position.y))
   } catch (error) {
     loadFolderError.value = error instanceof Error ? error.message : 'プロジェクトメニューの表示に失敗しました'

@@ -46,6 +46,7 @@ export const loadMessages = async ({ folderId = null, notePath = null } = {}) =>
 
 export const loadFolders = async () => {
   const db = await getDatabase()
+  await migrateRootFolderData(db)
 
   return db.select(
     `SELECT id, name, parent_id AS parentId, path, markdown_export_path AS markdownExportPath,
@@ -53,6 +54,69 @@ export const loadFolders = async () => {
      FROM folders
      WHERE path <> ''
      ORDER BY path ASC, id ASC`,
+  )
+}
+
+const migrateRootFolderData = async (db) => {
+  const roots = await db.select(
+    `SELECT id
+     FROM folders
+     WHERE path = ''
+     LIMIT 1`,
+  )
+  const root = roots[0]
+
+  if (!root) return
+
+  const updatedAt = formatLocalTimestamp(new Date())
+
+  await db.execute(
+    `UPDATE folders
+     SET parent_id = NULL, updated_at = ?
+     WHERE parent_id = ?`,
+    [updatedAt, root.id],
+  )
+
+  const rootMessageCounts = await db.select(
+    `SELECT COUNT(*) AS count
+     FROM messages
+     WHERE folder_id = ?`,
+    [root.id],
+  )
+  const rootMessageCount = Number(rootMessageCounts[0]?.count ?? 0)
+
+  if (rootMessageCount === 0) return
+
+  const settings = await db.select('SELECT value FROM settings WHERE key = ?', [
+    MARKDOWN_EXPORT_PATH_KEY,
+  ])
+  const projectPath = settings[0]?.value?.trim() ?? ''
+
+  if (!projectPath) return
+
+  await db.execute(
+    `INSERT OR IGNORE INTO folders
+       (name, parent_id, path, markdown_export_path, icon_path, created_at, updated_at)
+     VALUES (?, NULL, ?, ?, NULL, ?, ?)`,
+    [getPathBaseName(projectPath), projectPath, projectPath, updatedAt, updatedAt],
+  )
+
+  const targetFolders = await db.select(
+    `SELECT id
+     FROM folders
+     WHERE path = ?
+     LIMIT 1`,
+    [projectPath],
+  )
+  const targetFolder = targetFolders[0]
+
+  if (!targetFolder) return
+
+  await db.execute(
+    `UPDATE messages
+     SET folder_id = ?, updated_at = ?
+     WHERE folder_id = ?`,
+    [targetFolder.id, updatedAt, root.id],
   )
 }
 
