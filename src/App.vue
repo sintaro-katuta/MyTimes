@@ -1805,7 +1805,7 @@ onBeforeUnmount(() => {
         <form v-if="modalMode === 'app-settings'" class="settings-layout" @submit.prevent>
           <aside class="settings-nav" aria-label="設定カテゴリ">
             <div class="settings-brand">
-              <img class="settings-brand-icon" src="/app-icon.png" alt="" width="40" height="40" />
+              <img class="settings-brand-icon" src="/icon.svg" alt="" width="40" height="40" />
               <div>
                 <p class="settings-brand-title">{{ settingsAppTitle || appTitle }}</p>
                 <p class="settings-brand-subtitle">MyTimes</p>
