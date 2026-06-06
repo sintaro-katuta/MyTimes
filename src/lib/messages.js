@@ -307,7 +307,7 @@ export const deleteFolder = async (folderId) => {
   )
   const folder = folders[0]
 
-  if (!folder || folder.path === '') return []
+  if (!folder) return []
 
   const folderIds = [folder.id]
   let pendingFolderIds = [folder.id]

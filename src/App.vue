@@ -809,7 +809,6 @@ const browseFolderIconFromMenu = async (folder) => {
 
 const deleteFolderFromMenu = async (folder) => {
   if (!folder) return
-  if (folder.isRoot) return
   if (!confirmDiscardMarkdownChanges()) return
   if (!window.confirm(`${folder.name} を削除しますか？この操作は元に戻せません。`)) return
 
@@ -821,6 +820,7 @@ const deleteFolderFromMenu = async (folder) => {
     const deletedFolderIds = await deleteFolder(folder.id)
 
     if (deletedFolderIds.includes(selectedFolderId.value)) {
+      selectedFolderId.value = null
       selectedNotePath.value = null
       viewMode.value = 'chat'
     }
@@ -884,7 +884,6 @@ const openFolderContextMenu = async ({ folder, position }) => {
       MenuItem.new({
         id: 'delete',
         text: '削除',
-        enabled: !folder.isRoot,
         action: (id) => {
           void handleFolderContextMenuAction(id, folder)
         },
