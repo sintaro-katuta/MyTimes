@@ -58,7 +58,7 @@ const SETTINGS_KEYS = {
 const DEFAULT_SETTINGS = {
   defaultSavePath: '',
   themeMode: 'system',
-  themeColor: 'orange',
+  themeColor: '#FF4500',
   fontSize: '16',
   uiDensity: 'comfortable',
   markdownDefaultView: 'chat',
@@ -94,6 +94,47 @@ const THEME_COLORS = {
     accentLight: '#FFF1F2',
     accentDark: '#3F1724',
   },
+}
+
+const normalizeThemeColor = (value) => {
+  const normalizedValue = String(value ?? '').trim()
+
+  if (THEME_COLORS[normalizedValue]) return THEME_COLORS[normalizedValue].primary
+  if (/^#[0-9A-Fa-f]{6}$/.test(normalizedValue)) return normalizedValue.toUpperCase()
+
+  return DEFAULT_SETTINGS.themeColor
+}
+
+const hexToRgb = (hex) => {
+  const normalizedHex = normalizeThemeColor(hex).slice(1)
+
+  return {
+    red: Number.parseInt(normalizedHex.slice(0, 2), 16),
+    green: Number.parseInt(normalizedHex.slice(2, 4), 16),
+    blue: Number.parseInt(normalizedHex.slice(4, 6), 16),
+  }
+}
+
+const mixColor = (hex, targetHex, weight) => {
+  const source = hexToRgb(hex)
+  const target = hexToRgb(targetHex)
+  const mixChannel = (sourceValue, targetValue) =>
+    Math.round(sourceValue * (1 - weight) + targetValue * weight)
+      .toString(16)
+      .padStart(2, '0')
+
+  return `#${mixChannel(source.red, target.red)}${mixChannel(source.green, target.green)}${mixChannel(source.blue, target.blue)}`.toUpperCase()
+}
+
+const themeColorTokens = (value) => {
+  const primary = normalizeThemeColor(value)
+
+  return {
+    primary,
+    hover: mixColor(primary, '#000000', 0.12),
+    accentLight: mixColor(primary, '#FFFFFF', 0.9),
+    accentDark: mixColor(primary, '#000000', 0.72),
+  }
 }
 
 const SETTINGS_CATEGORIES = [
@@ -206,7 +247,7 @@ const isAutoSaveMarkdownEnabled = computed(() => settingsAutoSaveMarkdown.value 
 const appSettingsPayload = () => ({
   defaultSavePath: settingsDefaultSavePath.value.trim(),
   themeMode: settingsThemeMode.value,
-  themeColor: settingsThemeColor.value,
+  themeColor: normalizeThemeColor(settingsThemeColor.value),
   fontSize: settingsFontSize.value,
   uiDensity: settingsUiDensity.value,
   markdownDefaultView: settingsMarkdownDefaultView.value,
@@ -219,7 +260,7 @@ const appSettingsPayload = () => ({
 
 const applyAppearanceSettings = () => {
   const root = document.documentElement
-  const themeColor = THEME_COLORS[settingsThemeColor.value] ?? THEME_COLORS.orange
+  const themeColor = themeColorTokens(settingsThemeColor.value)
   const fontSize = Number(settingsFontSize.value)
 
   if (settingsThemeMode.value === 'system') {
@@ -242,7 +283,9 @@ const loadAppSettings = async () => {
   )
   settingsDefaultSavePath.value = defaultSavePath.value
   settingsThemeMode.value = await loadSetting(SETTINGS_KEYS.themeMode, DEFAULT_SETTINGS.themeMode)
-  settingsThemeColor.value = await loadSetting(SETTINGS_KEYS.themeColor, DEFAULT_SETTINGS.themeColor)
+  settingsThemeColor.value = normalizeThemeColor(
+    await loadSetting(SETTINGS_KEYS.themeColor, DEFAULT_SETTINGS.themeColor),
+  )
   settingsFontSize.value = await loadSetting(SETTINGS_KEYS.fontSize, DEFAULT_SETTINGS.fontSize)
   settingsUiDensity.value = await loadSetting(SETTINGS_KEYS.uiDensity, DEFAULT_SETTINGS.uiDensity)
   settingsMarkdownDefaultView.value = await loadSetting(
@@ -1882,12 +1925,27 @@ onBeforeUnmount(() => {
                 <option value="dark">ダーク</option>
               </select>
               <label class="field-label" for="theme-color">テーマカラー</label>
-              <select id="theme-color" v-model="settingsThemeColor" class="path-input" @change="handleSaveSettings">
-                <option value="orange">オレンジ</option>
-                <option value="blue">ブルー</option>
-                <option value="green">グリーン</option>
-                <option value="rose">ローズ</option>
-              </select>
+              <div class="color-field">
+                <input
+                  id="theme-color"
+                  v-model="settingsThemeColor"
+                  class="color-input"
+                  type="color"
+                  aria-label="テーマカラー"
+                  @input="applyAppearanceSettings"
+                  @change="handleSaveSettings"
+                />
+                <input
+                  v-model="settingsThemeColor"
+                  class="path-input color-text-input"
+                  type="text"
+                  inputmode="text"
+                  maxlength="7"
+                  placeholder="#FF4500"
+                  aria-label="テーマカラーのHEX値"
+                  @blur="settingsThemeColor = normalizeThemeColor(settingsThemeColor); handleSaveSettings()"
+                />
+              </div>
               <label class="field-label" for="font-size">フォントサイズ</label>
               <input
                 id="font-size"
@@ -2281,6 +2339,38 @@ onBeforeUnmount(() => {
 .settings-range {
   width: 100%;
   accent-color: var(--bg-primary);
+}
+
+.color-field {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.color-input {
+  width: 44px;
+  height: 44px;
+  flex: 0 0 auto;
+  overflow: hidden;
+  border: 1px solid var(--border-default);
+  border-radius: 999px;
+  background: var(--surface-input);
+  cursor: pointer;
+}
+
+.color-input::-webkit-color-swatch-wrapper {
+  padding: 4px;
+}
+
+.color-input::-webkit-color-swatch {
+  border: none;
+  border-radius: 999px;
+}
+
+.color-text-input {
+  max-width: 140px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  text-transform: uppercase;
 }
 
 .settings-check {
