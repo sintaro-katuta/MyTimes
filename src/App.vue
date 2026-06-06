@@ -2186,20 +2186,17 @@ onBeforeUnmount(() => {
 .settings-layout {
   display: grid;
   grid-template-columns: 184px minmax(0, 1fr);
-  min-height: 420px;
+  height: 100%;
+  min-height: 0;
   overflow: hidden;
-  border: 1px solid var(--border-default);
-  border-radius: 8px;
-  background: var(--surface-panel);
 }
 
 .settings-nav {
   display: flex;
   flex-direction: column;
   gap: 4px;
-  padding: 12px;
+  padding: 4px 12px 4px 0;
   border-right: 1px solid var(--border-default);
-  background: var(--surface-card);
 }
 
 .settings-brand {
@@ -2264,7 +2261,7 @@ onBeforeUnmount(() => {
 
 .settings-panel {
   min-width: 0;
-  padding: 16px;
+  padding: 4px 0 4px 24px;
   overflow-y: auto;
 }
 

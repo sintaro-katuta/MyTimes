@@ -88,6 +88,11 @@ const closeModal = () => {
   height: 100%;
 }
 
+.modal-shell-wide .modal-body {
+  flex: 1;
+  min-height: 0;
+}
+
 .modal-content {
   position: relative;
   display: flex;
