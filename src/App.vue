@@ -1,7 +1,7 @@
 <script setup>
 import { open } from '@tauri-apps/plugin-dialog'
 import { LogicalPosition } from '@tauri-apps/api/dpi'
-import { Menu, NativeIcon } from '@tauri-apps/api/menu'
+import { Menu, MenuItem } from '@tauri-apps/api/menu'
 import { computed, nextTick, onMounted, ref } from 'vue'
 import Modal from './components/Modal.vue'
 import Sidebar from './components/Sidebar.vue'
@@ -37,8 +37,6 @@ import {
   syncMarkdownMessages,
   updateMarkdownMessagePath,
 } from './lib/messages'
-import { createMenuItem } from './lib/menuItems'
-import { loadPenMenuIcon } from './lib/menuIcons'
 
 const isModalOpen = ref(false)
 const modalMode = ref('app-settings')
@@ -866,47 +864,38 @@ const handleFolderContextMenuAction = async (action, folder) => {
 
 const openFolderContextMenu = async ({ folder, position }) => {
   try {
-    const penIcon = await loadPenMenuIcon().catch((error) => {
-      console.warn('ペンアイコンの読み込みに失敗しました', error)
-      return null
-    })
     const menuItems = await Promise.all([
-      createMenuItem({
+      MenuItem.new({
         id: 'rename',
         text: '名前を変更',
-        icon: penIcon,
         action: (id) => {
           void handleFolderContextMenuAction(id, folder)
         },
       }),
-      createMenuItem({
+      MenuItem.new({
         id: 'path',
         text: 'パスを変更',
-        icon: NativeIcon.Path,
         action: (id) => {
           void handleFolderContextMenuAction(id, folder)
         },
       }),
-      createMenuItem({
+      MenuItem.new({
         id: 'image',
         text: '画像を変更',
-        icon: NativeIcon.QuickLook,
         action: (id) => {
           void handleFolderContextMenuAction(id, folder)
         },
       }),
-      createMenuItem({
+      MenuItem.new({
         id: 'settings',
         text: 'プロジェクト設定',
-        icon: NativeIcon.PreferencesGeneral,
         action: (id) => {
           void handleFolderContextMenuAction(id, folder)
         },
       }),
-      createMenuItem({
+      MenuItem.new({
         id: 'delete',
         text: '削除',
-        icon: NativeIcon.TrashFull,
         enabled: !folder.isRoot,
         action: (id) => {
           void handleFolderContextMenuAction(id, folder)
