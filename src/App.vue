@@ -2,7 +2,7 @@
 import { open } from '@tauri-apps/plugin-dialog'
 import { LogicalPosition } from '@tauri-apps/api/dpi'
 import { Menu } from '@tauri-apps/api/menu'
-import { computed, nextTick, onMounted, ref } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import Modal from './components/Modal.vue'
 import Sidebar from './components/Sidebar.vue'
 import SendMessage from './components/SendMessage.vue'
@@ -28,15 +28,80 @@ import {
   loadFolderNotes as loadStoredFolderNotes,
   loadMarkdownExportPath,
   loadMessages as loadStoredMessages,
+  loadSetting,
   registerProject,
   saveAppTitle,
   saveFolderIconPath,
   saveFolderMarkdownExportPath,
   saveMarkdownExportPath,
   saveProjectDisplayName,
+  saveSetting,
   syncMarkdownMessages,
   updateMarkdownMessagePath,
 } from './lib/messages'
+
+const SETTINGS_KEYS = {
+  defaultSavePath: 'default_save_path',
+  themeMode: 'theme_mode',
+  themeColor: 'theme_color',
+  fontSize: 'font_size',
+  uiDensity: 'ui_density',
+  markdownDefaultView: 'markdown_default_view',
+  autoSaveMarkdown: 'auto_save_markdown',
+  sendShortcut: 'send_shortcut',
+  newlineRule: 'newline_rule',
+  reopenLastWorkspace: 'reopen_last_workspace',
+  lastWorkspaceFolderId: 'last_workspace_folder_id',
+  exportFormat: 'export_format',
+}
+
+const DEFAULT_SETTINGS = {
+  defaultSavePath: '',
+  themeMode: 'system',
+  themeColor: 'orange',
+  fontSize: '16',
+  uiDensity: 'comfortable',
+  markdownDefaultView: 'chat',
+  autoSaveMarkdown: 'false',
+  sendShortcut: 'mod-enter',
+  newlineRule: 'enter',
+  reopenLastWorkspace: 'true',
+  exportFormat: 'markdown',
+}
+
+const THEME_COLORS = {
+  orange: {
+    primary: '#FF4500',
+    hover: '#E03E00',
+    accentLight: '#FFF3ED',
+    accentDark: '#3A2418',
+  },
+  blue: {
+    primary: '#2563EB',
+    hover: '#1D4ED8',
+    accentLight: '#EFF6FF',
+    accentDark: '#1E2A44',
+  },
+  green: {
+    primary: '#059669',
+    hover: '#047857',
+    accentLight: '#ECFDF5',
+    accentDark: '#123A2E',
+  },
+  rose: {
+    primary: '#E11D48',
+    hover: '#BE123C',
+    accentLight: '#FFF1F2',
+    accentDark: '#3F1724',
+  },
+}
+
+const SETTINGS_CATEGORIES = [
+  { id: 'general', label: 'General' },
+  { id: 'appearance', label: 'Appearance' },
+  { id: 'editor', label: 'Editor' },
+  { id: 'files', label: 'Files' },
+]
 
 const isModalOpen = ref(false)
 const modalMode = ref('app-settings')
@@ -70,9 +135,22 @@ const selectedMarkdownSignature = ref('')
 const isSelectedNoteDbFallback = ref(false)
 const refreshMessagesRequestId = ref(0)
 const markdownExportPath = ref('')
+const defaultSavePath = ref(DEFAULT_SETTINGS.defaultSavePath)
 const appTitle = ref('デイリー分報')
 const settingsAppTitle = ref('')
 const settingsMarkdownExportPath = ref('')
+const settingsDefaultSavePath = ref(DEFAULT_SETTINGS.defaultSavePath)
+const settingsThemeMode = ref(DEFAULT_SETTINGS.themeMode)
+const settingsThemeColor = ref(DEFAULT_SETTINGS.themeColor)
+const settingsFontSize = ref(DEFAULT_SETTINGS.fontSize)
+const settingsUiDensity = ref(DEFAULT_SETTINGS.uiDensity)
+const settingsMarkdownDefaultView = ref(DEFAULT_SETTINGS.markdownDefaultView)
+const settingsAutoSaveMarkdown = ref(DEFAULT_SETTINGS.autoSaveMarkdown)
+const settingsSendShortcut = ref(DEFAULT_SETTINGS.sendShortcut)
+const settingsNewlineRule = ref(DEFAULT_SETTINGS.newlineRule)
+const settingsReopenLastWorkspace = ref(DEFAULT_SETTINGS.reopenLastWorkspace)
+const settingsExportFormat = ref(DEFAULT_SETTINGS.exportFormat)
+const activeSettingsCategory = ref(SETTINGS_CATEGORIES[0].id)
 const folderName = ref('')
 const folderCreateIconPath = ref('')
 const projectDirectoryPath = ref('')
@@ -82,6 +160,7 @@ const folderMarkdownExportPath = ref('')
 const settingsStatus = ref('')
 const notePathInput = ref('')
 const noteActionError = ref('')
+let autoSaveMarkdownTimer = null
 
 const selectedFolder = computed(() => {
   if (selectedFolderId.value === null) return null
@@ -122,10 +201,76 @@ const modalSize = computed(() =>
   modalMode.value === 'app-settings' || modalMode.value === 'folder-settings' ? 'wide' : 'default',
 )
 
+const isAutoSaveMarkdownEnabled = computed(() => settingsAutoSaveMarkdown.value === 'true')
+
+const appSettingsPayload = () => ({
+  defaultSavePath: settingsDefaultSavePath.value.trim(),
+  themeMode: settingsThemeMode.value,
+  themeColor: settingsThemeColor.value,
+  fontSize: settingsFontSize.value,
+  uiDensity: settingsUiDensity.value,
+  markdownDefaultView: settingsMarkdownDefaultView.value,
+  autoSaveMarkdown: settingsAutoSaveMarkdown.value,
+  sendShortcut: settingsSendShortcut.value,
+  newlineRule: settingsNewlineRule.value,
+  reopenLastWorkspace: settingsReopenLastWorkspace.value,
+  exportFormat: settingsExportFormat.value,
+})
+
+const applyAppearanceSettings = () => {
+  const root = document.documentElement
+  const themeColor = THEME_COLORS[settingsThemeColor.value] ?? THEME_COLORS.orange
+  const fontSize = Number(settingsFontSize.value)
+
+  if (settingsThemeMode.value === 'system') {
+    delete root.dataset.theme
+  } else {
+    root.dataset.theme = settingsThemeMode.value
+  }
+  root.dataset.density = settingsUiDensity.value
+  root.style.setProperty('--bg-primary', themeColor.primary)
+  root.style.setProperty('--bg-primary-hover', themeColor.hover)
+  root.style.setProperty('--surface-accent-light', themeColor.accentLight)
+  root.style.setProperty('--surface-accent-dark', themeColor.accentDark)
+  root.style.setProperty('--font-size', `${Number.isFinite(fontSize) ? fontSize : 16}px`)
+}
+
+const loadAppSettings = async () => {
+  defaultSavePath.value = await loadSetting(
+    SETTINGS_KEYS.defaultSavePath,
+    DEFAULT_SETTINGS.defaultSavePath,
+  )
+  settingsDefaultSavePath.value = defaultSavePath.value
+  settingsThemeMode.value = await loadSetting(SETTINGS_KEYS.themeMode, DEFAULT_SETTINGS.themeMode)
+  settingsThemeColor.value = await loadSetting(SETTINGS_KEYS.themeColor, DEFAULT_SETTINGS.themeColor)
+  settingsFontSize.value = await loadSetting(SETTINGS_KEYS.fontSize, DEFAULT_SETTINGS.fontSize)
+  settingsUiDensity.value = await loadSetting(SETTINGS_KEYS.uiDensity, DEFAULT_SETTINGS.uiDensity)
+  settingsMarkdownDefaultView.value = await loadSetting(
+    SETTINGS_KEYS.markdownDefaultView,
+    DEFAULT_SETTINGS.markdownDefaultView,
+  )
+  settingsAutoSaveMarkdown.value = await loadSetting(
+    SETTINGS_KEYS.autoSaveMarkdown,
+    DEFAULT_SETTINGS.autoSaveMarkdown,
+  )
+  settingsSendShortcut.value = await loadSetting(
+    SETTINGS_KEYS.sendShortcut,
+    DEFAULT_SETTINGS.sendShortcut,
+  )
+  settingsNewlineRule.value = await loadSetting(SETTINGS_KEYS.newlineRule, DEFAULT_SETTINGS.newlineRule)
+  settingsReopenLastWorkspace.value = await loadSetting(
+    SETTINGS_KEYS.reopenLastWorkspace,
+    DEFAULT_SETTINGS.reopenLastWorkspace,
+  )
+  settingsExportFormat.value = await loadSetting(SETTINGS_KEYS.exportFormat, DEFAULT_SETTINGS.exportFormat)
+  applyAppearanceSettings()
+}
+
 const openSettingsModal = () => {
   modalMode.value = 'app-settings'
   settingsAppTitle.value = appTitle.value
   settingsMarkdownExportPath.value = markdownExportPath.value
+  activeSettingsCategory.value = SETTINGS_CATEGORIES[0].id
   settingsStatus.value = ''
   isModalOpen.value = true
 }
@@ -373,7 +518,7 @@ const refreshMessages = async () => {
       markdownDraft.value = ''
       selectedMarkdownSignature.value = ''
       isSelectedNoteDbFallback.value = false
-      viewMode.value = 'chat'
+      viewMode.value = settingsMarkdownDefaultView.value
 
       let markdown = ''
       let parsed = null
@@ -403,6 +548,7 @@ const refreshMessages = async () => {
 
         messages.value = rows.map(toViewMessage)
         isSelectedNoteDbFallback.value = true
+        viewMode.value = 'chat'
         await scrollMessagesToBottom()
         if (requestId !== refreshMessagesRequestId.value) return
 
@@ -561,6 +707,9 @@ const handleCreateFolder = async (close) => {
 
     selectedFolderId.value = createdProject?.id ?? selectedFolderId.value
     selectedNotePath.value = null
+    if (settingsReopenLastWorkspace.value === 'true' && selectedFolderId.value !== null) {
+      await saveSetting(SETTINGS_KEYS.lastWorkspaceFolderId, selectedFolderId.value)
+    }
     await refreshMessages()
 
     folderName.value = ''
@@ -1015,6 +1164,9 @@ const selectFolder = async (folderId) => {
   selectedFolderId.value = folderId
   selectedNotePath.value = null
   viewMode.value = 'chat'
+  if (settingsReopenLastWorkspace.value === 'true') {
+    await saveSetting(SETTINGS_KEYS.lastWorkspaceFolderId, folderId)
+  }
   await refreshMessages()
 }
 
@@ -1023,7 +1175,7 @@ const selectNote = async (notePath) => {
   if (!confirmDiscardMarkdownChanges()) return
 
   selectedNotePath.value = notePath
-  viewMode.value = 'chat'
+  viewMode.value = settingsMarkdownDefaultView.value
   await refreshMessages()
 }
 
@@ -1047,7 +1199,7 @@ const refreshAppTitle = async () => {
 const isAbsolutePath = (path) => path.startsWith('/') || /^[A-Za-z]:[\\/]/.test(path)
 
 const currentMarkdownExportPath = () => {
-  const basePath = markdownExportPath.value.trim()
+  const basePath = markdownExportPath.value.trim() || defaultSavePath.value.trim()
 
   if (!selectedFolder.value) return basePath
 
@@ -1365,10 +1517,14 @@ const revertMarkdownDraft = () => {
 const handleSaveSettings = async () => {
   const nextMarkdownExportPath = settingsMarkdownExportPath.value.trim()
   const previousMarkdownExportPath = markdownExportPath.value.trim()
+  const previousDefaultSavePath = defaultSavePath.value.trim()
+  const nextSettings = appSettingsPayload()
   const previousSelectedFolderId = selectedFolderId.value
   const previousSelectedNotePath = selectedNotePath.value
   const shouldReloadMarkdown = Boolean(
-    selectedFolder.value && nextMarkdownExportPath !== previousMarkdownExportPath,
+    selectedFolder.value &&
+    (nextMarkdownExportPath !== previousMarkdownExportPath ||
+      nextSettings.defaultSavePath !== previousDefaultSavePath),
   )
 
   if (
@@ -1384,6 +1540,13 @@ const handleSaveSettings = async () => {
   try {
     await saveAppTitle(settingsAppTitle.value)
     await saveMarkdownExportPath(settingsMarkdownExportPath.value)
+    await Promise.all(
+      Object.entries(nextSettings).map(([settingName, value]) =>
+        saveSetting(SETTINGS_KEYS[settingName], value),
+      ),
+    )
+    defaultSavePath.value = nextSettings.defaultSavePath
+    applyAppearanceSettings()
     await refreshAppTitle()
     await refreshMarkdownExportPath()
     await refreshFolders()
@@ -1392,7 +1555,11 @@ const handleSaveSettings = async () => {
       selectedNotePath.value !== previousSelectedNotePath
     )
 
-    if (nextMarkdownExportPath !== previousMarkdownExportPath || selectionChanged) {
+    if (
+      nextMarkdownExportPath !== previousMarkdownExportPath ||
+      nextSettings.defaultSavePath !== previousDefaultSavePath ||
+      selectionChanged
+    ) {
       await refreshMessages()
     }
     settingsStatus.value = '保存しました'
@@ -1426,15 +1593,79 @@ const handleBrowseMarkdownExportPath = async () => {
   }
 }
 
+const handleBrowseDefaultSavePath = async () => {
+  isBrowsing.value = true
+  settingsStatus.value = ''
+
+  try {
+    const selectedPath = await open({
+      directory: true,
+      multiple: false,
+      defaultPath: settingsDefaultSavePath.value || undefined,
+      title: 'デフォルト保存先を選択',
+    })
+
+    if (typeof selectedPath === 'string') {
+      settingsDefaultSavePath.value = selectedPath
+      await handleSaveSettings()
+    }
+  } catch (error) {
+    settingsStatus.value = error instanceof Error ? error.message : 'デフォルト保存先の選択に失敗しました'
+  } finally {
+    isBrowsing.value = false
+  }
+}
+
+const restoreLastWorkspace = async () => {
+  if (settingsReopenLastWorkspace.value !== 'true' || selectedFolderId.value !== null) return
+
+  const lastWorkspaceFolderId = Number(
+    await loadSetting(SETTINGS_KEYS.lastWorkspaceFolderId, ''),
+  )
+
+  if (!Number.isFinite(lastWorkspaceFolderId)) return
+  if (!folders.value.some((folder) => folder.id === lastWorkspaceFolderId)) return
+
+  selectedFolderId.value = lastWorkspaceFolderId
+}
+
+watch(
+  [
+    settingsThemeMode,
+    settingsThemeColor,
+    settingsFontSize,
+    settingsUiDensity,
+  ],
+  applyAppearanceSettings,
+)
+
+watch(markdownDraft, () => {
+  if (!isAutoSaveMarkdownEnabled.value || viewMode.value !== 'markdown' || !isMarkdownDirty.value) return
+  if (isSavingMarkdown.value || isSavingNote.value || isLoadingMessages.value) return
+
+  window.clearTimeout(autoSaveMarkdownTimer)
+  autoSaveMarkdownTimer = window.setTimeout(() => {
+    void saveMarkdownDraft()
+  }, 1200)
+})
+
 onMounted(async () => {
+  await loadAppSettings().catch((error) => {
+    loadMessageError.value = error instanceof Error ? error.message : '設定の読み込みに失敗しました'
+  })
   await refreshMarkdownExportPath().catch((error) => {
     loadMessageError.value = error instanceof Error ? error.message : '設定の読み込みに失敗しました'
   })
   await refreshFolders()
+  await restoreLastWorkspace()
   await refreshMessages()
   refreshAppTitle().catch((error) => {
     loadMessageError.value = error instanceof Error ? error.message : '設定の読み込みに失敗しました'
   })
+})
+
+onBeforeUnmount(() => {
+  window.clearTimeout(autoSaveMarkdownTimer)
 })
 </script>
 
@@ -1550,6 +1781,8 @@ onMounted(async () => {
           :is-sending="isSendingMessage"
           :disabled="isMarkdownSendDisabled"
           :error-message="sendMessageError"
+          :submit-shortcut="settingsSendShortcut"
+          :newline-rule="settingsNewlineRule"
           @submit="sendMessage"
         />
       </main>
@@ -1569,36 +1802,165 @@ onMounted(async () => {
         </h2>
       </template>
       <template #body>
-        <form v-if="modalMode === 'app-settings'" class="settings-form" @submit.prevent>
-          <label class="field-label" for="app-title">アプリ名</label>
-          <input
-            id="app-title"
-            v-model="settingsAppTitle"
-            class="path-input"
-            type="text"
-            placeholder="デイリー分報"
-            @change="handleSaveSettings"
-          />
-          <label class="field-label" for="markdown-export-path">Markdown保存先</label>
-          <div class="path-field">
-            <input
-              id="markdown-export-path"
-              v-model="settingsMarkdownExportPath"
-              class="path-input"
-              type="text"
-              placeholder="/Users/sintaro/Documents/MyTimes/entries"
-              @change="handleSaveSettings"
-            />
+        <form v-if="modalMode === 'app-settings'" class="settings-layout" @submit.prevent>
+          <aside class="settings-nav" aria-label="設定カテゴリ">
+            <div class="settings-brand">
+              <img class="settings-brand-icon" src="/app-icon.png" alt="" width="40" height="40" />
+              <div>
+                <p class="settings-brand-title">{{ settingsAppTitle || appTitle }}</p>
+                <p class="settings-brand-subtitle">MyTimes</p>
+              </div>
+            </div>
             <button
+              v-for="category in SETTINGS_CATEGORIES"
+              :key="category.id"
               type="button"
-              class="secondary-button browse-button"
-              :disabled="isBrowsing || isSavingSettings"
-              @click="handleBrowseMarkdownExportPath"
+              class="settings-nav-button"
+              :class="{ active: activeSettingsCategory === category.id }"
+              @click="activeSettingsCategory = category.id"
             >
-              参照
+              {{ category.label }}
             </button>
-          </div>
-          <p v-if="settingsStatus" class="settings-status">{{ settingsStatus }}</p>
+          </aside>
+
+          <section class="settings-panel">
+            <div v-if="activeSettingsCategory === 'general'" class="settings-section">
+              <label class="field-label" for="app-title">アプリ名</label>
+              <input
+                id="app-title"
+                v-model="settingsAppTitle"
+                class="path-input"
+                type="text"
+                placeholder="デイリー分報"
+                @change="handleSaveSettings"
+              />
+              <label class="field-label" for="markdown-export-path">Markdown保存先</label>
+              <div class="path-field">
+                <input
+                  id="markdown-export-path"
+                  v-model="settingsMarkdownExportPath"
+                  class="path-input"
+                  type="text"
+                  placeholder="/Users/sintaro/Documents/MyTimes/entries"
+                  @change="handleSaveSettings"
+                />
+                <button
+                  type="button"
+                  class="secondary-button browse-button"
+                  :disabled="isBrowsing || isSavingSettings"
+                  @click="handleBrowseMarkdownExportPath"
+                >
+                  参照
+                </button>
+              </div>
+              <label class="field-label" for="default-save-path">デフォルト保存先</label>
+              <div class="path-field">
+                <input
+                  id="default-save-path"
+                  v-model="settingsDefaultSavePath"
+                  class="path-input"
+                  type="text"
+                  placeholder="Markdown保存先が空のときに使うフォルダー"
+                  @change="handleSaveSettings"
+                />
+                <button
+                  type="button"
+                  class="secondary-button browse-button"
+                  :disabled="isBrowsing || isSavingSettings"
+                  @click="handleBrowseDefaultSavePath"
+                >
+                  参照
+                </button>
+              </div>
+            </div>
+
+            <div v-else-if="activeSettingsCategory === 'appearance'" class="settings-section">
+              <label class="field-label" for="theme-mode">表示モード</label>
+              <select id="theme-mode" v-model="settingsThemeMode" class="path-input" @change="handleSaveSettings">
+                <option value="system">OSに合わせる</option>
+                <option value="light">ライト</option>
+                <option value="dark">ダーク</option>
+              </select>
+              <label class="field-label" for="theme-color">テーマカラー</label>
+              <select id="theme-color" v-model="settingsThemeColor" class="path-input" @change="handleSaveSettings">
+                <option value="orange">オレンジ</option>
+                <option value="blue">ブルー</option>
+                <option value="green">グリーン</option>
+                <option value="rose">ローズ</option>
+              </select>
+              <label class="field-label" for="font-size">フォントサイズ</label>
+              <input
+                id="font-size"
+                v-model="settingsFontSize"
+                class="settings-range"
+                type="range"
+                min="14"
+                max="20"
+                step="1"
+                @change="handleSaveSettings"
+              />
+              <p class="settings-inline-value">{{ settingsFontSize }}px</p>
+              <label class="field-label" for="ui-density">UI密度</label>
+              <select id="ui-density" v-model="settingsUiDensity" class="path-input" @change="handleSaveSettings">
+                <option value="comfortable">標準</option>
+                <option value="compact">コンパクト</option>
+                <option value="spacious">広め</option>
+              </select>
+            </div>
+
+            <div v-else-if="activeSettingsCategory === 'editor'" class="settings-section">
+              <label class="field-label" for="markdown-default-view">ノートを開いたときの表示</label>
+              <select
+                id="markdown-default-view"
+                v-model="settingsMarkdownDefaultView"
+                class="path-input"
+                @change="handleSaveSettings"
+              >
+                <option value="chat">チャット</option>
+                <option value="markdown">Markdown</option>
+              </select>
+              <label class="settings-check">
+                <input
+                  v-model="settingsAutoSaveMarkdown"
+                  type="checkbox"
+                  true-value="true"
+                  false-value="false"
+                  @change="handleSaveSettings"
+                />
+                Markdownを自動保存
+              </label>
+              <label class="field-label" for="send-shortcut">送信ショートカット</label>
+              <select id="send-shortcut" v-model="settingsSendShortcut" class="path-input" @change="handleSaveSettings">
+                <option value="mod-enter">Cmd/Ctrl + Enterで送信</option>
+                <option value="enter">Enterで送信</option>
+              </select>
+              <label class="field-label" for="newline-rule">Enter送信時の改行</label>
+              <select id="newline-rule" v-model="settingsNewlineRule" class="path-input" @change="handleSaveSettings">
+                <option value="enter">Enterで改行</option>
+                <option value="shift-enter">Shift + Enterで改行</option>
+              </select>
+            </div>
+
+            <div v-else class="settings-section">
+              <label class="settings-check">
+                <input
+                  v-model="settingsReopenLastWorkspace"
+                  type="checkbox"
+                  true-value="true"
+                  false-value="false"
+                  @change="handleSaveSettings"
+                />
+                起動時に最後のワークスペースを開く
+              </label>
+              <label class="field-label" for="export-format">エクスポート形式</label>
+              <select id="export-format" v-model="settingsExportFormat" class="path-input" @change="handleSaveSettings">
+                <option value="markdown">Markdown</option>
+                <option value="plain-text">プレーンテキスト</option>
+              </select>
+            </div>
+
+            <p v-if="settingsStatus" class="settings-status">{{ settingsStatus }}</p>
+          </section>
         </form>
         <form
           v-else-if="modalMode === 'create-project'"
@@ -1739,7 +2101,7 @@ onMounted(async () => {
 
 <style scoped>
 .container {
-  padding: 16px;
+  padding: calc(16px * var(--density-scale));
 }
 
 .layout {
@@ -1821,6 +2183,125 @@ onMounted(async () => {
   gap: 8px;
 }
 
+.settings-layout {
+  display: grid;
+  grid-template-columns: 184px minmax(0, 1fr);
+  min-height: 420px;
+  overflow: hidden;
+  border: 1px solid var(--border-default);
+  border-radius: 8px;
+  background: var(--surface-panel);
+}
+
+.settings-nav {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 12px;
+  border-right: 1px solid var(--border-default);
+  background: var(--surface-card);
+}
+
+.settings-brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  margin-bottom: 8px;
+  padding: 4px 4px 10px;
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.settings-brand-icon {
+  width: 40px;
+  height: 40px;
+  flex: 0 0 auto;
+  border-radius: 8px;
+}
+
+.settings-brand-title,
+.settings-brand-subtitle {
+  margin: 0;
+}
+
+.settings-brand-title {
+  overflow: hidden;
+  color: var(--text-primary);
+  font-size: 13px;
+  font-weight: 700;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.settings-brand-subtitle {
+  color: var(--text-tertiary);
+  font-size: 12px;
+}
+
+.settings-nav-button {
+  width: 100%;
+  min-height: 36px;
+  border: none;
+  border-radius: 8px;
+  padding: 0 10px;
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 700;
+  text-align: left;
+}
+
+.settings-nav-button:hover {
+  background: var(--surface-elevated-hover);
+  color: var(--text-primary);
+}
+
+.settings-nav-button.active {
+  background: var(--surface-accent);
+  color: var(--text-primary);
+}
+
+.settings-panel {
+  min-width: 0;
+  padding: 16px;
+  overflow-y: auto;
+}
+
+.settings-section {
+  display: flex;
+  max-width: 680px;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.settings-inline-value {
+  margin: -2px 0 4px;
+  color: var(--text-tertiary);
+  font-size: 12px;
+}
+
+.settings-range {
+  width: 100%;
+  accent-color: var(--bg-primary);
+}
+
+.settings-check {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 40px;
+  color: var(--text-primary);
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.settings-check input {
+  width: 18px;
+  height: 18px;
+  accent-color: var(--bg-primary);
+}
+
 .field-label {
   color: var(--text-primary);
   font-size: 13px;
@@ -1843,6 +2324,10 @@ onMounted(async () => {
   background: var(--surface-input);
   color: var(--text-primary);
   font-size: 14px;
+}
+
+select.path-input {
+  cursor: pointer;
 }
 
 .path-input:focus-visible {
@@ -1911,8 +2396,8 @@ onMounted(async () => {
   min-height: 0;
   flex-direction: column;
   justify-content: flex-end;
-  gap: 16px;
-  margin-bottom: 16px;
+  gap: calc(16px * var(--density-scale));
+  margin-bottom: calc(16px * var(--density-scale));
   overflow-y: auto;
   scrollbar-width: none;
   -ms-overflow-style: none;
@@ -1985,5 +2470,20 @@ onMounted(async () => {
 .markdown-textarea:focus-visible {
   outline: 3px solid var(--focus-ring);
   outline-offset: 2px;
+}
+
+@media (max-width: 760px) {
+  .settings-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .settings-nav {
+    border-right: none;
+    border-bottom: 1px solid var(--border-default);
+  }
+
+  .settings-panel {
+    padding: 12px;
+  }
 }
 </style>

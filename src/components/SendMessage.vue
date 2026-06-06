@@ -19,6 +19,14 @@ const props = defineProps({
     type: String,
     default: '',
   },
+  submitShortcut: {
+    type: String,
+    default: 'mod-enter',
+  },
+  newlineRule: {
+    type: String,
+    default: 'enter',
+  },
 })
 
 const emit = defineEmits(['update:modelValue', 'submit'])
@@ -56,7 +64,15 @@ const submitMessage = () => {
 }
 
 const handleTextareaKeydown = (event) => {
-  if (!event.metaKey || event.key !== 'Enter') return
+  if (event.key !== 'Enter') return
+
+  const isModifierEnter = event.metaKey || event.ctrlKey
+  const isEnterSubmit = props.submitShortcut === 'enter' && !event.shiftKey
+
+  if (!isModifierEnter && !isEnterSubmit) return
+  if (props.submitShortcut === 'mod-enter' && !isModifierEnter) return
+
+  if (isEnterSubmit && props.newlineRule === 'shift-enter' && event.shiftKey) return
 
   event.preventDefault()
   submitMessage()
