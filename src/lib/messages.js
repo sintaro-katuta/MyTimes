@@ -49,9 +49,10 @@ export const loadFolders = async () => {
 
   return db.select(
     `SELECT id, name, parent_id AS parentId, path, markdown_export_path AS markdownExportPath,
-            icon_path AS iconPath, path = '' AS isRoot
+            icon_path AS iconPath
      FROM folders
-     ORDER BY CASE WHEN path = '' THEN 0 ELSE 1 END, path ASC, id ASC`,
+     WHERE path <> ''
+     ORDER BY path ASC, id ASC`,
   )
 }
 
@@ -80,7 +81,7 @@ export const registerProject = async ({ directoryPath, displayName = '', iconPat
 
   const rows = await db.select(
     `SELECT id, name, parent_id AS parentId, path, markdown_export_path AS markdownExportPath,
-            icon_path AS iconPath, path = '' AS isRoot
+            icon_path AS iconPath
      FROM folders
      WHERE path = ?
      LIMIT 1`,
@@ -106,7 +107,7 @@ export const saveProjectDisplayName = async (folderId, displayName) => {
 
   const rows = await db.select(
     `SELECT id, name, parent_id AS parentId, path, markdown_export_path AS markdownExportPath,
-            icon_path AS iconPath, path = '' AS isRoot
+            icon_path AS iconPath
      FROM folders
      WHERE id = ?
      LIMIT 1`,
@@ -201,7 +202,7 @@ export const createFolder = async (name, parentFolder = null, iconPath = '') => 
 
   const rows = await db.select(
     `SELECT id, name, parent_id AS parentId, path, markdown_export_path AS markdownExportPath,
-            icon_path AS iconPath, path = '' AS isRoot
+            icon_path AS iconPath
      FROM folders
      WHERE path = ?
      ORDER BY id DESC
@@ -262,7 +263,7 @@ export const renameFolder = async (folder, name) => {
 
   const renamedRows = await db.select(
     `SELECT id, name, parent_id AS parentId, path, markdown_export_path AS markdownExportPath,
-            icon_path AS iconPath, path = '' AS isRoot
+            icon_path AS iconPath
      FROM folders
      WHERE id = ?
      LIMIT 1`,

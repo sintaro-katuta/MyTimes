@@ -224,16 +224,12 @@ const refreshFolders = async () => {
   try {
     const rows = await loadStoredFolders()
     folders.value = rows
-    const rootFolderId = rows.find((folder) => Boolean(folder.isRoot))?.id ?? null
 
-    const shouldSelectRoot = Boolean(rootFolderId && markdownExportPath.value.trim())
-
-    if (selectedFolderId.value === null) {
-      if (shouldSelectRoot) {
-        selectedFolderId.value = rootFolderId
-      }
-    } else if (!rows.some((folder) => folder.id === selectedFolderId.value)) {
-      selectedFolderId.value = shouldSelectRoot ? rootFolderId : null
+    if (
+      selectedFolderId.value !== null &&
+      !rows.some((folder) => folder.id === selectedFolderId.value)
+    ) {
+      selectedFolderId.value = null
     }
   } catch (error) {
     loadFolderError.value = error instanceof Error ? error.message : 'プロジェクト一覧の読み込みに失敗しました'
