@@ -23,14 +23,12 @@ import {
   createMessage,
   deleteFolder,
   exportMessagesToMarkdown,
-  loadAppTitle,
   loadFolders as loadStoredFolders,
   loadFolderNotes as loadStoredFolderNotes,
   loadMarkdownExportPath,
   loadMessages as loadStoredMessages,
   loadSetting,
   registerProject,
-  saveAppTitle,
   saveFolderIconPath,
   saveFolderMarkdownExportPath,
   saveProjectDisplayName,
@@ -135,10 +133,9 @@ const themeColorTokens = (value) => {
 }
 
 const SETTINGS_CATEGORIES = [
-  { id: 'general', label: 'General' },
-  { id: 'appearance', label: 'Appearance' },
-  { id: 'editor', label: 'Editor' },
-  { id: 'files', label: 'Files' },
+  { id: 'appearance', label: '外観' },
+  { id: 'editor', label: 'エディタ' },
+  { id: 'files', label: 'ファイル' },
 ]
 
 const isModalOpen = ref(false)
@@ -172,8 +169,6 @@ const selectedMarkdownSignature = ref('')
 const isSelectedNoteDbFallback = ref(false)
 const refreshMessagesRequestId = ref(0)
 const markdownExportPath = ref('')
-const appTitle = ref('デイリー分報')
-const settingsAppTitle = ref('')
 const settingsThemeMode = ref(DEFAULT_SETTINGS.themeMode)
 const settingsThemeColor = ref(DEFAULT_SETTINGS.themeColor)
 const settingsFontSize = ref(DEFAULT_SETTINGS.fontSize)
@@ -298,7 +293,6 @@ const loadAppSettings = async () => {
 
 const openSettingsModal = () => {
   modalMode.value = 'app-settings'
-  settingsAppTitle.value = appTitle.value
   activeSettingsCategory.value = SETTINGS_CATEGORIES[0].id
   settingsStatus.value = ''
   isModalOpen.value = true
@@ -1221,10 +1215,6 @@ const refreshMarkdownExportPath = async () => {
   markdownExportPath.value = await loadMarkdownExportPath()
 }
 
-const refreshAppTitle = async () => {
-  appTitle.value = await loadAppTitle()
-}
-
 const isAbsolutePath = (path) => path.startsWith('/') || /^[A-Za-z]:[\\/]/.test(path)
 
 const currentMarkdownExportPath = () => {
@@ -1550,14 +1540,12 @@ const handleSaveSettings = async () => {
   settingsStatus.value = ''
 
   try {
-    await saveAppTitle(settingsAppTitle.value)
     await Promise.all(
       Object.entries(nextSettings).map(([settingName, value]) =>
         saveSetting(SETTINGS_KEYS[settingName], value),
       ),
     )
     applyAppearanceSettings()
-    await refreshAppTitle()
     settingsStatus.value = '保存しました'
   } catch (error) {
     settingsStatus.value = error instanceof Error ? error.message : '設定の保存に失敗しました'
@@ -1609,9 +1597,6 @@ onMounted(async () => {
   await refreshFolders()
   await restoreLastWorkspace()
   await refreshMessages()
-  refreshAppTitle().catch((error) => {
-    loadMessageError.value = error instanceof Error ? error.message : '設定の読み込みに失敗しました'
-  })
 })
 
 onBeforeUnmount(() => {
@@ -1767,23 +1752,7 @@ onBeforeUnmount(() => {
           </aside>
 
           <section class="settings-panel">
-            <div v-if="activeSettingsCategory === 'general'" class="settings-section">
-              <div class="settings-group">
-                <div class="settings-row">
-                  <label class="field-label" for="app-title">アプリ名</label>
-                  <input
-                    id="app-title"
-                    v-model="settingsAppTitle"
-                    class="path-input"
-                    type="text"
-                    placeholder="デイリー分報"
-                    @change="handleSaveSettings"
-                  />
-                </div>
-              </div>
-            </div>
-
-            <div v-else-if="activeSettingsCategory === 'appearance'" class="settings-section">
+            <div v-if="activeSettingsCategory === 'appearance'" class="settings-section">
               <div class="settings-group">
                 <div class="settings-row">
                   <label class="field-label" for="theme-mode">表示モード</label>
