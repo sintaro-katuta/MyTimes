@@ -1861,153 +1861,185 @@ onBeforeUnmount(() => {
 
           <section class="settings-panel">
             <div v-if="activeSettingsCategory === 'general'" class="settings-section">
-              <label class="field-label" for="app-title">アプリ名</label>
-              <input
-                id="app-title"
-                v-model="settingsAppTitle"
-                class="path-input"
-                type="text"
-                placeholder="デイリー分報"
-                @change="handleSaveSettings"
-              />
-              <label class="field-label" for="markdown-export-path">Markdown保存先</label>
-              <div class="path-field">
-                <input
-                  id="markdown-export-path"
-                  v-model="settingsMarkdownExportPath"
-                  class="path-input"
-                  type="text"
-                  placeholder="/Users/sintaro/Documents/MyTimes/entries"
-                  @change="handleSaveSettings"
-                />
-                <button
-                  type="button"
-                  class="secondary-button browse-button"
-                  :disabled="isBrowsing || isSavingSettings"
-                  @click="handleBrowseMarkdownExportPath"
-                >
-                  参照
-                </button>
-              </div>
-              <label class="field-label" for="default-save-path">デフォルト保存先</label>
-              <div class="path-field">
-                <input
-                  id="default-save-path"
-                  v-model="settingsDefaultSavePath"
-                  class="path-input"
-                  type="text"
-                  placeholder="Markdown保存先が空のときに使うフォルダー"
-                  @change="handleSaveSettings"
-                />
-                <button
-                  type="button"
-                  class="secondary-button browse-button"
-                  :disabled="isBrowsing || isSavingSettings"
-                  @click="handleBrowseDefaultSavePath"
-                >
-                  参照
-                </button>
+              <div class="settings-group">
+                <div class="settings-row">
+                  <label class="field-label" for="app-title">アプリ名</label>
+                  <input
+                    id="app-title"
+                    v-model="settingsAppTitle"
+                    class="path-input"
+                    type="text"
+                    placeholder="デイリー分報"
+                    @change="handleSaveSettings"
+                  />
+                </div>
+                <div class="settings-row">
+                  <label class="field-label" for="markdown-export-path">Markdown保存先</label>
+                  <div class="path-field">
+                    <input
+                      id="markdown-export-path"
+                      v-model="settingsMarkdownExportPath"
+                      class="path-input"
+                      type="text"
+                      placeholder="/Users/sintaro/Documents/MyTimes/entries"
+                      @change="handleSaveSettings"
+                    />
+                    <button
+                      type="button"
+                      class="secondary-button browse-button"
+                      :disabled="isBrowsing || isSavingSettings"
+                      @click="handleBrowseMarkdownExportPath"
+                    >
+                      参照
+                    </button>
+                  </div>
+                </div>
+                <div class="settings-row">
+                  <label class="field-label" for="default-save-path">デフォルト保存先</label>
+                  <div class="path-field">
+                    <input
+                      id="default-save-path"
+                      v-model="settingsDefaultSavePath"
+                      class="path-input"
+                      type="text"
+                      placeholder="Markdown保存先が空のときに使うフォルダー"
+                      @change="handleSaveSettings"
+                    />
+                    <button
+                      type="button"
+                      class="secondary-button browse-button"
+                      :disabled="isBrowsing || isSavingSettings"
+                      @click="handleBrowseDefaultSavePath"
+                    >
+                      参照
+                    </button>
+                  </div>
+                </div>
               </div>
             </div>
 
             <div v-else-if="activeSettingsCategory === 'appearance'" class="settings-section">
-              <label class="field-label" for="theme-mode">表示モード</label>
-              <select id="theme-mode" v-model="settingsThemeMode" class="path-input" @change="handleSaveSettings">
-                <option value="system">OSに合わせる</option>
-                <option value="light">ライト</option>
-                <option value="dark">ダーク</option>
-              </select>
-              <label class="field-label" for="theme-color">テーマカラー</label>
-              <div class="color-field">
-                <input
-                  id="theme-color"
-                  v-model="settingsThemeColor"
-                  class="color-input"
-                  type="color"
-                  aria-label="テーマカラー"
-                  @input="applyAppearanceSettings"
-                  @change="handleSaveSettings"
-                />
-                <input
-                  v-model="settingsThemeColor"
-                  class="path-input color-text-input"
-                  type="text"
-                  inputmode="text"
-                  maxlength="7"
-                  placeholder="#FF4500"
-                  aria-label="テーマカラーのHEX値"
-                  @blur="settingsThemeColor = normalizeThemeColor(settingsThemeColor); handleSaveSettings()"
-                />
+              <div class="settings-group">
+                <div class="settings-row">
+                  <label class="field-label" for="theme-mode">表示モード</label>
+                  <select id="theme-mode" v-model="settingsThemeMode" class="path-input" @change="handleSaveSettings">
+                    <option value="system">OSに合わせる</option>
+                    <option value="light">ライト</option>
+                    <option value="dark">ダーク</option>
+                  </select>
+                </div>
+                <div class="settings-row">
+                  <label class="field-label" for="theme-color">テーマカラー</label>
+                  <div class="color-field">
+                    <input
+                      id="theme-color"
+                      v-model="settingsThemeColor"
+                      class="color-input"
+                      type="color"
+                      aria-label="テーマカラー"
+                      @input="applyAppearanceSettings"
+                      @change="handleSaveSettings"
+                    />
+                    <input
+                      v-model="settingsThemeColor"
+                      class="path-input color-text-input"
+                      type="text"
+                      inputmode="text"
+                      maxlength="7"
+                      placeholder="#FF4500"
+                      aria-label="テーマカラーのHEX値"
+                      @blur="settingsThemeColor = normalizeThemeColor(settingsThemeColor); handleSaveSettings()"
+                    />
+                  </div>
+                </div>
+                <div class="settings-row">
+                  <label class="field-label" for="font-size">フォントサイズ</label>
+                  <div class="range-field">
+                    <input
+                      id="font-size"
+                      v-model="settingsFontSize"
+                      class="settings-range"
+                      type="range"
+                      min="14"
+                      max="20"
+                      step="1"
+                      @change="handleSaveSettings"
+                    />
+                    <p class="settings-inline-value">{{ settingsFontSize }}px</p>
+                  </div>
+                </div>
+                <div class="settings-row">
+                  <label class="field-label" for="ui-density">UI密度</label>
+                  <select id="ui-density" v-model="settingsUiDensity" class="path-input" @change="handleSaveSettings">
+                    <option value="comfortable">標準</option>
+                    <option value="compact">コンパクト</option>
+                    <option value="spacious">広め</option>
+                  </select>
+                </div>
               </div>
-              <label class="field-label" for="font-size">フォントサイズ</label>
-              <input
-                id="font-size"
-                v-model="settingsFontSize"
-                class="settings-range"
-                type="range"
-                min="14"
-                max="20"
-                step="1"
-                @change="handleSaveSettings"
-              />
-              <p class="settings-inline-value">{{ settingsFontSize }}px</p>
-              <label class="field-label" for="ui-density">UI密度</label>
-              <select id="ui-density" v-model="settingsUiDensity" class="path-input" @change="handleSaveSettings">
-                <option value="comfortable">標準</option>
-                <option value="compact">コンパクト</option>
-                <option value="spacious">広め</option>
-              </select>
             </div>
 
             <div v-else-if="activeSettingsCategory === 'editor'" class="settings-section">
-              <label class="field-label" for="markdown-default-view">ノートを開いたときの表示</label>
-              <select
-                id="markdown-default-view"
-                v-model="settingsMarkdownDefaultView"
-                class="path-input"
-                @change="handleSaveSettings"
-              >
-                <option value="chat">チャット</option>
-                <option value="markdown">Markdown</option>
-              </select>
-              <label class="settings-check">
-                <input
-                  v-model="settingsAutoSaveMarkdown"
-                  type="checkbox"
-                  true-value="true"
-                  false-value="false"
-                  @change="handleSaveSettings"
-                />
-                Markdownを自動保存
-              </label>
-              <label class="field-label" for="send-shortcut">送信ショートカット</label>
-              <select id="send-shortcut" v-model="settingsSendShortcut" class="path-input" @change="handleSaveSettings">
-                <option value="mod-enter">Cmd/Ctrl + Enterで送信</option>
-                <option value="enter">Enterで送信</option>
-              </select>
-              <label class="field-label" for="newline-rule">Enter送信時の改行</label>
-              <select id="newline-rule" v-model="settingsNewlineRule" class="path-input" @change="handleSaveSettings">
-                <option value="enter">Enterで改行</option>
-                <option value="shift-enter">Shift + Enterで改行</option>
-              </select>
+              <div class="settings-group">
+                <div class="settings-row">
+                  <label class="field-label" for="markdown-default-view">ノートを開いたときの表示</label>
+                  <select
+                    id="markdown-default-view"
+                    v-model="settingsMarkdownDefaultView"
+                    class="path-input"
+                    @change="handleSaveSettings"
+                  >
+                    <option value="chat">チャット</option>
+                    <option value="markdown">Markdown</option>
+                  </select>
+                </div>
+                <label class="settings-row settings-check">
+                  <span class="field-label">Markdownを自動保存</span>
+                  <input
+                    v-model="settingsAutoSaveMarkdown"
+                    type="checkbox"
+                    true-value="true"
+                    false-value="false"
+                    @change="handleSaveSettings"
+                  />
+                </label>
+                <div class="settings-row">
+                  <label class="field-label" for="send-shortcut">送信ショートカット</label>
+                  <select id="send-shortcut" v-model="settingsSendShortcut" class="path-input" @change="handleSaveSettings">
+                    <option value="mod-enter">Cmd/Ctrl + Enterで送信</option>
+                    <option value="enter">Enterで送信</option>
+                  </select>
+                </div>
+                <div class="settings-row">
+                  <label class="field-label" for="newline-rule">Enter送信時の改行</label>
+                  <select id="newline-rule" v-model="settingsNewlineRule" class="path-input" @change="handleSaveSettings">
+                    <option value="enter">Enterで改行</option>
+                    <option value="shift-enter">Shift + Enterで改行</option>
+                  </select>
+                </div>
+              </div>
             </div>
 
             <div v-else class="settings-section">
-              <label class="settings-check">
-                <input
-                  v-model="settingsReopenLastWorkspace"
-                  type="checkbox"
-                  true-value="true"
-                  false-value="false"
-                  @change="handleSaveSettings"
-                />
-                起動時に最後のワークスペースを開く
-              </label>
-              <label class="field-label" for="export-format">エクスポート形式</label>
-              <select id="export-format" v-model="settingsExportFormat" class="path-input" @change="handleSaveSettings">
-                <option value="markdown">Markdown</option>
-                <option value="plain-text">プレーンテキスト</option>
-              </select>
+              <div class="settings-group">
+                <label class="settings-row settings-check">
+                  <span class="field-label">起動時に最後のワークスペースを開く</span>
+                  <input
+                    v-model="settingsReopenLastWorkspace"
+                    type="checkbox"
+                    true-value="true"
+                    false-value="false"
+                    @change="handleSaveSettings"
+                  />
+                </label>
+                <div class="settings-row">
+                  <label class="field-label" for="export-format">エクスポート形式</label>
+                  <select id="export-format" v-model="settingsExportFormat" class="path-input" @change="handleSaveSettings">
+                    <option value="markdown">Markdown</option>
+                    <option value="plain-text">プレーンテキスト</option>
+                  </select>
+                </div>
+              </div>
             </div>
 
             <p v-if="settingsStatus" class="settings-status">{{ settingsStatus }}</p>
@@ -2236,7 +2268,7 @@ onBeforeUnmount(() => {
 
 .settings-layout {
   display: grid;
-  grid-template-columns: 184px minmax(0, 1fr);
+  grid-template-columns: 240px minmax(0, 1fr);
   height: 100%;
   min-height: 0;
   overflow: hidden;
@@ -2252,7 +2284,7 @@ onBeforeUnmount(() => {
 
 .settings-nav-button {
   width: 100%;
-  min-height: 36px;
+  min-height: 38px;
   border: none;
   border-radius: 8px;
   padding: 0 10px;
@@ -2276,7 +2308,7 @@ onBeforeUnmount(() => {
 
 .settings-panel {
   min-width: 0;
-  padding: 4px 0 4px 24px;
+  padding: 0 0 0 32px;
   overflow-y: auto;
 }
 
@@ -2285,13 +2317,40 @@ onBeforeUnmount(() => {
   width: 100%;
   box-sizing: border-box;
   flex-direction: column;
-  gap: 8px;
+  gap: 20px;
+}
+
+.settings-group {
+  display: flex;
+  width: 100%;
+  box-sizing: border-box;
+  flex-direction: column;
+  overflow: hidden;
+  border-radius: 8px;
+  background: var(--bg-base-2);
+}
+
+.settings-row {
+  display: grid;
+  grid-template-columns: minmax(180px, 1fr) minmax(280px, 52%);
+  gap: 24px;
+  align-items: center;
+  min-height: 64px;
+  box-sizing: border-box;
+  padding: 14px 18px;
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.settings-row:last-child {
+  border-bottom: none;
 }
 
 .settings-inline-value {
-  margin: -2px 0 4px;
+  min-width: 42px;
+  margin: 0;
   color: var(--text-tertiary);
   font-size: 12px;
+  text-align: right;
 }
 
 .settings-range {
@@ -2299,10 +2358,19 @@ onBeforeUnmount(() => {
   accent-color: var(--bg-primary);
 }
 
+.range-field {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+
 .color-field {
   display: flex;
   align-items: center;
+  justify-content: flex-end;
   gap: 10px;
+  min-width: 0;
 }
 
 .color-input {
@@ -2332,16 +2400,12 @@ onBeforeUnmount(() => {
 }
 
 .settings-check {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  min-height: 40px;
   color: var(--text-primary);
-  font-size: 14px;
-  font-weight: 700;
+  cursor: pointer;
 }
 
 .settings-check input {
+  justify-self: end;
   width: 18px;
   height: 18px;
   accent-color: var(--bg-primary);
@@ -2357,6 +2421,7 @@ onBeforeUnmount(() => {
   display: flex;
   gap: 8px;
   align-items: center;
+  min-width: 0;
 }
 
 .path-field .path-input {
@@ -2367,7 +2432,7 @@ onBeforeUnmount(() => {
 .path-input {
   width: 100%;
   box-sizing: border-box;
-  height: 40px;
+  height: 38px;
   border: 1px solid var(--border-default);
   border-radius: 8px;
   padding: 0 12px;
@@ -2534,6 +2599,15 @@ select.path-input {
 
   .settings-panel {
     padding: 12px;
+  }
+
+  .settings-row {
+    grid-template-columns: 1fr;
+    gap: 8px;
+  }
+
+  .color-field {
+    justify-content: flex-start;
   }
 }
 </style>
