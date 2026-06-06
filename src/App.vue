@@ -33,7 +33,6 @@ import {
   saveAppTitle,
   saveFolderIconPath,
   saveFolderMarkdownExportPath,
-  saveMarkdownExportPath,
   saveProjectDisplayName,
   saveSetting,
   syncMarkdownMessages,
@@ -41,7 +40,6 @@ import {
 } from './lib/messages'
 
 const SETTINGS_KEYS = {
-  defaultSavePath: 'default_save_path',
   themeMode: 'theme_mode',
   themeColor: 'theme_color',
   fontSize: 'font_size',
@@ -56,7 +54,6 @@ const SETTINGS_KEYS = {
 }
 
 const DEFAULT_SETTINGS = {
-  defaultSavePath: '',
   themeMode: 'system',
   themeColor: '#FF4500',
   fontSize: '16',
@@ -164,7 +161,6 @@ const isSavingMarkdown = ref(false)
 const isReloadingMarkdown = ref(false)
 const isSavingNote = ref(false)
 const isSavingSettings = ref(false)
-const isBrowsing = ref(false)
 const loadMessageError = ref('')
 const loadFolderError = ref('')
 const loadFolderNotesError = ref('')
@@ -176,11 +172,8 @@ const selectedMarkdownSignature = ref('')
 const isSelectedNoteDbFallback = ref(false)
 const refreshMessagesRequestId = ref(0)
 const markdownExportPath = ref('')
-const defaultSavePath = ref(DEFAULT_SETTINGS.defaultSavePath)
 const appTitle = ref('デイリー分報')
 const settingsAppTitle = ref('')
-const settingsMarkdownExportPath = ref('')
-const settingsDefaultSavePath = ref(DEFAULT_SETTINGS.defaultSavePath)
 const settingsThemeMode = ref(DEFAULT_SETTINGS.themeMode)
 const settingsThemeColor = ref(DEFAULT_SETTINGS.themeColor)
 const settingsFontSize = ref(DEFAULT_SETTINGS.fontSize)
@@ -245,7 +238,6 @@ const modalSize = computed(() =>
 const isAutoSaveMarkdownEnabled = computed(() => settingsAutoSaveMarkdown.value === 'true')
 
 const appSettingsPayload = () => ({
-  defaultSavePath: settingsDefaultSavePath.value.trim(),
   themeMode: settingsThemeMode.value,
   themeColor: normalizeThemeColor(settingsThemeColor.value),
   fontSize: settingsFontSize.value,
@@ -277,11 +269,6 @@ const applyAppearanceSettings = () => {
 }
 
 const loadAppSettings = async () => {
-  defaultSavePath.value = await loadSetting(
-    SETTINGS_KEYS.defaultSavePath,
-    DEFAULT_SETTINGS.defaultSavePath,
-  )
-  settingsDefaultSavePath.value = defaultSavePath.value
   settingsThemeMode.value = await loadSetting(SETTINGS_KEYS.themeMode, DEFAULT_SETTINGS.themeMode)
   settingsThemeColor.value = normalizeThemeColor(
     await loadSetting(SETTINGS_KEYS.themeColor, DEFAULT_SETTINGS.themeColor),
@@ -312,7 +299,6 @@ const loadAppSettings = async () => {
 const openSettingsModal = () => {
   modalMode.value = 'app-settings'
   settingsAppTitle.value = appTitle.value
-  settingsMarkdownExportPath.value = markdownExportPath.value
   activeSettingsCategory.value = SETTINGS_CATEGORIES[0].id
   settingsStatus.value = ''
   isModalOpen.value = true
@@ -1242,7 +1228,7 @@ const refreshAppTitle = async () => {
 const isAbsolutePath = (path) => path.startsWith('/') || /^[A-Za-z]:[\\/]/.test(path)
 
 const currentMarkdownExportPath = () => {
-  const basePath = markdownExportPath.value.trim() || defaultSavePath.value.trim()
+  const basePath = markdownExportPath.value.trim()
 
   if (!selectedFolder.value) return basePath
 
@@ -1558,104 +1544,25 @@ const revertMarkdownDraft = () => {
 }
 
 const handleSaveSettings = async () => {
-  const nextMarkdownExportPath = settingsMarkdownExportPath.value.trim()
-  const previousMarkdownExportPath = markdownExportPath.value.trim()
-  const previousDefaultSavePath = defaultSavePath.value.trim()
   const nextSettings = appSettingsPayload()
-  const previousSelectedFolderId = selectedFolderId.value
-  const previousSelectedNotePath = selectedNotePath.value
-  const shouldReloadMarkdown = Boolean(
-    selectedFolder.value &&
-    (nextMarkdownExportPath !== previousMarkdownExportPath ||
-      nextSettings.defaultSavePath !== previousDefaultSavePath),
-  )
-
-  if (
-    shouldReloadMarkdown &&
-    !confirmDiscardMarkdownChanges()
-  ) {
-    return
-  }
 
   isSavingSettings.value = true
   settingsStatus.value = ''
 
   try {
     await saveAppTitle(settingsAppTitle.value)
-    await saveMarkdownExportPath(settingsMarkdownExportPath.value)
     await Promise.all(
       Object.entries(nextSettings).map(([settingName, value]) =>
         saveSetting(SETTINGS_KEYS[settingName], value),
       ),
     )
-    defaultSavePath.value = nextSettings.defaultSavePath
     applyAppearanceSettings()
     await refreshAppTitle()
-    await refreshMarkdownExportPath()
-    await refreshFolders()
-    const selectionChanged = (
-      selectedFolderId.value !== previousSelectedFolderId ||
-      selectedNotePath.value !== previousSelectedNotePath
-    )
-
-    if (
-      nextMarkdownExportPath !== previousMarkdownExportPath ||
-      nextSettings.defaultSavePath !== previousDefaultSavePath ||
-      selectionChanged
-    ) {
-      await refreshMessages()
-    }
     settingsStatus.value = '保存しました'
   } catch (error) {
     settingsStatus.value = error instanceof Error ? error.message : '設定の保存に失敗しました'
   } finally {
     isSavingSettings.value = false
-  }
-}
-
-const handleBrowseMarkdownExportPath = async () => {
-  isBrowsing.value = true
-  settingsStatus.value = ''
-
-  try {
-    const selectedPath = await open({
-      directory: true,
-      multiple: false,
-      defaultPath: settingsMarkdownExportPath.value || undefined,
-      title: 'Markdown保存先を選択',
-    })
-
-    if (typeof selectedPath === 'string') {
-      settingsMarkdownExportPath.value = selectedPath
-      await handleSaveSettings()
-    }
-  } catch (error) {
-    settingsStatus.value = error instanceof Error ? error.message : '保存先の選択に失敗しました'
-  } finally {
-    isBrowsing.value = false
-  }
-}
-
-const handleBrowseDefaultSavePath = async () => {
-  isBrowsing.value = true
-  settingsStatus.value = ''
-
-  try {
-    const selectedPath = await open({
-      directory: true,
-      multiple: false,
-      defaultPath: settingsDefaultSavePath.value || undefined,
-      title: 'デフォルト保存先を選択',
-    })
-
-    if (typeof selectedPath === 'string') {
-      settingsDefaultSavePath.value = selectedPath
-      await handleSaveSettings()
-    }
-  } catch (error) {
-    settingsStatus.value = error instanceof Error ? error.message : 'デフォルト保存先の選択に失敗しました'
-  } finally {
-    isBrowsing.value = false
   }
 }
 
@@ -1872,48 +1779,6 @@ onBeforeUnmount(() => {
                     placeholder="デイリー分報"
                     @change="handleSaveSettings"
                   />
-                </div>
-                <div class="settings-row">
-                  <label class="field-label" for="markdown-export-path">Markdown保存先</label>
-                  <div class="path-field">
-                    <input
-                      id="markdown-export-path"
-                      v-model="settingsMarkdownExportPath"
-                      class="path-input"
-                      type="text"
-                      placeholder="/Users/sintaro/Documents/MyTimes/entries"
-                      @change="handleSaveSettings"
-                    />
-                    <button
-                      type="button"
-                      class="secondary-button browse-button"
-                      :disabled="isBrowsing || isSavingSettings"
-                      @click="handleBrowseMarkdownExportPath"
-                    >
-                      参照
-                    </button>
-                  </div>
-                </div>
-                <div class="settings-row">
-                  <label class="field-label" for="default-save-path">デフォルト保存先</label>
-                  <div class="path-field">
-                    <input
-                      id="default-save-path"
-                      v-model="settingsDefaultSavePath"
-                      class="path-input"
-                      type="text"
-                      placeholder="Markdown保存先が空のときに使うフォルダー"
-                      @change="handleSaveSettings"
-                    />
-                    <button
-                      type="button"
-                      class="secondary-button browse-button"
-                      :disabled="isBrowsing || isSavingSettings"
-                      @click="handleBrowseDefaultSavePath"
-                    >
-                      参照
-                    </button>
-                  </div>
                 </div>
               </div>
             </div>
