@@ -2282,7 +2282,8 @@ onBeforeUnmount(() => {
 
 .settings-section {
   display: flex;
-  max-width: 680px;
+  width: 100%;
+  box-sizing: border-box;
   flex-direction: column;
   gap: 8px;
 }
@@ -2356,6 +2357,11 @@ onBeforeUnmount(() => {
   display: flex;
   gap: 8px;
   align-items: center;
+}
+
+.path-field .path-input {
+  flex: 1 1 auto;
+  min-width: 0;
 }
 
 .path-input {
