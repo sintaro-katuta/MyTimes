@@ -606,7 +606,7 @@ const handleCreateNote = async (close) => {
     selectedNotePath.value = file.path
     await refreshFolderNotes()
     await refreshMessages()
-    viewMode.value = 'markdown'
+    viewMode.value = 'chat'
     notePathInput.value = ''
     close()
   } catch (error) {
