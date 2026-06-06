@@ -852,11 +852,6 @@ const handleFolderContextMenuAction = async (action, folder) => {
     return
   }
 
-  if (action === 'settings') {
-    await openFolderSettingsModalFromMenu(folder)
-    return
-  }
-
   if (action === 'delete') {
     await deleteFolderFromMenu(folder)
   }
@@ -882,13 +877,6 @@ const openFolderContextMenu = async ({ folder, position }) => {
       MenuItem.new({
         id: 'image',
         text: '画像を変更',
-        action: (id) => {
-          void handleFolderContextMenuAction(id, folder)
-        },
-      }),
-      MenuItem.new({
-        id: 'settings',
-        text: 'プロジェクト設定',
         action: (id) => {
           void handleFolderContextMenuAction(id, folder)
         },
