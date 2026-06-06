@@ -1847,13 +1847,6 @@ onBeforeUnmount(() => {
       <template #body>
         <form v-if="modalMode === 'app-settings'" class="settings-layout" @submit.prevent>
           <aside class="settings-nav" aria-label="設定カテゴリ">
-            <div class="settings-brand">
-              <img class="settings-brand-icon" src="/icon.svg" alt="" width="40" height="40" />
-              <div>
-                <p class="settings-brand-title">{{ settingsAppTitle || appTitle }}</p>
-                <p class="settings-brand-subtitle">MyTimes</p>
-              </div>
-            </div>
             <button
               v-for="category in SETTINGS_CATEGORIES"
               :key="category.id"
@@ -2255,42 +2248,6 @@ onBeforeUnmount(() => {
   gap: 4px;
   padding: 4px 12px 4px 0;
   border-right: 1px solid var(--border-default);
-}
-
-.settings-brand {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  min-width: 0;
-  margin-bottom: 8px;
-  padding: 4px 4px 10px;
-  border-bottom: 1px solid var(--border-subtle);
-}
-
-.settings-brand-icon {
-  width: 40px;
-  height: 40px;
-  flex: 0 0 auto;
-  border-radius: 8px;
-}
-
-.settings-brand-title,
-.settings-brand-subtitle {
-  margin: 0;
-}
-
-.settings-brand-title {
-  overflow: hidden;
-  color: var(--text-primary);
-  font-size: 13px;
-  font-weight: 700;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.settings-brand-subtitle {
-  color: var(--text-tertiary);
-  font-size: 12px;
 }
 
 .settings-nav-button {
