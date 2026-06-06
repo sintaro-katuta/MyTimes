@@ -1,16 +1,16 @@
 <script setup>
 import { convertFileSrc } from '@tauri-apps/api/core'
-import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { LogicalPosition } from '@tauri-apps/api/dpi'
+import { Menu } from '@tauri-apps/api/menu'
+import { computed, nextTick, ref, watch } from 'vue'
 
 import {
   ChevronDown,
   ChevronRight,
   FileText,
   Folder,
-  Pencil,
   Plus,
   Settings,
-  Trash2,
 } from '@lucide/vue'
 
 const props = defineProps({
@@ -44,6 +44,7 @@ const emit = defineEmits([
   'open-settings',
   'open-create-folder',
   'open-folder-settings',
+  'open-folder-context-menu',
   'open-create-note',
   'rename-note',
   'delete-note',
@@ -53,16 +54,11 @@ const emit = defineEmits([
 ])
 
 const expandedFolderIds = ref(new Set())
-const noteContextMenu = ref({
-  isOpen: false,
-  x: 0,
-  y: 0,
-  note: null,
-})
 const editingNotePath = ref('')
 const noteRenameInput = ref('')
 const noteRenameInputRef = ref(null)
 const expandedNoteDirectoryPaths = ref(new Set())
+const noteContextMenuTarget = ref(null)
 
 const foldersByParent = computed(() => {
   return props.folders.reduce((groups, folder) => {
@@ -257,6 +253,16 @@ const openFolderSettings = () => {
   emit('open-folder-settings')
 }
 
+const openFolderContextMenu = (event, folder) => {
+  emit('open-folder-context-menu', {
+    folder,
+    position: {
+      x: event.clientX,
+      y: event.clientY,
+    },
+  })
+}
+
 const openCreateNote = () => {
   emit('open-create-note')
 }
@@ -277,73 +283,82 @@ const deleteNote = (note) => {
   emit('delete-note', note.path)
 }
 
-const closeNoteContextMenu = () => {
-  noteContextMenu.value = {
-    isOpen: false,
-    x: 0,
-    y: 0,
-    note: null,
-  }
-}
-
-const openNoteContextMenu = (event, note) => {
+const openNoteContextMenu = async (event, note) => {
   if (props.selectedFolderId === null) return
 
-  openNoteContextMenuAt({
+  await openNoteContextMenuAt({
     x: event.clientX,
     y: event.clientY,
     note,
   })
 }
 
-const openNoteContextMenuAt = ({ x, y, note }) => {
+let noteContextMenuPromise = null
+
+const getNoteContextMenu = () => {
+  if (!noteContextMenuPromise) {
+    noteContextMenuPromise = Menu.new({
+      items: [
+        {
+          id: 'note-rename',
+          text: '名前を変更',
+          action: (id) => {
+            void handleNoteContextMenuAction(id, noteContextMenuTarget.value)
+          },
+        },
+        {
+          id: 'note-delete',
+          text: '削除',
+          action: (id) => {
+            void handleNoteContextMenuAction(id, noteContextMenuTarget.value)
+          },
+        },
+      ],
+    }).catch((error) => {
+      noteContextMenuPromise = null
+      throw error
+    })
+  }
+
+  return noteContextMenuPromise
+}
+
+const openNoteContextMenuAt = async ({ x, y, note }) => {
   if (props.selectedFolderId === null) return
 
-  const menuWidth = 156
-  const menuHeight = 88
-  const viewportPadding = 8
-
-  noteContextMenu.value = {
-    isOpen: true,
-    x: Math.max(
-      viewportPadding,
-      Math.min(x, window.innerWidth - menuWidth - viewportPadding),
-    ),
-    y: Math.max(
-      viewportPadding,
-      Math.min(y, window.innerHeight - menuHeight - viewportPadding),
-    ),
-    note,
+  try {
+    noteContextMenuTarget.value = note
+    const menu = await getNoteContextMenu()
+    await menu.popup(new LogicalPosition(x, y))
+  } catch (error) {
+    console.error(error)
   }
 }
 
-const handleNoteMenuKeydown = (event, note) => {
+const handleNoteMenuKeydown = async (event, note) => {
   if (event.key !== 'ContextMenu' && !(event.shiftKey && event.key === 'F10')) return
 
   event.preventDefault()
   const rect = event.currentTarget.getBoundingClientRect()
 
-  openNoteContextMenuAt({
+  await openNoteContextMenuAt({
     x: rect.right,
     y: rect.top,
     note,
   })
 }
 
-const handleRenameNoteFromMenu = () => {
-  const note = noteContextMenu.value.note
-  closeNoteContextMenu()
-  if (!note) return
+const handleNoteContextMenuAction = async (action, note) => {
+  if (action === 'note-rename') {
+    if (!note) return
+    startRenameNote(note)
+    return
+  }
 
-  startRenameNote(note)
-}
-
-const handleDeleteNoteFromMenu = () => {
-  const note = noteContextMenu.value.note
-  closeNoteContextMenu()
-  if (!note) return
-
-  deleteNote(note)
+  if (action === 'note-delete') {
+    if (!note) return
+    deleteNote(note)
+  }
 }
 
 const noteFileName = (path) => {
@@ -434,26 +449,6 @@ const toggleNoteDirectory = (directory) => {
   expandedNoteDirectoryPaths.value = nextExpandedPaths
 }
 
-const handleDocumentClick = () => {
-  closeNoteContextMenu()
-}
-
-const handleDocumentKeydown = (event) => {
-  if (event.key === 'Escape') {
-    closeNoteContextMenu()
-  }
-}
-
-onMounted(() => {
-  document.addEventListener('click', handleDocumentClick)
-  document.addEventListener('keydown', handleDocumentKeydown)
-})
-
-onBeforeUnmount(() => {
-  document.removeEventListener('click', handleDocumentClick)
-  document.removeEventListener('keydown', handleDocumentKeydown)
-})
-
 watch(
   () => [props.selectedFolderId, props.folders.length],
   ([folderId]) => {
@@ -540,6 +535,7 @@ watch(
               :aria-label="folder.name"
               :title="folder.path"
               @click="selectFolder(folder)"
+              @contextmenu.prevent="openFolderContextMenu($event, folder)"
             >
               <img v-if="folder.iconPath" class="folder-image" :src="folderIconSrc(folder)" alt="" />
               <Folder v-else :size="20" />
@@ -582,7 +578,6 @@ watch(
               :class="{
                 'is-directory': item.type === 'directory',
                 active: item.type === 'file' && selectedNotePath === item.path,
-                'menu-open': item.type === 'file' && noteContextMenu.isOpen && noteContextMenu.note?.path === item.path,
                 editing: item.type === 'file' && editingNotePath === item.path,
               }"
               :style="{ '--note-depth': item.depth }"
@@ -639,29 +634,6 @@ watch(
           <span>新しいノート</span>
         </button>
       </div>
-      <div
-        v-if="noteContextMenu.isOpen"
-        class="note-context-menu"
-        :style="{ left: `${noteContextMenu.x}px`, top: `${noteContextMenu.y}px` }"
-        role="menu"
-        @click.stop
-        @contextmenu.prevent
-      >
-        <button type="button" class="note-context-menu-item" role="menuitem" @click="handleRenameNoteFromMenu">
-          <Pencil :size="14" />
-          <span>名前を変更</span>
-        </button>
-        <button
-          type="button"
-          class="note-context-menu-item is-danger"
-          role="menuitem"
-          @click="handleDeleteNoteFromMenu"
-        >
-          <Trash2 :size="14" />
-          <span>削除</span>
-        </button>
-      </div>
-
     </div>
   </div>
 </template>
@@ -983,46 +955,6 @@ watch(
 
 .note-rename-input:focus {
   border-color: var(--text-secondary);
-}
-
-.note-context-menu {
-  position: fixed;
-  z-index: 40;
-  width: 156px;
-  box-sizing: border-box;
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  padding: 6px;
-  border: 1px solid var(--border-subtle);
-  border-radius: 8px;
-  background: var(--bg-base-1);
-  box-shadow: 0 12px 32px rgb(0 0 0 / 28%);
-}
-
-.note-context-menu-item {
-  min-height: 34px;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 8px 10px;
-  border: none;
-  border-radius: 6px;
-  background: transparent;
-  color: var(--text-secondary);
-  cursor: pointer;
-  font: inherit;
-  font-size: 13px;
-  text-align: left;
-}
-
-.note-context-menu-item:hover {
-  background: var(--bg-base-2);
-  color: var(--text-primary);
-}
-
-.note-context-menu-item.is-danger:hover {
-  color: var(--bg-error);
 }
 
 .title {

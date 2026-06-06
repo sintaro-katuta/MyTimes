@@ -1,5 +1,7 @@
 <script setup>
 import { open } from '@tauri-apps/plugin-dialog'
+import { LogicalPosition } from '@tauri-apps/api/dpi'
+import { Menu } from '@tauri-apps/api/menu'
 import { computed, nextTick, onMounted, ref } from 'vue'
 import Modal from './components/Modal.vue'
 import Sidebar from './components/Sidebar.vue'
@@ -19,6 +21,7 @@ import {
 import {
   clearMarkdownMessages,
   createMessage,
+  deleteFolder,
   exportMessagesToMarkdown,
   loadAppTitle,
   loadFolders as loadStoredFolders,
@@ -46,6 +49,7 @@ const folders = ref([])
 const folderNotes = ref([])
 const selectedFolderId = ref(null)
 const selectedNotePath = ref(null)
+const folderContextMenuTarget = ref(null)
 const isLoadingMessages = ref(true)
 const isLoadingFolders = ref(true)
 const isLoadingFolderNotes = ref(false)
@@ -138,12 +142,16 @@ const openCreateFolderModal = () => {
 const openFolderSettingsModal = () => {
   if (!selectedFolder.value) return
 
-  modalMode.value = 'folder-settings'
-  renameFolderName.value = selectedFolder.value.name
-  folderIconPath.value = selectedFolder.value.iconPath ?? ''
-  folderMarkdownExportPath.value = selectedFolder.value.markdownExportPath ?? selectedFolder.value.path
-  loadFolderError.value = ''
+  applyFolderSettingsForm(selectedFolder.value)
   isModalOpen.value = true
+}
+
+const applyFolderSettingsForm = (folder) => {
+  modalMode.value = 'folder-settings'
+  renameFolderName.value = folder.name
+  folderIconPath.value = folder.iconPath ?? ''
+  folderMarkdownExportPath.value = folder.markdownExportPath ?? folder.path
+  loadFolderError.value = ''
 }
 
 const openCreateNoteModal = () => {
@@ -217,16 +225,12 @@ const refreshFolders = async () => {
   try {
     const rows = await loadStoredFolders()
     folders.value = rows
-    const rootFolderId = rows.find((folder) => Boolean(folder.isRoot))?.id ?? null
 
-    const shouldSelectRoot = Boolean(rootFolderId && markdownExportPath.value.trim())
-
-    if (selectedFolderId.value === null) {
-      if (shouldSelectRoot) {
-        selectedFolderId.value = rootFolderId
-      }
-    } else if (!rows.some((folder) => folder.id === selectedFolderId.value)) {
-      selectedFolderId.value = shouldSelectRoot ? rootFolderId : null
+    if (
+      selectedFolderId.value !== null &&
+      !rows.some((folder) => folder.id === selectedFolderId.value)
+    ) {
+      selectedFolderId.value = null
     }
   } catch (error) {
     loadFolderError.value = error instanceof Error ? error.message : 'プロジェクト一覧の読み込みに失敗しました'
@@ -603,7 +607,7 @@ const handleCreateNote = async (close) => {
     selectedNotePath.value = file.path
     await refreshFolderNotes()
     await refreshMessages()
-    viewMode.value = 'markdown'
+    viewMode.value = 'chat'
     notePathInput.value = ''
     close()
   } catch (error) {
@@ -762,6 +766,151 @@ const handleSaveFolderSettings = async (close = null) => {
     close?.()
   } catch (error) {
     loadFolderError.value = error instanceof Error ? error.message : 'プロジェクト設定の保存に失敗しました'
+  }
+}
+
+const prepareFolderContextAction = async (folder) => {
+  if (!folder) return false
+
+  if (folder.id !== selectedFolderId.value || selectedNotePath.value !== null) {
+    if (!confirmDiscardMarkdownChanges()) return false
+
+    selectedFolderId.value = folder.id
+    selectedNotePath.value = null
+    viewMode.value = 'chat'
+    await refreshMessages()
+  }
+
+  const latestFolder = selectedFolder.value?.id === folder.id ? selectedFolder.value : folder
+  applyFolderSettingsForm(latestFolder)
+  return true
+}
+
+const openFolderSettingsModalFromMenu = async (folder) => {
+  if (!(await prepareFolderContextAction(folder))) return
+
+  isModalOpen.value = true
+}
+
+const browseFolderPathFromMenu = async (folder) => {
+  if (!(await prepareFolderContextAction(folder))) return
+
+  await handleBrowseFolderMarkdownExportPath()
+}
+
+const browseFolderIconFromMenu = async (folder) => {
+  if (!(await prepareFolderContextAction(folder))) return
+
+  await handleBrowseFolderIcon()
+}
+
+const deleteFolderFromMenu = async (folder) => {
+  if (!folder) return
+  if (!confirmDiscardMarkdownChanges()) return
+  if (
+    !window.confirm(
+      `${folder.name} のプロジェクト登録と履歴を削除しますか？\nファイルやフォルダーは削除されません。`,
+    )
+  ) {
+    return
+  }
+
+  loadFolderError.value = ''
+  loadFolderNotesError.value = ''
+  loadMessageError.value = ''
+
+  try {
+    const deletedFolderIds = await deleteFolder(folder.id)
+
+    if (deletedFolderIds.includes(selectedFolderId.value)) {
+      selectedFolderId.value = null
+      selectedNotePath.value = null
+      viewMode.value = 'chat'
+    }
+
+    await refreshFolders()
+    await refreshFolderNotes()
+    await refreshMessages()
+  } catch (error) {
+    loadFolderError.value = error instanceof Error ? error.message : 'プロジェクトの削除に失敗しました'
+  }
+}
+
+const handleFolderContextMenuAction = async (action, folder) => {
+  if (action === 'folder-rename') {
+    await openFolderSettingsModalFromMenu(folder)
+    await nextTick()
+    document.getElementById('rename-folder-name')?.focus()
+    document.getElementById('rename-folder-name')?.select()
+    return
+  }
+
+  if (action === 'folder-path') {
+    await browseFolderPathFromMenu(folder)
+    return
+  }
+
+  if (action === 'folder-image') {
+    await browseFolderIconFromMenu(folder)
+    return
+  }
+
+  if (action === 'folder-delete') {
+    await deleteFolderFromMenu(folder)
+  }
+}
+
+let folderContextMenuPromise = null
+
+const getFolderContextMenu = () => {
+  if (!folderContextMenuPromise) {
+    folderContextMenuPromise = Menu.new({
+      items: [
+        {
+          id: 'folder-rename',
+          text: '名前を変更',
+          action: (id) => {
+            void handleFolderContextMenuAction(id, folderContextMenuTarget.value)
+          },
+        },
+        {
+          id: 'folder-path',
+          text: 'パスを変更',
+          action: (id) => {
+            void handleFolderContextMenuAction(id, folderContextMenuTarget.value)
+          },
+        },
+        {
+          id: 'folder-image',
+          text: '画像を変更',
+          action: (id) => {
+            void handleFolderContextMenuAction(id, folderContextMenuTarget.value)
+          },
+        },
+        {
+          id: 'folder-delete',
+          text: '削除',
+          action: (id) => {
+            void handleFolderContextMenuAction(id, folderContextMenuTarget.value)
+          },
+        },
+      ],
+    }).catch((error) => {
+      folderContextMenuPromise = null
+      throw error
+    })
+  }
+
+  return folderContextMenuPromise
+}
+
+const openFolderContextMenu = async ({ folder, position }) => {
+  try {
+    folderContextMenuTarget.value = folder
+    const menu = await getFolderContextMenu()
+    await menu.popup(new LogicalPosition(position.x, position.y))
+  } catch (error) {
+    loadFolderError.value = error instanceof Error ? error.message : 'プロジェクトメニューの表示に失敗しました'
   }
 }
 
@@ -1301,6 +1450,7 @@ onMounted(async () => {
         :selected-note-path="selectedNotePath"
         @open-create-folder="openCreateFolderModal"
         @open-folder-settings="openFolderSettingsModal"
+        @open-folder-context-menu="openFolderContextMenu"
         @open-create-note="openCreateNoteModal"
         @rename-note="handleRenameNoteInline"
         @delete-note="handleDeleteNote"

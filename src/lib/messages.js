@@ -46,12 +46,77 @@ export const loadMessages = async ({ folderId = null, notePath = null } = {}) =>
 
 export const loadFolders = async () => {
   const db = await getDatabase()
+  await migrateRootFolderData(db)
 
   return db.select(
     `SELECT id, name, parent_id AS parentId, path, markdown_export_path AS markdownExportPath,
-            icon_path AS iconPath, path = '' AS isRoot
+            icon_path AS iconPath
      FROM folders
-     ORDER BY CASE WHEN path = '' THEN 0 ELSE 1 END, path ASC, id ASC`,
+     WHERE path <> ''
+     ORDER BY path ASC, id ASC`,
+  )
+}
+
+const migrateRootFolderData = async (db) => {
+  const roots = await db.select(
+    `SELECT id
+     FROM folders
+     WHERE path = ''
+     LIMIT 1`,
+  )
+  const root = roots[0]
+
+  if (!root) return
+
+  const updatedAt = formatLocalTimestamp(new Date())
+
+  await db.execute(
+    `UPDATE folders
+     SET parent_id = NULL, updated_at = ?
+     WHERE parent_id = ?`,
+    [updatedAt, root.id],
+  )
+
+  const rootMessageCounts = await db.select(
+    `SELECT COUNT(*) AS count
+     FROM messages
+     WHERE folder_id = ?`,
+    [root.id],
+  )
+  const rootMessageCount = Number(rootMessageCounts[0]?.count ?? 0)
+
+  if (rootMessageCount === 0) return
+
+  const settings = await db.select('SELECT value FROM settings WHERE key = ?', [
+    MARKDOWN_EXPORT_PATH_KEY,
+  ])
+  const projectPath = settings[0]?.value?.trim() ?? ''
+
+  if (!projectPath) return
+
+  await db.execute(
+    `INSERT OR IGNORE INTO folders
+       (name, parent_id, path, markdown_export_path, icon_path, created_at, updated_at)
+     VALUES (?, NULL, ?, ?, NULL, ?, ?)`,
+    [getPathBaseName(projectPath), projectPath, projectPath, updatedAt, updatedAt],
+  )
+
+  const targetFolders = await db.select(
+    `SELECT id
+     FROM folders
+     WHERE path = ?
+     LIMIT 1`,
+    [projectPath],
+  )
+  const targetFolder = targetFolders[0]
+
+  if (!targetFolder) return
+
+  await db.execute(
+    `UPDATE messages
+     SET folder_id = ?, updated_at = ?
+     WHERE folder_id = ?`,
+    [targetFolder.id, updatedAt, root.id],
   )
 }
 
@@ -80,7 +145,7 @@ export const registerProject = async ({ directoryPath, displayName = '', iconPat
 
   const rows = await db.select(
     `SELECT id, name, parent_id AS parentId, path, markdown_export_path AS markdownExportPath,
-            icon_path AS iconPath, path = '' AS isRoot
+            icon_path AS iconPath
      FROM folders
      WHERE path = ?
      LIMIT 1`,
@@ -106,7 +171,7 @@ export const saveProjectDisplayName = async (folderId, displayName) => {
 
   const rows = await db.select(
     `SELECT id, name, parent_id AS parentId, path, markdown_export_path AS markdownExportPath,
-            icon_path AS iconPath, path = '' AS isRoot
+            icon_path AS iconPath
      FROM folders
      WHERE id = ?
      LIMIT 1`,
@@ -201,7 +266,7 @@ export const createFolder = async (name, parentFolder = null, iconPath = '') => 
 
   const rows = await db.select(
     `SELECT id, name, parent_id AS parentId, path, markdown_export_path AS markdownExportPath,
-            icon_path AS iconPath, path = '' AS isRoot
+            icon_path AS iconPath
      FROM folders
      WHERE path = ?
      ORDER BY id DESC
@@ -262,7 +327,7 @@ export const renameFolder = async (folder, name) => {
 
   const renamedRows = await db.select(
     `SELECT id, name, parent_id AS parentId, path, markdown_export_path AS markdownExportPath,
-            icon_path AS iconPath, path = '' AS isRoot
+            icon_path AS iconPath
      FROM folders
      WHERE id = ?
      LIMIT 1`,
@@ -294,6 +359,51 @@ export const saveFolderMarkdownExportPath = async (folderId, markdownExportPath)
      WHERE id = ?`,
     [markdownExportPath.trim(), updatedAt, folderId],
   )
+}
+
+export const deleteFolder = async (folderId) => {
+  const db = await getDatabase()
+  const folders = await db.select(
+    `SELECT id, path
+     FROM folders
+     WHERE id = ?
+     LIMIT 1`,
+    [folderId],
+  )
+  const folder = folders[0]
+
+  if (!folder) return []
+
+  const folderIds = [folder.id]
+  let pendingFolderIds = [folder.id]
+
+  while (pendingFolderIds.length > 0) {
+    const placeholders = pendingFolderIds.map(() => '?').join(', ')
+    const childFolders = await db.select(
+      `SELECT id
+       FROM folders
+       WHERE parent_id IN (${placeholders})`,
+      pendingFolderIds,
+    )
+
+    pendingFolderIds = childFolders.map((row) => row.id)
+    folderIds.push(...pendingFolderIds)
+  }
+
+  const placeholders = folderIds.map(() => '?').join(', ')
+
+  await db.execute('BEGIN')
+
+  try {
+    await db.execute(`DELETE FROM messages WHERE folder_id IN (${placeholders})`, folderIds)
+    await db.execute(`DELETE FROM folders WHERE id IN (${placeholders})`, folderIds)
+    await db.execute('COMMIT')
+  } catch (error) {
+    await db.execute('ROLLBACK')
+    throw error
+  }
+
+  return folderIds
 }
 
 export const createMessage = async (content, { folderId = null, notePath = null } = {}) => {
