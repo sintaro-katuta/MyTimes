@@ -2172,7 +2172,7 @@ onBeforeUnmount(() => {
   min-height: 64px;
   box-sizing: border-box;
   padding: 14px 18px;
-  border-bottom: 1px solid var(--border-subtle);
+  border-bottom: 1px solid var(--border-default);
 }
 
 .settings-row:last-child {
