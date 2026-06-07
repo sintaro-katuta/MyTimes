@@ -2165,6 +2165,7 @@ onBeforeUnmount(() => {
 }
 
 .settings-row {
+  position: relative;
   display: grid;
   grid-template-columns: minmax(180px, 1fr) minmax(280px, 52%);
   gap: 24px;
@@ -2172,11 +2173,17 @@ onBeforeUnmount(() => {
   min-height: 64px;
   box-sizing: border-box;
   padding: 14px 18px;
-  border-bottom: 1px solid var(--border-default);
 }
 
-.settings-row:last-child {
-  border-bottom: none;
+.settings-row:not(:last-child)::after {
+  position: absolute;
+  right: 18px;
+  bottom: 0;
+  left: 18px;
+  height: 1px;
+  background: var(--border-default);
+  content: '';
+  opacity: 0.56;
 }
 
 .settings-inline-value {
