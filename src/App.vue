@@ -31,6 +31,7 @@ import {
   registerProject,
   saveFolderIconPath,
   saveFolderMarkdownExportPath,
+  saveMarkdownExportPath,
   saveProjectDisplayName,
   saveSetting,
   syncMarkdownMessages,
@@ -190,6 +191,7 @@ const folderMarkdownExportPath = ref('')
 const settingsStatus = ref('')
 const notePathInput = ref('')
 const noteActionError = ref('')
+let saveSettingsRequestId = 0
 let autoSaveMarkdownTimer = null
 
 const clearAutoSaveMarkdownTimer = () => {
@@ -250,6 +252,8 @@ const appSettingsPayload = () => ({
   reopenLastWorkspace: settingsReopenLastWorkspace.value,
   reopenLastNote: settingsReopenLastNote.value,
 })
+
+const appSettingValue = (settingName) => appSettingsPayload()[settingName]
 
 const applyAppearanceSettings = () => {
   const root = document.documentElement
@@ -1123,6 +1127,42 @@ const handleBrowseFolderMarkdownExportPath = async () => {
   }
 }
 
+const handleSaveRootMarkdownExportPath = async () => {
+  isSavingSettings.value = true
+  settingsStatus.value = ''
+
+  try {
+    await saveMarkdownExportPath(markdownExportPath.value)
+    await refreshMarkdownExportPath()
+    await refreshFolderNotes()
+    settingsStatus.value = '保存しました'
+  } catch (error) {
+    settingsStatus.value = error instanceof Error ? error.message : 'Markdown保存先の保存に失敗しました'
+  } finally {
+    isSavingSettings.value = false
+  }
+}
+
+const handleBrowseRootMarkdownExportPath = async () => {
+  settingsStatus.value = ''
+
+  try {
+    const selectedPath = await open({
+      directory: true,
+      multiple: false,
+      defaultPath: markdownExportPath.value || undefined,
+      title: 'ルート用Markdown保存先を選択',
+    })
+
+    if (typeof selectedPath !== 'string') return
+
+    markdownExportPath.value = selectedPath
+    await handleSaveRootMarkdownExportPath()
+  } catch (error) {
+    settingsStatus.value = error instanceof Error ? error.message : 'Markdown保存先の選択に失敗しました'
+  }
+}
+
 const handleBrowseFolderIcon = async () => {
   if (!selectedFolder.value) return
 
@@ -1571,25 +1611,35 @@ const revertMarkdownDraft = () => {
   markdownEditorError.value = ''
 }
 
-const handleSaveSettings = async () => {
-  const nextSettings = appSettingsPayload()
+const handleSaveSettings = async (settingName = null) => {
+  const requestId = saveSettingsRequestId + 1
+  saveSettingsRequestId = requestId
+  const entries = settingName
+    ? [[settingName, appSettingValue(settingName)]]
+    : Object.entries(appSettingsPayload())
 
   isSavingSettings.value = true
   settingsStatus.value = ''
 
   try {
     await Promise.all(
-      Object.entries(nextSettings).map(([settingName, value]) =>
-        saveSetting(SETTINGS_KEYS[settingName], value),
+      entries.map(([name, value]) =>
+        saveSetting(SETTINGS_KEYS[name], value),
       ),
     )
     await saveLastWorkspaceSelection()
     applyAppearanceSettings()
-    settingsStatus.value = '保存しました'
+    if (requestId === saveSettingsRequestId) {
+      settingsStatus.value = '保存しました'
+    }
   } catch (error) {
-    settingsStatus.value = error instanceof Error ? error.message : '設定の保存に失敗しました'
+    if (requestId === saveSettingsRequestId) {
+      settingsStatus.value = error instanceof Error ? error.message : '設定の保存に失敗しました'
+    }
   } finally {
-    isSavingSettings.value = false
+    if (requestId === saveSettingsRequestId) {
+      isSavingSettings.value = false
+    }
   }
 }
 
@@ -1640,6 +1690,12 @@ watch(markdownDraft, () => {
   autoSaveMarkdownTimer = window.setTimeout(() => {
     void saveMarkdownDraft(expectedTarget)
   }, 1200)
+})
+
+watch(settingsAutoSaveMarkdown, (value) => {
+  if (value !== 'true') {
+    clearAutoSaveMarkdownTimer()
+  }
 })
 
 onMounted(async () => {
@@ -1811,7 +1867,7 @@ onBeforeUnmount(() => {
               <div class="settings-group">
                 <div class="settings-row">
                   <label class="field-label" for="theme-mode">表示モード</label>
-                  <select id="theme-mode" v-model="settingsThemeMode" class="path-input" @change="handleSaveSettings">
+                  <select id="theme-mode" v-model="settingsThemeMode" class="path-input" @change="handleSaveSettings('themeMode')">
                     <option value="system">OSに合わせる</option>
                     <option value="light">ライト</option>
                     <option value="dark">ダーク</option>
@@ -1827,7 +1883,7 @@ onBeforeUnmount(() => {
                       type="color"
                       aria-label="テーマカラー"
                       @input="applyAppearanceSettings"
-                      @change="handleSaveSettings"
+                      @change="handleSaveSettings('themeColor')"
                     />
                     <input
                       v-model="settingsThemeColor"
@@ -1837,7 +1893,7 @@ onBeforeUnmount(() => {
                       maxlength="7"
                       placeholder="#FF4500"
                       aria-label="テーマカラーのHEX値"
-                      @blur="settingsThemeColor = normalizeThemeColor(settingsThemeColor); handleSaveSettings()"
+                      @blur="settingsThemeColor = normalizeThemeColor(settingsThemeColor); handleSaveSettings('themeColor')"
                     />
                   </div>
                 </div>
@@ -1852,14 +1908,14 @@ onBeforeUnmount(() => {
                       min="14"
                       max="20"
                       step="1"
-                      @change="handleSaveSettings"
+                      @change="handleSaveSettings('fontSize')"
                     />
                     <p class="settings-inline-value">{{ settingsFontSize }}px</p>
                   </div>
                 </div>
                 <div class="settings-row">
                   <label class="field-label" for="ui-density">UI密度</label>
-                  <select id="ui-density" v-model="settingsUiDensity" class="path-input" @change="handleSaveSettings">
+                  <select id="ui-density" v-model="settingsUiDensity" class="path-input" @change="handleSaveSettings('uiDensity')">
                     <option value="comfortable">標準</option>
                     <option value="compact">コンパクト</option>
                     <option value="spacious">広め</option>
@@ -1876,7 +1932,7 @@ onBeforeUnmount(() => {
                     id="markdown-default-view"
                     v-model="settingsMarkdownDefaultView"
                     class="path-input"
-                    @change="handleSaveSettings"
+                    @change="handleSaveSettings('markdownDefaultView')"
                   >
                     <option value="chat">チャット</option>
                     <option value="markdown">Markdown</option>
@@ -1889,19 +1945,19 @@ onBeforeUnmount(() => {
                     type="checkbox"
                     true-value="true"
                     false-value="false"
-                    @change="handleSaveSettings"
+                    @change="handleSaveSettings('autoSaveMarkdown')"
                   />
                 </label>
                 <div class="settings-row">
                   <label class="field-label" for="send-shortcut">送信ショートカット</label>
-                  <select id="send-shortcut" v-model="settingsSendShortcut" class="path-input" @change="handleSaveSettings">
+                  <select id="send-shortcut" v-model="settingsSendShortcut" class="path-input" @change="handleSaveSettings('sendShortcut')">
                     <option value="mod-enter">Cmd/Ctrl + Enterで送信</option>
                     <option value="enter">Enterで送信</option>
                   </select>
                 </div>
                 <div class="settings-row">
                   <label class="field-label" for="newline-rule">Enter送信時の改行</label>
-                  <select id="newline-rule" v-model="settingsNewlineRule" class="path-input" @change="handleSaveSettings">
+                  <select id="newline-rule" v-model="settingsNewlineRule" class="path-input" @change="handleSaveSettings('newlineRule')">
                     <option value="enter">Enterで改行</option>
                     <option value="shift-enter">Shift + Enterで改行</option>
                   </select>
@@ -1911,6 +1967,26 @@ onBeforeUnmount(() => {
 
             <div v-else class="settings-section">
               <div class="settings-group">
+                <div class="settings-row">
+                  <label class="field-label" for="root-markdown-export-path">ルート用Markdown保存先</label>
+                  <div class="path-field">
+                    <input
+                      id="root-markdown-export-path"
+                      v-model="markdownExportPath"
+                      type="text"
+                      class="path-input"
+                      placeholder="ルートプロジェクトで使うフォルダー"
+                      @blur="handleSaveRootMarkdownExportPath"
+                    />
+                    <button
+                      type="button"
+                      class="secondary-button browse-button"
+                      @click="handleBrowseRootMarkdownExportPath"
+                    >
+                      参照
+                    </button>
+                  </div>
+                </div>
                 <label class="settings-row settings-check">
                   <span class="field-label">起動時に最後のワークスペースを開く</span>
                   <input
@@ -1918,7 +1994,7 @@ onBeforeUnmount(() => {
                     type="checkbox"
                     true-value="true"
                     false-value="false"
-                    @change="handleSaveSettings"
+                    @change="handleSaveSettings('reopenLastWorkspace')"
                   />
                 </label>
                 <label class="settings-row settings-check">
@@ -1928,7 +2004,7 @@ onBeforeUnmount(() => {
                     type="checkbox"
                     true-value="true"
                     false-value="false"
-                    @change="handleSaveSettings"
+                    @change="handleSaveSettings('reopenLastNote')"
                   />
                 </label>
               </div>
