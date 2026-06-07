@@ -2263,7 +2263,7 @@ onBeforeUnmount(() => {
 
 .settings-check input::after {
   position: absolute;
-  top: 3px;
+  top: 50%;
   left: 3px;
   width: 22px;
   height: 22px;
@@ -2271,6 +2271,7 @@ onBeforeUnmount(() => {
   background: #FFFFFF;
   box-shadow: var(--shadow-soft);
   content: '';
+  transform: translateY(-50%);
   transition: transform 160ms ease;
 }
 
@@ -2280,7 +2281,7 @@ onBeforeUnmount(() => {
 }
 
 .settings-check input:checked::after {
-  transform: translateX(20px);
+  transform: translate(20px, -50%);
 }
 
 .settings-check input:focus-visible {
