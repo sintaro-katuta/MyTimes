@@ -193,6 +193,7 @@ const notePathInput = ref('')
 const noteActionError = ref('')
 let saveSettingsRequestId = 0
 let autoSaveMarkdownTimer = null
+let shouldRescheduleAutoSaveMarkdown = false
 
 const clearAutoSaveMarkdownTimer = () => {
   window.clearTimeout(autoSaveMarkdownTimer)
@@ -655,6 +656,10 @@ const refreshMessages = async () => {
 
 const switchViewMode = (mode) => {
   if (mode === viewMode.value) return
+
+  if (mode !== 'markdown') {
+    clearAutoSaveMarkdownTimer()
+  }
 
   viewMode.value = mode
   markdownEditorError.value = ''
@@ -1128,6 +1133,11 @@ const handleBrowseFolderMarkdownExportPath = async () => {
 }
 
 const handleSaveRootMarkdownExportPath = async () => {
+  if (!confirmDiscardMarkdownChanges()) {
+    await refreshMarkdownExportPath()
+    return
+  }
+
   isSavingSettings.value = true
   settingsStatus.value = ''
 
@@ -1135,6 +1145,7 @@ const handleSaveRootMarkdownExportPath = async () => {
     await saveMarkdownExportPath(markdownExportPath.value)
     await refreshMarkdownExportPath()
     await refreshFolderNotes()
+    await refreshMessages()
     settingsStatus.value = '保存しました'
   } catch (error) {
     settingsStatus.value = error instanceof Error ? error.message : 'Markdown保存先の保存に失敗しました'
@@ -1533,9 +1544,14 @@ const saveMarkdownDraft = async (expectedTarget = null) => {
     !selectedFolder.value ||
     !selectedNotePath.value ||
     isSelectedNoteDbFallback.value ||
-    isSavingMarkdown.value ||
+    isSendingMessage.value ||
     isSavingNote.value
   ) {
+    return
+  }
+
+  if (isSavingMarkdown.value) {
+    shouldRescheduleAutoSaveMarkdown = true
     return
   }
 
@@ -1603,6 +1619,11 @@ const saveMarkdownDraft = async (expectedTarget = null) => {
     markdownEditorError.value = error instanceof Error ? error.message : 'Markdownファイルの保存に失敗しました'
   } finally {
     isSavingMarkdown.value = false
+
+    if (shouldRescheduleAutoSaveMarkdown) {
+      shouldRescheduleAutoSaveMarkdown = false
+      scheduleAutoSaveMarkdownDraft()
+    }
   }
 }
 
@@ -1674,11 +1695,18 @@ watch(
   applyAppearanceSettings,
 )
 
-watch(markdownDraft, () => {
-  if (!isAutoSaveMarkdownEnabled.value || viewMode.value !== 'markdown' || !isMarkdownDirty.value) return
-  if (isSavingMarkdown.value || isSavingNote.value || isLoadingMessages.value) return
+const scheduleAutoSaveMarkdownDraft = () => {
+  if (!isAutoSaveMarkdownEnabled.value || viewMode.value !== 'markdown' || !isMarkdownDirty.value) {
+    clearAutoSaveMarkdownTimer()
+    return
+  }
   if (!selectedFolder.value || !selectedNotePath.value || isSelectedNoteDbFallback.value) return
+  if (isSavingNote.value || isLoadingMessages.value || isSendingMessage.value || isSavingMarkdown.value) {
+    shouldRescheduleAutoSaveMarkdown = true
+    return
+  }
 
+  shouldRescheduleAutoSaveMarkdown = false
   const expectedTarget = {
     folderId: selectedFolder.value.id,
     projectDir: currentMarkdownExportPath(),
@@ -1688,8 +1716,17 @@ watch(markdownDraft, () => {
 
   clearAutoSaveMarkdownTimer()
   autoSaveMarkdownTimer = window.setTimeout(() => {
+    if (viewMode.value !== 'markdown' || isSendingMessage.value) {
+      clearAutoSaveMarkdownTimer()
+      return
+    }
+
     void saveMarkdownDraft(expectedTarget)
   }, 1200)
+}
+
+watch(markdownDraft, () => {
+  scheduleAutoSaveMarkdownDraft()
 })
 
 watch(settingsAutoSaveMarkdown, (value) => {
