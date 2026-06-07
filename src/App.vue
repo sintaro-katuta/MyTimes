@@ -2268,7 +2268,7 @@ onBeforeUnmount(() => {
   width: 22px;
   height: 22px;
   border-radius: 999px;
-  background: var(--surface-input);
+  background: #FFFFFF;
   box-shadow: var(--shadow-soft);
   content: '';
   transition: transform 160ms ease;
