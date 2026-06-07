@@ -19,14 +19,6 @@ const props = defineProps({
     type: String,
     default: '',
   },
-  submitShortcut: {
-    type: String,
-    default: 'mod-enter',
-  },
-  newlineRule: {
-    type: String,
-    default: 'enter',
-  },
 })
 
 const emit = defineEmits(['update:modelValue', 'submit'])
@@ -42,6 +34,7 @@ const tools = [
 ]
 
 const textareaRef = ref(null)
+const isComposing = ref(false)
 const message = computed({
   get: () => props.modelValue,
   set: (value) => {
@@ -57,6 +50,12 @@ const resizeTextarea = () => {
   textareaRef.value.style.height = `${textareaRef.value.scrollHeight}px`
 }
 
+const focusTextarea = () => {
+  nextTick(() => {
+    textareaRef.value?.focus()
+  })
+}
+
 const submitMessage = () => {
   if (!canSend.value) return
 
@@ -66,16 +65,22 @@ const submitMessage = () => {
 const handleTextareaKeydown = (event) => {
   if (event.key !== 'Enter') return
 
-  const isModifierEnter = event.metaKey || event.ctrlKey
-  const shouldSubmitWithEnter =
-    props.submitShortcut === 'enter' &&
-    props.newlineRule === 'shift-enter' &&
-    !event.shiftKey
-
-  if (!isModifierEnter && !shouldSubmitWithEnter) return
+  if (event.shiftKey) return
+  if (event.isComposing || isComposing.value || event.keyCode === 229) return
 
   event.preventDefault()
   submitMessage()
+}
+
+const handleCompositionStart = () => {
+  isComposing.value = true
+}
+
+const handleCompositionEnd = () => {
+  isComposing.value = false
+  nextTick(() => {
+    resizeTextarea()
+  })
 }
 
 onMounted(() => {
@@ -90,6 +95,15 @@ watch(
     nextTick(() => {
       resizeTextarea()
     })
+  },
+)
+
+watch(
+  () => props.isSending,
+  (isSending, wasSending) => {
+    if (!isSending && wasSending) {
+      focusTextarea()
+    }
   },
 )
 </script>
@@ -119,6 +133,8 @@ watch(
         rows="1"
         :disabled="disabled"
         @input="resizeTextarea"
+        @compositionstart="handleCompositionStart"
+        @compositionend="handleCompositionEnd"
         @keydown="handleTextareaKeydown"
       />
       <p v-if="errorMessage" class="message-error" role="alert">{{ errorMessage }}</p>
