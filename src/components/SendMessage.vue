@@ -19,14 +19,6 @@ const props = defineProps({
     type: String,
     default: '',
   },
-  submitShortcut: {
-    type: String,
-    default: 'mod-enter',
-  },
-  newlineRule: {
-    type: String,
-    default: 'enter',
-  },
 })
 
 const emit = defineEmits(['update:modelValue', 'submit'])
@@ -57,6 +49,12 @@ const resizeTextarea = () => {
   textareaRef.value.style.height = `${textareaRef.value.scrollHeight}px`
 }
 
+const focusTextarea = () => {
+  nextTick(() => {
+    textareaRef.value?.focus()
+  })
+}
+
 const submitMessage = () => {
   if (!canSend.value) return
 
@@ -66,13 +64,7 @@ const submitMessage = () => {
 const handleTextareaKeydown = (event) => {
   if (event.key !== 'Enter') return
 
-  const isModifierEnter = event.metaKey || event.ctrlKey
-  const shouldSubmitWithEnter =
-    props.submitShortcut === 'enter' &&
-    props.newlineRule === 'shift-enter' &&
-    !event.shiftKey
-
-  if (!isModifierEnter && !shouldSubmitWithEnter) return
+  if (event.shiftKey) return
 
   event.preventDefault()
   submitMessage()
@@ -90,6 +82,15 @@ watch(
     nextTick(() => {
       resizeTextarea()
     })
+  },
+)
+
+watch(
+  () => props.isSending,
+  (isSending, wasSending) => {
+    if (!isSending && wasSending) {
+      focusTextarea()
+    }
   },
 )
 </script>

@@ -45,8 +45,6 @@ const SETTINGS_KEYS = {
   uiDensity: 'ui_density',
   markdownDefaultView: 'markdown_default_view',
   autoSaveMarkdown: 'auto_save_markdown',
-  sendShortcut: 'send_shortcut',
-  newlineRule: 'newline_rule',
   reopenLastWorkspace: 'reopen_last_workspace',
   reopenLastNote: 'reopen_last_note',
   lastWorkspaceFolderId: 'last_workspace_folder_id',
@@ -60,8 +58,6 @@ const DEFAULT_SETTINGS = {
   uiDensity: 'comfortable',
   markdownDefaultView: 'chat',
   autoSaveMarkdown: 'false',
-  sendShortcut: 'mod-enter',
-  newlineRule: 'enter',
   reopenLastWorkspace: 'true',
   reopenLastNote: 'true',
 }
@@ -177,8 +173,6 @@ const settingsFontSize = ref(DEFAULT_SETTINGS.fontSize)
 const settingsUiDensity = ref(DEFAULT_SETTINGS.uiDensity)
 const settingsMarkdownDefaultView = ref(DEFAULT_SETTINGS.markdownDefaultView)
 const settingsAutoSaveMarkdown = ref(DEFAULT_SETTINGS.autoSaveMarkdown)
-const settingsSendShortcut = ref(DEFAULT_SETTINGS.sendShortcut)
-const settingsNewlineRule = ref(DEFAULT_SETTINGS.newlineRule)
 const settingsReopenLastWorkspace = ref(DEFAULT_SETTINGS.reopenLastWorkspace)
 const settingsReopenLastNote = ref(DEFAULT_SETTINGS.reopenLastNote)
 const activeSettingsCategory = ref(SETTINGS_CATEGORIES[0].id)
@@ -248,8 +242,6 @@ const appSettingsPayload = () => ({
   uiDensity: settingsUiDensity.value,
   markdownDefaultView: settingsMarkdownDefaultView.value,
   autoSaveMarkdown: settingsAutoSaveMarkdown.value,
-  sendShortcut: settingsSendShortcut.value,
-  newlineRule: settingsNewlineRule.value,
   reopenLastWorkspace: settingsReopenLastWorkspace.value,
   reopenLastNote: settingsReopenLastNote.value,
 })
@@ -289,11 +281,6 @@ const loadAppSettings = async () => {
     SETTINGS_KEYS.autoSaveMarkdown,
     DEFAULT_SETTINGS.autoSaveMarkdown,
   )
-  settingsSendShortcut.value = await loadSetting(
-    SETTINGS_KEYS.sendShortcut,
-    DEFAULT_SETTINGS.sendShortcut,
-  )
-  settingsNewlineRule.value = await loadSetting(SETTINGS_KEYS.newlineRule, DEFAULT_SETTINGS.newlineRule)
   settingsReopenLastWorkspace.value = await loadSetting(
     SETTINGS_KEYS.reopenLastWorkspace,
     DEFAULT_SETTINGS.reopenLastWorkspace,
@@ -1864,8 +1851,6 @@ onBeforeUnmount(() => {
           :is-sending="isSendingMessage"
           :disabled="isMarkdownSendDisabled"
           :error-message="sendMessageError"
-          :submit-shortcut="settingsSendShortcut"
-          :newline-rule="settingsNewlineRule"
           @submit="sendMessage"
         />
       </main>
@@ -1985,20 +1970,6 @@ onBeforeUnmount(() => {
                     @change="handleSaveSettings('autoSaveMarkdown')"
                   />
                 </label>
-                <div class="settings-row">
-                  <label class="field-label" for="send-shortcut">送信ショートカット</label>
-                  <select id="send-shortcut" v-model="settingsSendShortcut" class="path-input" @change="handleSaveSettings('sendShortcut')">
-                    <option value="mod-enter">Cmd/Ctrl + Enterで送信</option>
-                    <option value="enter">Enterで送信</option>
-                  </select>
-                </div>
-                <div class="settings-row">
-                  <label class="field-label" for="newline-rule">Enter送信時の改行</label>
-                  <select id="newline-rule" v-model="settingsNewlineRule" class="path-input" @change="handleSaveSettings('newlineRule')">
-                    <option value="enter">Enterで改行</option>
-                    <option value="shift-enter">Shift + Enterで改行</option>
-                  </select>
-                </div>
               </div>
             </div>
 
