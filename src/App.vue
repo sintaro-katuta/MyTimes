@@ -47,8 +47,9 @@ const SETTINGS_KEYS = {
   sendShortcut: 'send_shortcut',
   newlineRule: 'newline_rule',
   reopenLastWorkspace: 'reopen_last_workspace',
+  reopenLastNote: 'reopen_last_note',
   lastWorkspaceFolderId: 'last_workspace_folder_id',
-  exportFormat: 'export_format',
+  lastWorkspaceNotePath: 'last_workspace_note_path',
 }
 
 const DEFAULT_SETTINGS = {
@@ -61,7 +62,7 @@ const DEFAULT_SETTINGS = {
   sendShortcut: 'mod-enter',
   newlineRule: 'enter',
   reopenLastWorkspace: 'true',
-  exportFormat: 'markdown',
+  reopenLastNote: 'true',
 }
 
 const THEME_COLORS = {
@@ -178,7 +179,7 @@ const settingsAutoSaveMarkdown = ref(DEFAULT_SETTINGS.autoSaveMarkdown)
 const settingsSendShortcut = ref(DEFAULT_SETTINGS.sendShortcut)
 const settingsNewlineRule = ref(DEFAULT_SETTINGS.newlineRule)
 const settingsReopenLastWorkspace = ref(DEFAULT_SETTINGS.reopenLastWorkspace)
-const settingsExportFormat = ref(DEFAULT_SETTINGS.exportFormat)
+const settingsReopenLastNote = ref(DEFAULT_SETTINGS.reopenLastNote)
 const activeSettingsCategory = ref(SETTINGS_CATEGORIES[0].id)
 const folderName = ref('')
 const folderCreateIconPath = ref('')
@@ -242,7 +243,7 @@ const appSettingsPayload = () => ({
   sendShortcut: settingsSendShortcut.value,
   newlineRule: settingsNewlineRule.value,
   reopenLastWorkspace: settingsReopenLastWorkspace.value,
-  exportFormat: settingsExportFormat.value,
+  reopenLastNote: settingsReopenLastNote.value,
 })
 
 const applyAppearanceSettings = () => {
@@ -287,7 +288,10 @@ const loadAppSettings = async () => {
     SETTINGS_KEYS.reopenLastWorkspace,
     DEFAULT_SETTINGS.reopenLastWorkspace,
   )
-  settingsExportFormat.value = await loadSetting(SETTINGS_KEYS.exportFormat, DEFAULT_SETTINGS.exportFormat)
+  settingsReopenLastNote.value = await loadSetting(
+    SETTINGS_KEYS.reopenLastNote,
+    DEFAULT_SETTINGS.reopenLastNote,
+  )
   applyAppearanceSettings()
 }
 
@@ -730,9 +734,7 @@ const handleCreateFolder = async (close) => {
 
     selectedFolderId.value = createdProject?.id ?? selectedFolderId.value
     selectedNotePath.value = null
-    if (settingsReopenLastWorkspace.value === 'true' && selectedFolderId.value !== null) {
-      await saveSetting(SETTINGS_KEYS.lastWorkspaceFolderId, selectedFolderId.value)
-    }
+    await saveLastWorkspaceSelection()
     await refreshMessages()
 
     folderName.value = ''
@@ -777,6 +779,7 @@ const handleCreateNote = async (close) => {
     }
 
     selectedNotePath.value = file.path
+    await saveLastWorkspaceSelection({ folderId, notePath: file.path })
     await refreshFolderNotes()
     await refreshMessages()
     viewMode.value = 'chat'
@@ -849,6 +852,7 @@ const renameNotePath = async ({
 
     if (wasSelectedNote && selectedNotePath.value === currentRelativePath) {
       selectedNotePath.value = file.path
+      await saveLastWorkspaceSelection({ folderId, notePath: file.path })
     }
 
     await refreshFolderNotes()
@@ -898,6 +902,7 @@ const handleDeleteNote = async (notePath) => {
     if (wasSelectedNote && selectedNotePath.value === notePath) {
       selectedNotePath.value = null
       viewMode.value = 'chat'
+      await saveLastWorkspaceSelection({ folderId, notePath: null })
     }
 
     await refreshFolderNotes()
@@ -1187,9 +1192,7 @@ const selectFolder = async (folderId) => {
   selectedFolderId.value = folderId
   selectedNotePath.value = null
   viewMode.value = 'chat'
-  if (settingsReopenLastWorkspace.value === 'true') {
-    await saveSetting(SETTINGS_KEYS.lastWorkspaceFolderId, folderId)
-  }
+  await saveLastWorkspaceSelection({ folderId, notePath: null })
   await refreshMessages()
 }
 
@@ -1199,6 +1202,7 @@ const selectNote = async (notePath) => {
 
   selectedNotePath.value = notePath
   viewMode.value = settingsMarkdownDefaultView.value
+  await saveLastWorkspaceSelection({ folderId: selectedFolderId.value, notePath })
   await refreshMessages()
 }
 
@@ -1208,6 +1212,7 @@ const selectAllNotesInFolder = async () => {
 
   selectedNotePath.value = null
   viewMode.value = 'chat'
+  await saveLastWorkspaceSelection({ notePath: null })
   await refreshMessages()
 }
 
@@ -1231,6 +1236,19 @@ const currentMarkdownExportPath = () => {
   }
 
   return `${basePath.replace(/[\\/]+$/, '')}/${folderPath.replace(/^[\\/]+/, '')}`
+}
+
+const saveLastWorkspaceSelection = async ({
+  folderId = selectedFolderId.value,
+  notePath = selectedNotePath.value,
+} = {}) => {
+  if (settingsReopenLastWorkspace.value !== 'true' || folderId === null) return
+
+  await saveSetting(SETTINGS_KEYS.lastWorkspaceFolderId, folderId)
+
+  if (settingsReopenLastNote.value === 'true') {
+    await saveSetting(SETTINGS_KEYS.lastWorkspaceNotePath, notePath ?? '')
+  }
 }
 
 const currentLocalDateParts = () => {
@@ -1565,6 +1583,14 @@ const restoreLastWorkspace = async () => {
   if (!folders.value.some((folder) => folder.id === lastWorkspaceFolderId)) return
 
   selectedFolderId.value = lastWorkspaceFolderId
+
+  if (settingsReopenLastNote.value !== 'true') return
+
+  const lastWorkspaceNotePath = await loadSetting(SETTINGS_KEYS.lastWorkspaceNotePath, '')
+
+  if (lastWorkspaceNotePath) {
+    selectedNotePath.value = lastWorkspaceNotePath
+  }
 }
 
 watch(
@@ -1866,13 +1892,16 @@ onBeforeUnmount(() => {
                     @change="handleSaveSettings"
                   />
                 </label>
-                <div class="settings-row">
-                  <label class="field-label" for="export-format">エクスポート形式</label>
-                  <select id="export-format" v-model="settingsExportFormat" class="path-input" @change="handleSaveSettings">
-                    <option value="markdown">Markdown</option>
-                    <option value="plain-text">プレーンテキスト</option>
-                  </select>
-                </div>
+                <label class="settings-row settings-check">
+                  <span class="field-label">起動時に最後のノートを開く</span>
+                  <input
+                    v-model="settingsReopenLastNote"
+                    type="checkbox"
+                    true-value="true"
+                    false-value="false"
+                    @change="handleSaveSettings"
+                  />
+                </label>
               </div>
             </div>
 
