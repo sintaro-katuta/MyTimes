@@ -34,6 +34,7 @@ const tools = [
 ]
 
 const textareaRef = ref(null)
+const isComposing = ref(false)
 const message = computed({
   get: () => props.modelValue,
   set: (value) => {
@@ -65,9 +66,21 @@ const handleTextareaKeydown = (event) => {
   if (event.key !== 'Enter') return
 
   if (event.shiftKey) return
+  if (event.isComposing || isComposing.value || event.keyCode === 229) return
 
   event.preventDefault()
   submitMessage()
+}
+
+const handleCompositionStart = () => {
+  isComposing.value = true
+}
+
+const handleCompositionEnd = () => {
+  isComposing.value = false
+  nextTick(() => {
+    resizeTextarea()
+  })
 }
 
 onMounted(() => {
@@ -120,6 +133,8 @@ watch(
         rows="1"
         :disabled="disabled"
         @input="resizeTextarea"
+        @compositionstart="handleCompositionStart"
+        @compositionend="handleCompositionEnd"
         @keydown="handleTextareaKeydown"
       />
       <p v-if="errorMessage" class="message-error" role="alert">{{ errorMessage }}</p>
