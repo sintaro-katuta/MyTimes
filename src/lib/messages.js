@@ -204,48 +204,41 @@ export const loadFolderNotes = async ({ folderId = null } = {}) => {
 }
 
 export const loadMarkdownExportPath = async () => {
-  const db = await getDatabase()
-  const rows = await db.select('SELECT value FROM settings WHERE key = ?', [
-    MARKDOWN_EXPORT_PATH_KEY,
-  ])
-
-  return rows[0]?.value ?? ''
+  return loadSetting(MARKDOWN_EXPORT_PATH_KEY, '')
 }
 
 export const loadAppTitle = async () => {
-  const db = await getDatabase()
-  const rows = await db.select('SELECT value FROM settings WHERE key = ?', [APP_TITLE_KEY])
+  return loadSetting(APP_TITLE_KEY, DEFAULT_APP_TITLE)
+}
 
-  return rows[0]?.value || DEFAULT_APP_TITLE
+export const loadSetting = async (key, fallbackValue = '') => {
+  const db = await getDatabase()
+  const rows = await db.select('SELECT value FROM settings WHERE key = ?', [key])
+
+  return rows[0]?.value ?? fallbackValue
+}
+
+export const saveSetting = async (key, value) => {
+  const db = await getDatabase()
+  const updatedAt = new Date().toISOString()
+  await db.execute(
+    `INSERT INTO settings (key, value, updated_at)
+     VALUES (?, ?, ?)
+     ON CONFLICT(key) DO UPDATE SET
+       value = excluded.value,
+       updated_at = excluded.updated_at`,
+    [key, String(value ?? ''), updatedAt],
+  )
 }
 
 export const saveMarkdownExportPath = async (path) => {
-  const db = await getDatabase()
-  const updatedAt = new Date().toISOString()
-
-  await db.execute(
-    `INSERT INTO settings (key, value, updated_at)
-     VALUES (?, ?, ?)
-     ON CONFLICT(key) DO UPDATE SET
-       value = excluded.value,
-       updated_at = excluded.updated_at`,
-    [MARKDOWN_EXPORT_PATH_KEY, path.trim(), updatedAt],
-  )
+  await saveSetting(MARKDOWN_EXPORT_PATH_KEY, path.trim())
 }
 
 export const saveAppTitle = async (title) => {
-  const db = await getDatabase()
-  const updatedAt = new Date().toISOString()
   const value = title.trim() || DEFAULT_APP_TITLE
 
-  await db.execute(
-    `INSERT INTO settings (key, value, updated_at)
-     VALUES (?, ?, ?)
-     ON CONFLICT(key) DO UPDATE SET
-       value = excluded.value,
-       updated_at = excluded.updated_at`,
-    [APP_TITLE_KEY, value, updatedAt],
-  )
+  await saveSetting(APP_TITLE_KEY, value)
 }
 
 export const createFolder = async (name, parentFolder = null, iconPath = '') => {
