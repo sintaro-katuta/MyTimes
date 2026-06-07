@@ -2247,9 +2247,50 @@ onBeforeUnmount(() => {
 
 .settings-check input {
   justify-self: end;
-  width: 18px;
-  height: 18px;
-  accent-color: var(--bg-primary);
+  position: relative;
+  width: 48px;
+  height: 28px;
+  margin: 0;
+  appearance: none;
+  border: 1px solid var(--border-default);
+  border-radius: 999px;
+  background: var(--surface-toolbar);
+  cursor: pointer;
+  transition:
+    background-color 160ms ease,
+    border-color 160ms ease;
+}
+
+.settings-check input::after {
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 22px;
+  height: 22px;
+  border-radius: 999px;
+  background: var(--surface-input);
+  box-shadow: var(--shadow-soft);
+  content: '';
+  transition: transform 160ms ease;
+}
+
+.settings-check input:checked {
+  border-color: var(--bg-primary);
+  background: var(--bg-primary);
+}
+
+.settings-check input:checked::after {
+  transform: translateX(20px);
+}
+
+.settings-check input:focus-visible {
+  outline: 3px solid var(--focus-ring);
+  outline-offset: 2px;
+}
+
+.settings-check input:disabled {
+  cursor: not-allowed;
+  opacity: 0.58;
 }
 
 .field-label {
