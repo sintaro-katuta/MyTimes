@@ -192,6 +192,11 @@ const notePathInput = ref('')
 const noteActionError = ref('')
 let autoSaveMarkdownTimer = null
 
+const clearAutoSaveMarkdownTimer = () => {
+  window.clearTimeout(autoSaveMarkdownTimer)
+  autoSaveMarkdownTimer = null
+}
+
 const selectedFolder = computed(() => {
   if (selectedFolderId.value === null) return null
 
@@ -467,7 +472,12 @@ const refreshFolderNotes = async () => {
 const confirmDiscardMarkdownChanges = () => {
   if (!isMarkdownDirty.value) return true
 
-  return window.confirm('保存していないMarkdownの変更があります。変更を破棄して続行しますか？')
+  const shouldDiscard = window.confirm('保存していないMarkdownの変更があります。変更を破棄して続行しますか？')
+  if (shouldDiscard) {
+    clearAutoSaveMarkdownTimer()
+  }
+
+  return shouldDiscard
 }
 
 const toViewMessage = (row) => ({
@@ -1242,13 +1252,10 @@ const saveLastWorkspaceSelection = async ({
   folderId = selectedFolderId.value,
   notePath = selectedNotePath.value,
 } = {}) => {
-  if (settingsReopenLastWorkspace.value !== 'true' || folderId === null) return
+  if (folderId === null) return
 
   await saveSetting(SETTINGS_KEYS.lastWorkspaceFolderId, folderId)
-
-  if (settingsReopenLastNote.value === 'true') {
-    await saveSetting(SETTINGS_KEYS.lastWorkspaceNotePath, notePath ?? '')
-  }
+  await saveSetting(SETTINGS_KEYS.lastWorkspaceNotePath, notePath ?? '')
 }
 
 const currentLocalDateParts = () => {
@@ -1481,7 +1488,7 @@ const sendMessage = async () => {
   }
 }
 
-const saveMarkdownDraft = async () => {
+const saveMarkdownDraft = async (expectedTarget = null) => {
   if (
     !selectedFolder.value ||
     !selectedNotePath.value ||
@@ -1495,6 +1502,19 @@ const saveMarkdownDraft = async () => {
   const projectDir = currentMarkdownExportPath()
   const relativePath = selectedNotePath.value
   const draftToSave = markdownDraft.value
+  const currentFolderId = selectedFolder.value.id
+
+  if (
+    expectedTarget &&
+    (
+      expectedTarget.folderId !== currentFolderId ||
+      expectedTarget.projectDir !== projectDir ||
+      expectedTarget.relativePath !== relativePath ||
+      expectedTarget.markdownSignature !== selectedMarkdownSignature.value
+    )
+  ) {
+    return
+  }
 
   isSavingMarkdown.value = true
   markdownEditorError.value = ''
@@ -1563,6 +1583,7 @@ const handleSaveSettings = async () => {
         saveSetting(SETTINGS_KEYS[settingName], value),
       ),
     )
+    await saveLastWorkspaceSelection()
     applyAppearanceSettings()
     settingsStatus.value = '保存しました'
   } catch (error) {
@@ -1606,10 +1627,18 @@ watch(
 watch(markdownDraft, () => {
   if (!isAutoSaveMarkdownEnabled.value || viewMode.value !== 'markdown' || !isMarkdownDirty.value) return
   if (isSavingMarkdown.value || isSavingNote.value || isLoadingMessages.value) return
+  if (!selectedFolder.value || !selectedNotePath.value || isSelectedNoteDbFallback.value) return
 
-  window.clearTimeout(autoSaveMarkdownTimer)
+  const expectedTarget = {
+    folderId: selectedFolder.value.id,
+    projectDir: currentMarkdownExportPath(),
+    relativePath: selectedNotePath.value,
+    markdownSignature: selectedMarkdownSignature.value,
+  }
+
+  clearAutoSaveMarkdownTimer()
   autoSaveMarkdownTimer = window.setTimeout(() => {
-    void saveMarkdownDraft()
+    void saveMarkdownDraft(expectedTarget)
   }, 1200)
 })
 
@@ -1626,7 +1655,7 @@ onMounted(async () => {
 })
 
 onBeforeUnmount(() => {
-  window.clearTimeout(autoSaveMarkdownTimer)
+  clearAutoSaveMarkdownTimer()
 })
 </script>
 

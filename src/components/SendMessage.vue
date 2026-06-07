@@ -67,12 +67,12 @@ const handleTextareaKeydown = (event) => {
   if (event.key !== 'Enter') return
 
   const isModifierEnter = event.metaKey || event.ctrlKey
-  const isEnterSubmit = props.submitShortcut === 'enter' && !event.shiftKey
+  const shouldSubmitWithEnter =
+    props.submitShortcut === 'enter' &&
+    props.newlineRule === 'shift-enter' &&
+    !event.shiftKey
 
-  if (!isModifierEnter && !isEnterSubmit) return
-  if (props.submitShortcut === 'mod-enter' && !isModifierEnter) return
-
-  if (isEnterSubmit && props.newlineRule === 'shift-enter' && event.shiftKey) return
+  if (!isModifierEnter && !shouldSubmitWithEnter) return
 
   event.preventDefault()
   submitMessage()
