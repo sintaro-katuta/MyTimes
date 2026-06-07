@@ -115,4 +115,4 @@ v1 を 2026年6月中に公開するために、Linear で1週間単位のスプ
 
 ## 参照
 
-- Sprint 1 の詳細な振り返り: `docs/sprint1.md`
+- Sprint 1 の詳細な振り返り: `docs/sprint1/sprint1.md`
