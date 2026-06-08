@@ -38,6 +38,12 @@ pub fn run() {
             sql: include_str!("../migrations/4_add_root_folder.sql"),
             kind: MigrationKind::Up,
         },
+        Migration {
+            version: 5,
+            description: "add_message_reactions",
+            sql: include_str!("../migrations/5_add_message_reactions.sql"),
+            kind: MigrationKind::Up,
+        },
     ];
 
     tauri::Builder::default()

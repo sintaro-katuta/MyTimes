@@ -26,12 +26,15 @@ import {
   loadFolders as loadStoredFolders,
   loadFolderNotes as loadStoredFolderNotes,
   loadMarkdownExportPath,
+  loadMessageReactions,
   loadMessages as loadStoredMessages,
   loadSetting,
+  messageReactionKey,
   registerProject,
   saveFolderIconPath,
   saveFolderMarkdownExportPath,
   saveMarkdownExportPath,
+  saveMessageReaction,
   saveProjectDisplayName,
   saveSetting,
   syncMarkdownMessages,
@@ -88,6 +91,12 @@ const THEME_COLORS = {
     accentDark: '#3F1724',
   },
 }
+
+const REACTION_OPTIONS = [
+  { id: 'smile', label: 'いいね' },
+  { id: 'heart', label: '共感' },
+  { id: 'idea', label: 'アイデア' },
+]
 
 const normalizeThemeColor = (value) => {
   const normalizedValue = String(value ?? '').trim()
@@ -352,6 +361,16 @@ const formatMessageDate = (value) => {
   }).format(date)
 }
 
+const formatLocalDate = (date) => {
+  const pad = (value) => String(value).padStart(2, '0')
+
+  return [
+    date.getFullYear(),
+    pad(date.getMonth() + 1),
+    pad(date.getDate()),
+  ].join('-')
+}
+
 const scrollMessagesToBottom = async () => {
   await nextTick()
 
@@ -472,19 +491,103 @@ const confirmDiscardMarkdownChanges = () => {
   return shouldDiscard
 }
 
-const toViewMessage = (row) => ({
-  ...row,
-  name: '自分',
+const createViewMessage = ({
+  id,
+  folderId = selectedFolderId.value,
+  notePath = selectedNotePath.value,
+  createdAt,
+  date,
+  content,
+  reactions = [],
+}) => {
+  const messageKey = messageReactionKey({
+    folderId,
+    notePath,
+    createdAt,
+    content,
+  })
+
+  return {
+    id,
+    folderId,
+    notePath,
+    messageKey,
+    createdAt,
+    name: '自分',
+    date,
+    message: content,
+    reactions,
+  }
+}
+
+const withStoredReactions = async (viewMessages) => {
+  const reactionGroups = await loadMessageReactions(viewMessages.map((message) => message.messageKey))
+
+  return viewMessages.map((message) => ({
+    ...message,
+    reactions: reactionGroups.get(message.messageKey) ?? [],
+  }))
+}
+
+const toggleMessageReaction = async (message, reactionType) => {
+  if (!REACTION_OPTIONS.some((reaction) => reaction.id === reactionType)) return
+
+  const reactions = new Set(message.reactions)
+  const selected = !reactions.has(reactionType)
+
+  if (selected) {
+    reactions.add(reactionType)
+  } else {
+    reactions.delete(reactionType)
+  }
+
+  messages.value = messages.value.map((currentMessage) =>
+    currentMessage.messageKey === message.messageKey
+      ? { ...currentMessage, reactions: [...reactions] }
+      : currentMessage,
+  )
+
+  try {
+    await saveMessageReaction({
+      messageKey: message.messageKey,
+      folderId: message.folderId,
+      notePath: message.notePath,
+      reactionType,
+      selected,
+    })
+  } catch (error) {
+    messages.value = messages.value.map((currentMessage) =>
+      currentMessage.messageKey === message.messageKey
+        ? { ...currentMessage, reactions: message.reactions }
+        : currentMessage,
+    )
+    sendMessageError.value = error instanceof Error
+      ? `リアクションの保存に失敗しました: ${error.message}`
+      : 'リアクションの保存に失敗しました'
+  }
+}
+
+const toViewMessage = (row) => createViewMessage({
+  id: row.id,
+  folderId: row.folder_id ?? selectedFolderId.value,
+  notePath: row.note_path ?? selectedNotePath.value,
+  createdAt: row.created_at,
   date: formatMessageDate(row.created_at),
-  message: row.content,
+  content: row.content,
 })
 
-const toMarkdownViewMessage = (message, index, notePath = selectedNotePath.value) => ({
-  id: `${notePath ?? 'markdown'}:${message.sortOrder ?? index}`,
-  name: '自分',
-  date: [message.date, message.time].filter(Boolean).join(' '),
-  message: message.content,
-})
+const toMarkdownViewMessage = (message, index, notePath = selectedNotePath.value) => {
+  const createdAt = formatParsedMessageTimestamp(message, index)
+
+  return createViewMessage({
+    id: `${notePath ?? 'markdown'}:${message.sortOrder ?? index}`,
+    folderId: selectedFolder.value?.id ?? selectedFolderId.value,
+    notePath,
+    createdAt,
+    date: [message.date, message.time].filter(Boolean).join(' '),
+    content: message.content,
+  })
+}
 
 const markdownSignature = (markdown) => {
   let hash = 0x811c9dc5
@@ -495,6 +598,16 @@ const markdownSignature = (markdown) => {
   }
 
   return hash.toString(16)
+}
+
+const formatParsedMessageTimestamp = (message, index) => {
+  const date = /^\d{4}-\d{2}-\d{2}$/.test(message.date ?? '')
+    ? message.date
+    : formatLocalDate(new Date())
+  const time = /^\d{2}:\d{2}$/.test(message.time ?? '') ? message.time : '00:00'
+  const seconds = String(index % 60).padStart(2, '0')
+
+  return `${date}T${time}:${seconds}`
 }
 
 const syncParsedMarkdownMessages = async ({ folderId, notePath, parsed }) => {
@@ -518,9 +631,9 @@ const applyMarkdownDocument = async ({ markdown, parsed, relativePath, syncCache
   selectedMarkdownContent.value = markdown
   markdownDraft.value = markdown
   selectedMarkdownSignature.value = markdownSignature(markdown)
-  messages.value = parsed.messages.map((message, index) =>
+  messages.value = await withStoredReactions(parsed.messages.map((message, index) =>
     toMarkdownViewMessage(message, index, relativePath),
-  )
+  ))
 
   if (syncCache && selectedFolder.value) {
     await syncParsedMarkdownMessages({
@@ -575,7 +688,7 @@ const refreshMessages = async () => {
           return
         }
 
-        messages.value = rows.map(toViewMessage)
+        messages.value = await withStoredReactions(rows.map(toViewMessage))
         isSelectedNoteDbFallback.value = true
         viewMode.value = 'chat'
         await scrollMessagesToBottom()
@@ -618,7 +731,7 @@ const refreshMessages = async () => {
 
     if (requestId !== refreshMessagesRequestId.value) return
 
-    messages.value = rows.map(toViewMessage)
+    messages.value = await withStoredReactions(rows.map(toViewMessage))
 
     await scrollMessagesToBottom()
     if (requestId !== refreshMessagesRequestId.value) return
@@ -1465,9 +1578,9 @@ const sendMessage = async () => {
         if (markdownDraft.value === draftBeforeSend) {
           markdownDraft.value = nextMarkdownDraft ?? nextMarkdown
         }
-        messages.value = parsed.messages.map((message, index) =>
+        messages.value = await withStoredReactions(parsed.messages.map((message, index) =>
           toMarkdownViewMessage(message, index, relativePath),
-        )
+        ))
         await scrollMessagesToBottom()
       }
 
@@ -1507,7 +1620,7 @@ const sendMessage = async () => {
     })
 
     draftMessage.value = ''
-    messages.value = rows.map(toViewMessage)
+    messages.value = await withStoredReactions(rows.map(toViewMessage))
     await scrollMessagesToBottom()
 
     try {
@@ -1591,9 +1704,9 @@ const saveMarkdownDraft = async (expectedTarget = null) => {
     ) {
       selectedMarkdownContent.value = draftToSave
       selectedMarkdownSignature.value = markdownSignature(draftToSave)
-      messages.value = parsed.messages.map((message, index) =>
+      messages.value = await withStoredReactions(parsed.messages.map((message, index) =>
         toMarkdownViewMessage(message, index, relativePath),
-      )
+      ))
       await syncParsedMarkdownMessages({
         folderId: selectedFolder.value.id,
         notePath: relativePath,
@@ -1811,6 +1924,9 @@ onBeforeUnmount(() => {
               :name="message.name"
               :date="message.date"
               :message="message.message"
+              :reactions="message.reactions"
+              :reaction-options="REACTION_OPTIONS"
+              @toggle-reaction="toggleMessageReaction(message, $event)"
             />
           </template>
         </div>

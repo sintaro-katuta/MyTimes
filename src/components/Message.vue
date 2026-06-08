@@ -1,9 +1,23 @@
 <script setup>
 import Icon from './Icon.vue'
-import { Heart } from '@lucide/vue'
+import { Heart, Lightbulb, Smile } from '@lucide/vue'
 
-const props = defineProps(['name', 'date', 'message'])
+const props = defineProps({
+  name: { type: String, required: true },
+  date: { type: String, required: true },
+  message: { type: String, required: true },
+  reactions: { type: Array, default: () => [] },
+  reactionOptions: { type: Array, default: () => [] },
+})
+const emit = defineEmits(['toggle-reaction'])
 
+const iconComponents = {
+  smile: Smile,
+  heart: Heart,
+  idea: Lightbulb,
+}
+
+const isReactionSelected = (reactionId) => props.reactions.includes(reactionId)
 </script>
 
 <template>
@@ -17,11 +31,32 @@ const props = defineProps(['name', 'date', 'message'])
       <div class="message-content">
         <p class="message-message">{{ props.message }}</p>
       </div>
+      <div v-if="props.reactions.length > 0" class="message-reactions" aria-label="選択中のリアクション">
+        <span
+          v-for="reaction in props.reactionOptions.filter((option) => isReactionSelected(option.id))"
+          :key="reaction.id"
+          class="reaction-chip"
+          :title="reaction.label"
+        >
+          <component :is="iconComponents[reaction.id]" :size="14" aria-hidden="true" />
+          <span class="reaction-chip-label">{{ reaction.label }}</span>
+        </span>
+      </div>
     </div>
     <div class="message-actions">
-      <Heart :size="20" />
-      <Heart :size="20" />
-      <Heart :size="20" />
+      <button
+        v-for="reaction in props.reactionOptions"
+        :key="reaction.id"
+        type="button"
+        class="reaction-button"
+        :class="{ active: isReactionSelected(reaction.id) }"
+        :aria-pressed="isReactionSelected(reaction.id)"
+        :aria-label="`${reaction.label}リアクションを切り替え`"
+        :title="reaction.label"
+        @click="emit('toggle-reaction', reaction.id)"
+      >
+        <component :is="iconComponents[reaction.id]" :size="18" aria-hidden="true" />
+      </button>
     </div>
   </div>
 </template>
@@ -54,6 +89,31 @@ const props = defineProps(['name', 'date', 'message'])
   align-items: flex-start;
   justify-content: flex-start;
   gap: 8px;
+}
+
+.message-reactions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  min-height: 24px;
+}
+
+.reaction-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-height: 24px;
+  padding: 3px 8px;
+  border: 1px solid color-mix(in srgb, var(--bg-primary) 28%, var(--border-default));
+  border-radius: 999px;
+  color: var(--bg-primary);
+  background: color-mix(in srgb, var(--surface-accent) 82%, transparent);
+  font-size: 12px;
+  line-height: 1;
+}
+
+.reaction-chip-label {
+  line-height: 1;
 }
 
 .message-info {
@@ -128,6 +188,42 @@ const props = defineProps(['name', 'date', 'message'])
 
 .message-actions :deep(img:hover) {
   opacity: 1;
+}
+
+.reaction-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  color: var(--icon-default);
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 50%;
+  cursor: pointer;
+  transition:
+    background-color 160ms ease,
+    border-color 160ms ease,
+    color 160ms ease,
+    transform 160ms ease;
+}
+
+.reaction-button:hover,
+.reaction-button:focus-visible {
+  color: var(--text-primary);
+  background: var(--surface-elevated-hover);
+  outline: none;
+}
+
+.reaction-button.active {
+  color: var(--bg-primary);
+  border-color: color-mix(in srgb, var(--bg-primary) 38%, var(--border-default));
+  background: color-mix(in srgb, var(--surface-accent) 84%, transparent);
+}
+
+.reaction-button:active {
+  transform: scale(0.96);
 }
 
 @media (max-width: 640px) {

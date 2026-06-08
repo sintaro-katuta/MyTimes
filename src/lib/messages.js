@@ -5,6 +5,7 @@ const DATABASE_URL = 'sqlite:mytimes.db'
 const MARKDOWN_EXPORT_PATH_KEY = 'markdown_export_path'
 const APP_TITLE_KEY = 'app_title'
 const DEFAULT_APP_TITLE = 'デイリー分報'
+const MESSAGE_KEY_SEPARATOR = '\u001f'
 
 let databasePromise
 
@@ -41,6 +42,74 @@ export const loadMessages = async ({ folderId = null, notePath = null } = {}) =>
      ${whereClause}
      ORDER BY created_at ASC, id ASC`,
     params,
+  )
+}
+
+export const messageReactionKey = ({
+  folderId = null,
+  notePath = null,
+  createdAt = '',
+  content = '',
+}) => [
+  folderId === null || folderId === undefined ? '' : String(folderId),
+  notePath ?? '',
+  createdAt ?? '',
+  content ?? '',
+].join(MESSAGE_KEY_SEPARATOR)
+
+export const loadMessageReactions = async (messageKeys) => {
+  const keys = [...new Set(messageKeys.filter(Boolean))]
+
+  if (keys.length === 0) return new Map()
+
+  const db = await getDatabase()
+  const placeholders = keys.map(() => '?').join(', ')
+  const rows = await db.select(
+    `SELECT message_key AS messageKey, reaction_type AS reactionType
+     FROM message_reactions
+     WHERE selected = 1 AND message_key IN (${placeholders})
+     ORDER BY reaction_type ASC`,
+    keys,
+  )
+
+  return rows.reduce((groups, row) => {
+    if (!groups.has(row.messageKey)) {
+      groups.set(row.messageKey, [])
+    }
+
+    groups.get(row.messageKey).push(row.reactionType)
+    return groups
+  }, new Map())
+}
+
+export const saveMessageReaction = async ({
+  messageKey,
+  folderId = null,
+  notePath = null,
+  reactionType,
+  selected,
+}) => {
+  const db = await getDatabase()
+  const updatedAt = formatLocalTimestamp(new Date())
+
+  await db.execute(
+    `INSERT INTO message_reactions
+       (message_key, folder_id, note_path, reaction_type, selected, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?)
+     ON CONFLICT(message_key, reaction_type) DO UPDATE SET
+       folder_id = excluded.folder_id,
+       note_path = excluded.note_path,
+       selected = excluded.selected,
+       updated_at = excluded.updated_at`,
+    [
+      messageKey,
+      folderId,
+      notePath,
+      reactionType,
+      selected ? 1 : 0,
+      updatedAt,
+      updatedAt,
+    ],
   )
 }
 
@@ -388,6 +457,7 @@ export const deleteFolder = async (folderId) => {
   await db.execute('BEGIN')
 
   try {
+    await db.execute(`DELETE FROM message_reactions WHERE folder_id IN (${placeholders})`, folderIds)
     await db.execute(`DELETE FROM messages WHERE folder_id IN (${placeholders})`, folderIds)
     await db.execute(`DELETE FROM folders WHERE id IN (${placeholders})`, folderIds)
     await db.execute('COMMIT')
