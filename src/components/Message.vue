@@ -1,6 +1,5 @@
 <script setup>
 import Icon from './Icon.vue'
-import { Heart, Lightbulb, Smile } from '@lucide/vue'
 
 const props = defineProps({
   name: { type: String, required: true },
@@ -10,12 +9,6 @@ const props = defineProps({
   reactionOptions: { type: Array, default: () => [] },
 })
 const emit = defineEmits(['toggle-reaction'])
-
-const iconComponents = {
-  smile: Smile,
-  heart: Heart,
-  idea: Lightbulb,
-}
 
 const isReactionSelected = (reactionId) => props.reactions.includes(reactionId)
 </script>
@@ -38,8 +31,8 @@ const isReactionSelected = (reactionId) => props.reactions.includes(reactionId)
           class="reaction-chip"
           :title="reaction.label"
         >
-          <component :is="iconComponents[reaction.id]" :size="14" aria-hidden="true" />
-          <span class="reaction-chip-label">{{ reaction.label }}</span>
+          <span class="reaction-emoji" aria-hidden="true">{{ reaction.emoji }}</span>
+          <span class="reaction-count">1</span>
         </span>
       </div>
     </div>
@@ -55,7 +48,7 @@ const isReactionSelected = (reactionId) => props.reactions.includes(reactionId)
         :title="reaction.label"
         @click="emit('toggle-reaction', reaction.id)"
       >
-        <component :is="iconComponents[reaction.id]" :size="18" aria-hidden="true" />
+        <span class="reaction-emoji" aria-hidden="true">{{ reaction.emoji }}</span>
       </button>
     </div>
   </div>
@@ -101,18 +94,33 @@ const isReactionSelected = (reactionId) => props.reactions.includes(reactionId)
 .reaction-chip {
   display: inline-flex;
   align-items: center;
-  gap: 4px;
-  min-height: 24px;
-  padding: 3px 8px;
-  border: 1px solid color-mix(in srgb, var(--bg-primary) 28%, var(--border-default));
+  gap: 5px;
+  min-height: 26px;
+  padding: 3px 9px;
+  border: 1px solid color-mix(in srgb, var(--border-default) 82%, transparent);
   border-radius: 999px;
-  color: var(--bg-primary);
-  background: color-mix(in srgb, var(--surface-accent) 82%, transparent);
+  color: var(--text-secondary);
+  background: color-mix(in srgb, var(--surface-elevated) 90%, transparent);
   font-size: 12px;
+  line-height: 1;
+  box-shadow: var(--shadow-soft);
+}
+
+.reaction-emoji {
+  font-family:
+    'Apple Color Emoji',
+    'Segoe UI Emoji',
+    'Noto Color Emoji',
+    sans-serif;
+  font-size: 16px;
   line-height: 1;
 }
 
-.reaction-chip-label {
+.reaction-count {
+  min-width: 6px;
+  color: var(--text-tertiary);
+  font-size: 12px;
+  font-weight: 700;
   line-height: 1;
 }
 
@@ -209,6 +217,10 @@ const isReactionSelected = (reactionId) => props.reactions.includes(reactionId)
     transform 160ms ease;
 }
 
+.reaction-button .reaction-emoji {
+  font-size: 18px;
+}
+
 .reaction-button:hover,
 .reaction-button:focus-visible {
   color: var(--text-primary);
@@ -217,7 +229,6 @@ const isReactionSelected = (reactionId) => props.reactions.includes(reactionId)
 }
 
 .reaction-button.active {
-  color: var(--bg-primary);
   border-color: color-mix(in srgb, var(--bg-primary) 38%, var(--border-default));
   background: color-mix(in srgb, var(--surface-accent) 84%, transparent);
 }

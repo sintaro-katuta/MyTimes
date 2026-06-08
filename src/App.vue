@@ -93,9 +93,12 @@ const THEME_COLORS = {
 }
 
 const REACTION_OPTIONS = [
-  { id: 'smile', label: 'いいね' },
-  { id: 'heart', label: '共感' },
-  { id: 'idea', label: 'アイデア' },
+  { id: 'smile', emoji: '😀', label: 'いいね' },
+  { id: 'heart', emoji: '❤️', label: '共感' },
+  { id: 'eyes', emoji: '👀', label: '見ました' },
+  { id: 'clap', emoji: '👏', label: '拍手' },
+  { id: 'idea', emoji: '💡', label: 'アイデア' },
+  { id: 'rocket', emoji: '🚀', label: 'よさそう' },
 ]
 
 const normalizeThemeColor = (value) => {
