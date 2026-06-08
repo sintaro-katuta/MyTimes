@@ -1,6 +1,6 @@
 <script setup>
 import { computed, ref } from 'vue'
-import { Plus, Search, X } from '@lucide/vue'
+import { Plus, X } from '@lucide/vue'
 import Icon from './Icon.vue'
 
 const props = defineProps({
@@ -15,28 +15,12 @@ const emit = defineEmits(['toggle-reaction'])
 const isReactionSelected = (reactionId) => props.reactions.includes(reactionId)
 
 const isEmojiPickerOpen = ref(false)
-const emojiSearchQuery = ref('')
-const activeEmojiCategory = ref('popular')
+const customEmojiInput = ref('')
 
-const EMOJI_CATEGORIES = [
-  { id: 'popular', label: 'よく使う' },
-  { id: 'all', label: 'すべて' },
-  { id: 'face', label: 'スマイル' },
-  { id: 'object', label: 'もの' },
-  { id: 'travel', label: '移動' },
-  { id: 'symbol', label: '記号' },
-  { id: 'flag', label: '旗' },
-]
-
-const POPULAR_REACTION_IDS = [
-  'smile',
-  'heart',
+const QUICK_REACTION_IDS = [
   'thumbs_up',
-  'joy',
+  'heart',
   'eyes',
-  'clap',
-  'pray',
-  'tada',
   'white_check_mark',
 ]
 
@@ -46,7 +30,11 @@ const uniqueReactionOptions = computed(() =>
   ),
 )
 
-const frequentReactionOptions = computed(() => uniqueReactionOptions.value.slice(0, 3))
+const frequentReactionOptions = computed(() =>
+  QUICK_REACTION_IDS
+    .map((reactionId) => uniqueReactionOptions.value.find((reaction) => reaction.id === reactionId))
+    .filter(Boolean),
+)
 
 const selectedReactionOptions = computed(() =>
   props.reactions
@@ -54,25 +42,36 @@ const selectedReactionOptions = computed(() =>
     .filter(Boolean),
 )
 
-const filteredReactionOptions = computed(() => {
-  const query = emojiSearchQuery.value.trim().toLowerCase()
+const pickerReactionOptions = computed(() =>
+  uniqueReactionOptions.value.filter((reaction) => !QUICK_REACTION_IDS.includes(reaction.id)),
+)
 
-  if (query) {
-    return uniqueReactionOptions.value.filter((reaction) =>
-      `${reaction.emoji} ${reaction.label} ${reaction.id}`.toLowerCase().includes(query),
-    )
+const firstGrapheme = (value) => {
+  const normalizedValue = value.trim()
+
+  if (!normalizedValue) return ''
+
+  if (typeof Intl !== 'undefined' && Intl.Segmenter) {
+    const segments = new Intl.Segmenter(undefined, { granularity: 'grapheme' }).segment(normalizedValue)
+    return segments[Symbol.iterator]().next().value?.segment ?? ''
   }
 
-  const category = EMOJI_CATEGORIES.find((item) => item.id === activeEmojiCategory.value)
-  if (!category) return uniqueReactionOptions.value
-  if (category.id === 'all') return uniqueReactionOptions.value
-  if (category.id === 'popular') {
-    return POPULAR_REACTION_IDS
-      .map((reactionId) => uniqueReactionOptions.value.find((reaction) => reaction.id === reactionId))
-      .filter(Boolean)
-  }
+  return Array.from(normalizedValue)[0] ?? ''
+}
 
-  return uniqueReactionOptions.value.filter((reaction) => reaction.category === category.id)
+const reactionIdFromEmoji = (emoji) =>
+  `custom_${[...emoji].map((character) => character.codePointAt(0).toString(16)).join('_')}`
+
+const customReactionOption = computed(() => {
+  const emoji = firstGrapheme(customEmojiInput.value)
+
+  if (!emoji) return null
+
+  return {
+    id: reactionIdFromEmoji(emoji),
+    emoji,
+    label: `カスタム ${emoji}`,
+  }
 })
 
 const toggleEmojiPicker = () => {
@@ -81,7 +80,7 @@ const toggleEmojiPicker = () => {
 
 const closeEmojiPicker = () => {
   isEmojiPickerOpen.value = false
-  emojiSearchQuery.value = ''
+  customEmojiInput.value = ''
 }
 
 const toggleReaction = (reactionId, closePicker = false) => {
@@ -90,6 +89,13 @@ const toggleReaction = (reactionId, closePicker = false) => {
   if (closePicker) {
     closeEmojiPicker()
   }
+}
+
+const addCustomReaction = () => {
+  if (!customReactionOption.value) return
+
+  emit('toggle-reaction', customReactionOption.value)
+  closeEmojiPicker()
 }
 </script>
 
@@ -152,32 +158,31 @@ const toggleReaction = (reactionId, closePicker = false) => {
             <X :size="18" aria-hidden="true" />
           </button>
         </div>
-        <div class="emoji-category-tabs" role="tablist" aria-label="絵文字カテゴリ">
+        <div class="emoji-custom-entry">
+          <label class="emoji-custom-label" for="custom-reaction-input">好きな絵文字を追加</label>
+          <input
+            id="custom-reaction-input"
+            v-model="customEmojiInput"
+            type="text"
+            class="emoji-custom-input"
+            inputmode="text"
+            placeholder="絵文字を入力"
+            aria-label="追加する絵文字"
+            @keydown.enter.prevent="addCustomReaction"
+          />
           <button
-            v-for="category in EMOJI_CATEGORIES"
-            :key="category.id"
             type="button"
-            class="emoji-category-tab"
-            :class="{ active: activeEmojiCategory === category.id && !emojiSearchQuery }"
-            :aria-selected="activeEmojiCategory === category.id && !emojiSearchQuery"
-            role="tab"
-            @click="activeEmojiCategory = category.id"
+            class="emoji-custom-add"
+            :disabled="!customReactionOption"
+            @click="addCustomReaction"
           >
-            {{ category.label }}
+            追加
           </button>
         </div>
-        <label class="emoji-search">
-          <Search :size="16" aria-hidden="true" />
-          <input
-            v-model="emojiSearchQuery"
-            type="search"
-            placeholder="絵文字を検索"
-            aria-label="絵文字を検索"
-          />
-        </label>
+        <p class="emoji-picker-section-title">候補</p>
         <div class="emoji-grid" role="listbox" aria-label="絵文字一覧">
           <button
-            v-for="reaction in filteredReactionOptions"
+            v-for="reaction in pickerReactionOptions"
             :key="reaction.id"
             type="button"
             class="emoji-grid-button"
@@ -459,67 +464,62 @@ const toggleReaction = (reactionId, closePicker = false) => {
   outline: none;
 }
 
-.emoji-category-tabs {
-  display: flex;
-  gap: 4px;
-  padding: 8px 10px;
+.emoji-custom-entry {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 8px;
+  padding: 12px;
   border-bottom: 1px solid var(--border-subtle);
-  overflow-x: auto;
 }
 
-.emoji-category-tab {
-  flex: 0 0 auto;
-  min-height: 32px;
-  padding: 0 10px;
-  color: var(--text-tertiary);
-  background: transparent;
-  border: 0;
-  border-radius: 999px;
+.emoji-custom-label {
+  grid-column: 1 / -1;
+  color: var(--text-secondary);
   font-size: 12px;
+  font-weight: 700;
+}
+
+.emoji-custom-input {
+  width: 100%;
+  min-width: 0;
+  min-height: 40px;
+  padding: 0 12px;
+  color: var(--text-primary);
+  background: var(--surface-input);
+  border: 1px solid var(--border-strong);
+  border-radius: 10px;
+  font: inherit;
+  font-size: 20px;
+}
+
+.emoji-custom-input:focus {
+  border-color: var(--bg-primary);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--bg-primary) 18%, transparent);
+  outline: none;
+}
+
+.emoji-custom-add {
+  min-height: 40px;
+  padding: 0 12px;
+  color: var(--text-inverse);
+  background: var(--bg-primary);
+  border: 0;
+  border-radius: 10px;
+  font-size: 13px;
   font-weight: 700;
   cursor: pointer;
 }
 
-.emoji-category-tab:hover,
-.emoji-category-tab:focus-visible {
-  color: var(--text-primary);
-  background: var(--surface-elevated-hover);
-  outline: none;
+.emoji-custom-add:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
 }
 
-.emoji-category-tab.active {
-  color: var(--bg-primary);
-  background: color-mix(in srgb, var(--surface-accent) 84%, transparent);
-}
-
-.emoji-search {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  min-height: 42px;
-  margin: 10px 12px;
-  padding: 0 12px;
+.emoji-picker-section-title {
+  margin: 10px 12px 8px;
   color: var(--text-tertiary);
-  border: 1px solid var(--border-strong);
-  border-radius: 10px;
-  background: var(--surface-input);
-}
-
-.emoji-search:focus-within {
-  border-color: var(--bg-primary);
-  box-shadow: 0 0 0 3px color-mix(in srgb, var(--bg-primary) 18%, transparent);
-}
-
-.emoji-search input {
-  width: 100%;
-  min-width: 0;
-  padding: 0;
-  color: var(--text-primary);
-  background: transparent;
-  border: 0;
-  outline: none;
-  font: inherit;
-  font-size: 14px;
+  font-size: 12px;
+  font-weight: 700;
 }
 
 .emoji-grid {

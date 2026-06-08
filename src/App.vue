@@ -92,97 +92,76 @@ const THEME_COLORS = {
   },
 }
 
-const PINNED_REACTION_OPTIONS = [
-  { id: 'smile', emoji: '😀', label: 'いいね' },
-  { id: 'heart', emoji: '❤️', label: '共感' },
+const BASE_REACTION_OPTIONS = [
   { id: 'thumbs_up', emoji: '👍', label: 'いいね' },
-  { id: 'joy', emoji: '😂', label: '爆笑' },
+  { id: 'heart', emoji: '❤️', label: '共感' },
   { id: 'eyes', emoji: '👀', label: '見ました' },
-  { id: 'clap', emoji: '👏', label: '拍手' },
-  { id: 'idea', emoji: '💡', label: 'アイデア' },
-  { id: 'rocket', emoji: '🚀', label: 'よさそう' },
   { id: 'white_check_mark', emoji: '✅', label: '確認済み' },
+  { id: 'smile', emoji: '😀', label: 'いいね' },
+  { id: 'joy', emoji: '😂', label: '爆笑' },
+  { id: 'clap', emoji: '👏', label: '拍手' },
   { id: 'pray', emoji: '🙏', label: 'お願いします' },
   { id: 'tada', emoji: '🎉', label: 'お祝い' },
-  { id: 'raised_hands', emoji: '🙌', label: '最高' },
   { id: 'thinking', emoji: '🤔', label: '考え中' },
-  { id: 'ok_hand', emoji: '👌', label: 'OK' },
-  { id: 'muscle', emoji: '💪', label: 'がんばる' },
-  { id: 'memo', emoji: '📝', label: 'メモ' },
+  { id: 'idea', emoji: '💡', label: 'アイデア' },
+  { id: 'rocket', emoji: '🚀', label: 'よさそう' },
   { id: 'fire', emoji: '🔥', label: 'すごい' },
-  { id: 'star', emoji: '⭐', label: 'スター' },
-  { id: 'warning', emoji: '⚠️', label: '注意' },
-  { id: 'question', emoji: '❓', label: '質問' },
-  { id: 'bulb', emoji: '💡', label: 'ひらめき' },
-  { id: 'wave', emoji: '👋', label: 'こんにちは' },
-  { id: 'bow', emoji: '🙇', label: 'ありがとう' },
-  { id: 'sweat_smile', emoji: '😅', label: '冷や汗' },
-  { id: 'sob', emoji: '😭', label: '泣き' },
-  { id: 'relieved', emoji: '😌', label: '安心' },
-  { id: 'blush', emoji: '😊', label: 'にこにこ' },
-  { id: 'smile_open', emoji: '😄', label: '笑顔' },
-  { id: 'wink', emoji: '😉', label: 'ウインク' },
-  { id: 'heart_eyes', emoji: '😍', label: '好き' },
-  { id: 'partying', emoji: '🥳', label: 'パーティー' },
-  { id: 'exploding_head', emoji: '🤯', label: 'びっくり' },
-  { id: 'salute', emoji: '🫡', label: '了解' },
-  { id: 'neutral', emoji: '😐', label: 'ふつう' },
-  { id: 'zipper', emoji: '🤐', label: '秘密' },
-  { id: 'sleeping', emoji: '😴', label: '眠い' },
-  { id: 'skull', emoji: '💀', label: 'やられた' },
-  { id: 'poop', emoji: '💩', label: 'うーん' },
   { id: '100', emoji: '💯', label: '満点' },
   { id: 'sparkles', emoji: '✨', label: 'きらきら' },
-  { id: 'boom', emoji: '💥', label: '衝撃' },
-  { id: 'zap', emoji: '⚡', label: '高速' },
   { id: 'target', emoji: '🎯', label: '的中' },
-  { id: 'loudspeaker', emoji: '📢', label: '告知' },
-  { id: 'calendar', emoji: '📅', label: '予定' },
-  { id: 'hourglass', emoji: '⏳', label: '待ち' },
-  { id: 'coffee', emoji: '☕', label: '休憩' },
-  { id: 'bug', emoji: '🐛', label: 'バグ' },
-  { id: 'gear', emoji: '⚙️', label: '設定' },
-  { id: 'lock', emoji: '🔒', label: 'ロック' },
-  { id: 'link', emoji: '🔗', label: 'リンク' },
-  { id: 'chart', emoji: '📈', label: '伸び' },
-  { id: 'package', emoji: '📦', label: 'パッケージ' },
-  { id: 'book', emoji: '📚', label: '資料' },
-  { id: 'computer', emoji: '💻', label: '開発' },
-  { id: 'phone', emoji: '📱', label: 'モバイル' },
-  { id: 'paint', emoji: '🎨', label: 'デザイン' },
-  { id: 'camera', emoji: '📷', label: '画像' },
-  { id: 'money', emoji: '💰', label: 'お金' },
-  { id: 'green_circle', emoji: '🟢', label: '緑' },
-  { id: 'yellow_circle', emoji: '🟡', label: '黄' },
-  { id: 'red_circle', emoji: '🔴', label: '赤' },
-  { id: 'blue_circle', emoji: '🔵', label: '青' },
-  { id: 'black_circle', emoji: '⚫', label: '黒' },
-  { id: 'white_circle', emoji: '⚪', label: '白' },
 ]
 
-const createAllEmojiOptions = (extraOptions = []) => {
-  const options = [
-    ...PINNED_REACTION_OPTIONS.map((option) => ({ category: 'popular', ...option })),
-    ...extraOptions,
-  ]
-
+const createUniqueReactionOptions = (options) => {
   const seenIds = new Set()
-  const seenEmoji = new Set()
 
   return options.filter((option) => {
-    if (seenIds.has(option.id) || seenEmoji.has(option.emoji)) return false
+    if (seenIds.has(option.id)) return false
 
     seenIds.add(option.id)
-    seenEmoji.add(option.emoji)
     return true
   })
 }
 
-const reactionOptions = ref(createAllEmojiOptions())
+const reactionOptions = ref(createUniqueReactionOptions(BASE_REACTION_OPTIONS))
 
-const loadAllEmojiReactionOptions = async () => {
-  const { ALL_EMOJI_REACTION_OPTIONS } = await import('./lib/emojiOptions')
-  reactionOptions.value = createAllEmojiOptions(ALL_EMOJI_REACTION_OPTIONS)
+const reactionOptionFromId = (reactionId) => {
+  if (!reactionId.startsWith('custom_') && !reactionId.startsWith('emoji_')) return null
+
+  const codePoints = reactionId
+    .replace(/^custom_/, '')
+    .replace(/^emoji_/, '')
+    .split('_')
+    .map((value) => Number.parseInt(value, 16))
+
+  if (codePoints.some((value) => Number.isNaN(value))) return null
+
+  const emoji = String.fromCodePoint(...codePoints)
+  return {
+    id: reactionId,
+    emoji,
+    label: `カスタム ${emoji}`,
+  }
+}
+
+const ensureReactionOptions = (options) => {
+  reactionOptions.value = createUniqueReactionOptions([
+    ...reactionOptions.value,
+    ...options.filter(Boolean),
+  ])
+}
+
+const normalizeReactionPayload = (payload) => {
+  if (typeof payload === 'string') {
+    return reactionOptions.value.find((reaction) => reaction.id === payload) ?? reactionOptionFromId(payload)
+  }
+
+  if (!payload?.id || !payload?.emoji) return null
+
+  return {
+    id: payload.id,
+    emoji: payload.emoji,
+    label: payload.label ?? `カスタム ${payload.emoji}`,
+  }
 }
 
 const normalizeThemeColor = (value) => {
@@ -609,6 +588,8 @@ const createViewMessage = ({
 
 const withStoredReactions = async (viewMessages) => {
   const reactionGroups = await loadMessageReactions(viewMessages.map((message) => message.messageKey))
+  const storedReactionTypes = [...reactionGroups.values()].flat()
+  ensureReactionOptions(storedReactionTypes.map(reactionOptionFromId))
 
   return viewMessages.map((message) => ({
     ...message,
@@ -616,8 +597,13 @@ const withStoredReactions = async (viewMessages) => {
   }))
 }
 
-const toggleMessageReaction = async (message, reactionType) => {
-  if (!reactionOptions.value.some((reaction) => reaction.id === reactionType)) return
+const toggleMessageReaction = async (message, payload) => {
+  const reaction = normalizeReactionPayload(payload)
+  if (!reaction) return
+
+  ensureReactionOptions([reaction])
+
+  const reactionType = reaction.id
 
   const reactions = new Set(message.reactions)
   const selected = !reactions.has(reactionType)
@@ -1923,10 +1909,6 @@ watch(settingsAutoSaveMarkdown, (value) => {
 })
 
 onMounted(async () => {
-  loadAllEmojiReactionOptions().catch((error) => {
-    console.error('絵文字一覧の読み込みに失敗しました', error)
-  })
-
   await loadAppSettings().catch((error) => {
     loadMessageError.value = error instanceof Error ? error.message : '設定の読み込みに失敗しました'
   })
