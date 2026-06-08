@@ -77,7 +77,7 @@ const toggleReaction = (reactionId, closePicker = false) => {
 </script>
 
 <template>
-  <div class="message">
+  <div class="message" :class="{ 'is-picker-open': isEmojiPickerOpen }">
     <Icon src="./example1.jpg" />
     <div class="message-body">
       <div class="message-info">
@@ -182,6 +182,7 @@ const toggleReaction = (reactionId, closePicker = false) => {
 <style scoped>
 .message {
   position: relative;
+  z-index: 0;
   display: flex;
   align-items: flex-start;
   overflow: visible;
@@ -196,6 +197,15 @@ const toggleReaction = (reactionId, closePicker = false) => {
   border-radius: 16px;
   padding: 18px 20px;
   gap: 12px;
+}
+
+.message:hover,
+.message:focus-within {
+  z-index: 20;
+}
+
+.message.is-picker-open {
+  z-index: 100;
 }
 
 .message-body {
@@ -307,7 +317,7 @@ const toggleReaction = (reactionId, closePicker = false) => {
   right: 8px;
   border: 1px solid color-mix(in srgb, var(--border-default) 76%, transparent);
   border-radius: 14px;
-  z-index: 10;
+  z-index: 30;
   opacity: 0;
   display: flex;
   flex-direction: row;
@@ -383,6 +393,7 @@ const toggleReaction = (reactionId, closePicker = false) => {
   position: absolute;
   top: calc(100% + 8px);
   right: 0;
+  z-index: 40;
   width: min(360px, calc(100vw - 32px));
   max-height: 440px;
   display: flex;
