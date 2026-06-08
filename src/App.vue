@@ -1,5 +1,6 @@
 <script setup>
 import { open } from '@tauri-apps/plugin-dialog'
+import { convertFileSrc } from '@tauri-apps/api/core'
 import { LogicalPosition } from '@tauri-apps/api/dpi'
 import { Menu } from '@tauri-apps/api/menu'
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
@@ -52,6 +53,7 @@ const SETTINGS_KEYS = {
   reopenLastNote: 'reopen_last_note',
   lastWorkspaceFolderId: 'last_workspace_folder_id',
   lastWorkspaceNotePath: 'last_workspace_note_path',
+  customReactionOptions: 'custom_reaction_options',
 }
 
 const DEFAULT_SETTINGS = {
@@ -97,19 +99,9 @@ const BASE_REACTION_OPTIONS = [
   { id: 'heart', emoji: '❤️', label: '共感' },
   { id: 'eyes', emoji: '👀', label: '見ました' },
   { id: 'white_check_mark', emoji: '✅', label: '確認済み' },
-  { id: 'smile', emoji: '😀', label: 'いいね' },
-  { id: 'joy', emoji: '😂', label: '爆笑' },
-  { id: 'clap', emoji: '👏', label: '拍手' },
-  { id: 'pray', emoji: '🙏', label: 'お願いします' },
-  { id: 'tada', emoji: '🎉', label: 'お祝い' },
-  { id: 'thinking', emoji: '🤔', label: '考え中' },
-  { id: 'idea', emoji: '💡', label: 'アイデア' },
-  { id: 'rocket', emoji: '🚀', label: 'よさそう' },
-  { id: 'fire', emoji: '🔥', label: 'すごい' },
-  { id: '100', emoji: '💯', label: '満点' },
-  { id: 'sparkles', emoji: '✨', label: 'きらきら' },
-  { id: 'target', emoji: '🎯', label: '的中' },
 ]
+
+const CUSTOM_IMAGE_REACTION_PREFIX = 'custom_image_'
 
 const createUniqueReactionOptions = (options) => {
   const seenIds = new Set()
@@ -123,6 +115,75 @@ const createUniqueReactionOptions = (options) => {
 }
 
 const reactionOptions = ref(createUniqueReactionOptions(BASE_REACTION_OPTIONS))
+const customReactionOptions = ref([])
+
+const hashText = (value) => {
+  let hash = 0x811c9dc5
+
+  for (let index = 0; index < value.length; index += 1) {
+    hash ^= value.charCodeAt(index)
+    hash = Math.imul(hash, 0x01000193)
+  }
+
+  return (hash >>> 0).toString(16)
+}
+
+const reactionLabelFromImagePath = (imagePath) => {
+  const baseName = getPathBaseName(imagePath)
+
+  return baseName.replace(/\.[^.]+$/, '') || 'カスタム'
+}
+
+const createImageReactionOption = (imagePath) => ({
+  id: `${CUSTOM_IMAGE_REACTION_PREFIX}${hashText(imagePath)}`,
+  imagePath,
+  imageSrc: convertFileSrc(imagePath),
+  label: reactionLabelFromImagePath(imagePath),
+})
+
+const restoreImageReactionOption = (option) => {
+  if (!option?.id || !option?.imagePath) return null
+
+  return {
+    id: option.id,
+    imagePath: option.imagePath,
+    imageSrc: convertFileSrc(option.imagePath),
+    label: option.label || reactionLabelFromImagePath(option.imagePath),
+  }
+}
+
+const serializeCustomReactionOptions = () =>
+  customReactionOptions.value.map((option) => ({
+    id: option.id,
+    imagePath: option.imagePath,
+    label: option.label,
+  }))
+
+const saveCustomReactionOptions = async () => {
+  await saveSetting(
+    SETTINGS_KEYS.customReactionOptions,
+    JSON.stringify(serializeCustomReactionOptions()),
+  )
+}
+
+const loadCustomReactionOptions = async () => {
+  const value = await loadSetting(SETTINGS_KEYS.customReactionOptions, '[]')
+  let parsed = []
+
+  try {
+    parsed = JSON.parse(value)
+  } catch {
+    parsed = []
+  }
+
+  customReactionOptions.value = createUniqueReactionOptions(
+    parsed.map(restoreImageReactionOption).filter(Boolean),
+  )
+  reactionOptions.value = createUniqueReactionOptions([
+    ...BASE_REACTION_OPTIONS,
+    ...customReactionOptions.value,
+  ])
+}
 
 const reactionOptionFromId = (reactionId) => {
   if (!reactionId.startsWith('custom_') && !reactionId.startsWith('emoji_')) return null
@@ -162,6 +223,17 @@ const normalizeReactionPayload = (payload) => {
     emoji: payload.emoji,
     label: payload.label ?? `カスタム ${payload.emoji}`,
   }
+}
+
+const ensureImageReactionOption = async (option) => {
+  const nextCustomOptions = createUniqueReactionOptions([
+    ...customReactionOptions.value,
+    option,
+  ])
+
+  customReactionOptions.value = nextCustomOptions
+  ensureReactionOptions([option])
+  await saveCustomReactionOptions()
 }
 
 const normalizeThemeColor = (value) => {
@@ -637,6 +709,33 @@ const toggleMessageReaction = async (message, payload) => {
     sendMessageError.value = error instanceof Error
       ? `リアクションの保存に失敗しました: ${error.message}`
       : 'リアクションの保存に失敗しました'
+  }
+}
+
+const handleAddImageReaction = async (message) => {
+  sendMessageError.value = ''
+
+  try {
+    const selectedPath = await open({
+      multiple: false,
+      filters: [
+        {
+          name: '画像',
+          extensions: ['png', 'jpg', 'jpeg', 'webp', 'gif', 'bmp', 'svg'],
+        },
+      ],
+      title: 'リアクション画像を選択',
+    })
+
+    if (typeof selectedPath !== 'string') return
+
+    const reaction = createImageReactionOption(selectedPath)
+    await ensureImageReactionOption(reaction)
+    await toggleMessageReaction(message, reaction)
+  } catch (error) {
+    sendMessageError.value = error instanceof Error
+      ? `リアクション画像の追加に失敗しました: ${error.message}`
+      : 'リアクション画像の追加に失敗しました'
   }
 }
 
@@ -1912,6 +2011,9 @@ onMounted(async () => {
   await loadAppSettings().catch((error) => {
     loadMessageError.value = error instanceof Error ? error.message : '設定の読み込みに失敗しました'
   })
+  await loadCustomReactionOptions().catch((error) => {
+    loadMessageError.value = error instanceof Error ? error.message : 'カスタムリアクションの読み込みに失敗しました'
+  })
   await refreshMarkdownExportPath().catch((error) => {
     loadMessageError.value = error instanceof Error ? error.message : '設定の読み込みに失敗しました'
   })
@@ -2000,6 +2102,7 @@ onBeforeUnmount(() => {
               :reactions="message.reactions"
               :reaction-options="reactionOptions"
               @toggle-reaction="toggleMessageReaction(message, $event)"
+              @add-image-reaction="handleAddImageReaction(message)"
             />
           </template>
         </div>

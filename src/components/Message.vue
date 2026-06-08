@@ -10,12 +10,11 @@ const props = defineProps({
   reactions: { type: Array, default: () => [] },
   reactionOptions: { type: Array, default: () => [] },
 })
-const emit = defineEmits(['toggle-reaction'])
+const emit = defineEmits(['toggle-reaction', 'add-image-reaction'])
 
 const isReactionSelected = (reactionId) => props.reactions.includes(reactionId)
 
 const isEmojiPickerOpen = ref(false)
-const customEmojiInput = ref('')
 
 const QUICK_REACTION_IDS = [
   'thumbs_up',
@@ -43,36 +42,8 @@ const selectedReactionOptions = computed(() =>
 )
 
 const pickerReactionOptions = computed(() =>
-  uniqueReactionOptions.value.filter((reaction) => !QUICK_REACTION_IDS.includes(reaction.id)),
+  uniqueReactionOptions.value.filter((reaction) => reaction.imageSrc),
 )
-
-const firstGrapheme = (value) => {
-  const normalizedValue = value.trim()
-
-  if (!normalizedValue) return ''
-
-  if (typeof Intl !== 'undefined' && Intl.Segmenter) {
-    const segments = new Intl.Segmenter(undefined, { granularity: 'grapheme' }).segment(normalizedValue)
-    return segments[Symbol.iterator]().next().value?.segment ?? ''
-  }
-
-  return Array.from(normalizedValue)[0] ?? ''
-}
-
-const reactionIdFromEmoji = (emoji) =>
-  `custom_${[...emoji].map((character) => character.codePointAt(0).toString(16)).join('_')}`
-
-const customReactionOption = computed(() => {
-  const emoji = firstGrapheme(customEmojiInput.value)
-
-  if (!emoji) return null
-
-  return {
-    id: reactionIdFromEmoji(emoji),
-    emoji,
-    label: `カスタム ${emoji}`,
-  }
-})
 
 const toggleEmojiPicker = () => {
   isEmojiPickerOpen.value = !isEmojiPickerOpen.value
@@ -80,7 +51,6 @@ const toggleEmojiPicker = () => {
 
 const closeEmojiPicker = () => {
   isEmojiPickerOpen.value = false
-  customEmojiInput.value = ''
 }
 
 const toggleReaction = (reactionId, closePicker = false) => {
@@ -91,10 +61,8 @@ const toggleReaction = (reactionId, closePicker = false) => {
   }
 }
 
-const addCustomReaction = () => {
-  if (!customReactionOption.value) return
-
-  emit('toggle-reaction', customReactionOption.value)
+const addImageReaction = () => {
+  emit('add-image-reaction')
   closeEmojiPicker()
 }
 </script>
@@ -121,7 +89,14 @@ const addCustomReaction = () => {
           :aria-label="`${reaction.label}リアクションを解除`"
           @click="toggleReaction(reaction.id)"
         >
-          <span class="reaction-emoji" aria-hidden="true">{{ reaction.emoji }}</span>
+          <img
+            v-if="reaction.imageSrc"
+            class="reaction-image"
+            :src="reaction.imageSrc"
+            alt=""
+            aria-hidden="true"
+          />
+          <span v-else class="reaction-emoji" aria-hidden="true">{{ reaction.emoji }}</span>
           <span class="reaction-count">1</span>
         </button>
       </div>
@@ -138,7 +113,14 @@ const addCustomReaction = () => {
         :title="reaction.label"
         @click="toggleReaction(reaction.id)"
       >
-        <span class="reaction-emoji" aria-hidden="true">{{ reaction.emoji }}</span>
+        <img
+          v-if="reaction.imageSrc"
+          class="reaction-image"
+          :src="reaction.imageSrc"
+          alt=""
+          aria-hidden="true"
+        />
+        <span v-else class="reaction-emoji" aria-hidden="true">{{ reaction.emoji }}</span>
       </button>
       <button
         type="button"
@@ -159,28 +141,23 @@ const addCustomReaction = () => {
           </button>
         </div>
         <div class="emoji-custom-entry">
-          <label class="emoji-custom-label" for="custom-reaction-input">好きな絵文字を追加</label>
-          <input
-            id="custom-reaction-input"
-            v-model="customEmojiInput"
-            type="text"
-            class="emoji-custom-input"
-            inputmode="text"
-            placeholder="絵文字を入力"
-            aria-label="追加する絵文字"
-            @keydown.enter.prevent="addCustomReaction"
-          />
+          <p class="emoji-custom-label">画像リアクションを追加</p>
+          <p class="emoji-custom-help">PNG、JPG、WebP、GIF、SVG を選択できます。</p>
           <button
             type="button"
             class="emoji-custom-add"
-            :disabled="!customReactionOption"
-            @click="addCustomReaction"
+            @click="addImageReaction"
           >
-            追加
+            画像を選択
           </button>
         </div>
-        <p class="emoji-picker-section-title">候補</p>
-        <div class="emoji-grid" role="listbox" aria-label="絵文字一覧">
+        <p v-if="pickerReactionOptions.length > 0" class="emoji-picker-section-title">追加済み</p>
+        <div
+          v-if="pickerReactionOptions.length > 0"
+          class="emoji-grid"
+          role="listbox"
+          aria-label="カスタム画像リアクション一覧"
+        >
           <button
             v-for="reaction in pickerReactionOptions"
             :key="reaction.id"
@@ -193,7 +170,12 @@ const addCustomReaction = () => {
             :aria-selected="isReactionSelected(reaction.id)"
             @click="toggleReaction(reaction.id, true)"
           >
-            <span class="reaction-emoji" aria-hidden="true">{{ reaction.emoji }}</span>
+            <img
+              class="reaction-image"
+              :src="reaction.imageSrc"
+              alt=""
+              aria-hidden="true"
+            />
           </button>
         </div>
       </div>
@@ -287,6 +269,13 @@ const addCustomReaction = () => {
     sans-serif;
   font-size: 16px;
   line-height: 1;
+}
+
+.reaction-image {
+  width: 20px;
+  height: 20px;
+  object-fit: contain;
+  border-radius: 4px;
 }
 
 .reaction-count {
@@ -465,37 +454,25 @@ const addCustomReaction = () => {
 }
 
 .emoji-custom-entry {
-  display: grid;
-  grid-template-columns: 1fr auto;
+  display: flex;
+  flex-direction: column;
   gap: 8px;
   padding: 12px;
   border-bottom: 1px solid var(--border-subtle);
 }
 
 .emoji-custom-label {
-  grid-column: 1 / -1;
+  margin: 0;
   color: var(--text-secondary);
   font-size: 12px;
   font-weight: 700;
 }
 
-.emoji-custom-input {
-  width: 100%;
-  min-width: 0;
-  min-height: 40px;
-  padding: 0 12px;
-  color: var(--text-primary);
-  background: var(--surface-input);
-  border: 1px solid var(--border-strong);
-  border-radius: 10px;
-  font: inherit;
-  font-size: 20px;
-}
-
-.emoji-custom-input:focus {
-  border-color: var(--bg-primary);
-  box-shadow: 0 0 0 3px color-mix(in srgb, var(--bg-primary) 18%, transparent);
-  outline: none;
+.emoji-custom-help {
+  margin: 0;
+  color: var(--text-tertiary);
+  font-size: 12px;
+  line-height: 1.5;
 }
 
 .emoji-custom-add {
@@ -510,9 +487,10 @@ const addCustomReaction = () => {
   cursor: pointer;
 }
 
-.emoji-custom-add:disabled {
-  cursor: not-allowed;
-  opacity: 0.45;
+.emoji-custom-add:hover,
+.emoji-custom-add:focus-visible {
+  background: var(--bg-primary-hover);
+  outline: none;
 }
 
 .emoji-picker-section-title {
@@ -544,8 +522,9 @@ const addCustomReaction = () => {
   cursor: pointer;
 }
 
-.emoji-grid-button .reaction-emoji {
-  font-size: 22px;
+.emoji-grid-button .reaction-image {
+  width: 24px;
+  height: 24px;
 }
 
 .emoji-grid-button:hover,
