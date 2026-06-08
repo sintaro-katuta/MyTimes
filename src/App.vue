@@ -92,7 +92,7 @@ const THEME_COLORS = {
   },
 }
 
-const REACTION_OPTIONS = [
+const PINNED_REACTION_OPTIONS = [
   { id: 'smile', emoji: '😀', label: 'いいね' },
   { id: 'heart', emoji: '❤️', label: '共感' },
   { id: 'thumbs_up', emoji: '👍', label: 'いいね' },
@@ -159,6 +159,31 @@ const REACTION_OPTIONS = [
   { id: 'black_circle', emoji: '⚫', label: '黒' },
   { id: 'white_circle', emoji: '⚪', label: '白' },
 ]
+
+const createAllEmojiOptions = (extraOptions = []) => {
+  const options = [
+    ...PINNED_REACTION_OPTIONS.map((option) => ({ category: 'popular', ...option })),
+    ...extraOptions,
+  ]
+
+  const seenIds = new Set()
+  const seenEmoji = new Set()
+
+  return options.filter((option) => {
+    if (seenIds.has(option.id) || seenEmoji.has(option.emoji)) return false
+
+    seenIds.add(option.id)
+    seenEmoji.add(option.emoji)
+    return true
+  })
+}
+
+const reactionOptions = ref(createAllEmojiOptions())
+
+const loadAllEmojiReactionOptions = async () => {
+  const { ALL_EMOJI_REACTION_OPTIONS } = await import('./lib/emojiOptions')
+  reactionOptions.value = createAllEmojiOptions(ALL_EMOJI_REACTION_OPTIONS)
+}
 
 const normalizeThemeColor = (value) => {
   const normalizedValue = String(value ?? '').trim()
@@ -592,7 +617,7 @@ const withStoredReactions = async (viewMessages) => {
 }
 
 const toggleMessageReaction = async (message, reactionType) => {
-  if (!REACTION_OPTIONS.some((reaction) => reaction.id === reactionType)) return
+  if (!reactionOptions.value.some((reaction) => reaction.id === reactionType)) return
 
   const reactions = new Set(message.reactions)
   const selected = !reactions.has(reactionType)
@@ -1898,6 +1923,10 @@ watch(settingsAutoSaveMarkdown, (value) => {
 })
 
 onMounted(async () => {
+  loadAllEmojiReactionOptions().catch((error) => {
+    console.error('絵文字一覧の読み込みに失敗しました', error)
+  })
+
   await loadAppSettings().catch((error) => {
     loadMessageError.value = error instanceof Error ? error.message : '設定の読み込みに失敗しました'
   })
@@ -1987,7 +2016,7 @@ onBeforeUnmount(() => {
               :date="message.date"
               :message="message.message"
               :reactions="message.reactions"
-              :reaction-options="REACTION_OPTIONS"
+              :reaction-options="reactionOptions"
               @toggle-reaction="toggleMessageReaction(message, $event)"
             />
           </template>

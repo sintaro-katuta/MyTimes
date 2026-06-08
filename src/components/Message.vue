@@ -19,11 +19,25 @@ const emojiSearchQuery = ref('')
 const activeEmojiCategory = ref('popular')
 
 const EMOJI_CATEGORIES = [
-  { id: 'popular', label: 'よく使う', match: ['smile', 'heart', 'thumbs_up', 'joy', 'eyes', 'clap', 'pray', 'tada', 'white_check_mark'] },
-  { id: 'all', label: 'すべて', match: null },
-  { id: 'face', label: 'スマイル', match: ['smile', 'joy', 'sweat_smile', 'sob', 'relieved', 'blush', 'smile_open', 'wink', 'heart_eyes', 'partying', 'thinking', 'exploding_head', 'salute', 'neutral', 'zipper', 'sleeping', 'skull', 'poop'] },
-  { id: 'work', label: '仕事', match: ['white_check_mark', 'eyes', 'pray', 'clap', 'idea', 'rocket', 'memo', 'warning', 'question', 'target', 'loudspeaker', 'calendar', 'hourglass', 'bug', 'gear', 'lock', 'link', 'chart', 'package', 'book', 'computer', 'phone', 'paint', 'camera', 'money'] },
-  { id: 'symbol', label: '記号', match: ['heart', '100', 'sparkles', 'boom', 'zap', 'fire', 'star', 'green_circle', 'yellow_circle', 'red_circle', 'blue_circle', 'black_circle', 'white_circle'] },
+  { id: 'popular', label: 'よく使う' },
+  { id: 'all', label: 'すべて' },
+  { id: 'face', label: 'スマイル' },
+  { id: 'object', label: 'もの' },
+  { id: 'travel', label: '移動' },
+  { id: 'symbol', label: '記号' },
+  { id: 'flag', label: '旗' },
+]
+
+const POPULAR_REACTION_IDS = [
+  'smile',
+  'heart',
+  'thumbs_up',
+  'joy',
+  'eyes',
+  'clap',
+  'pray',
+  'tada',
+  'white_check_mark',
 ]
 
 const uniqueReactionOptions = computed(() =>
@@ -51,11 +65,14 @@ const filteredReactionOptions = computed(() => {
 
   const category = EMOJI_CATEGORIES.find((item) => item.id === activeEmojiCategory.value)
   if (!category) return uniqueReactionOptions.value
-  if (category.match === null) return uniqueReactionOptions.value
+  if (category.id === 'all') return uniqueReactionOptions.value
+  if (category.id === 'popular') {
+    return POPULAR_REACTION_IDS
+      .map((reactionId) => uniqueReactionOptions.value.find((reaction) => reaction.id === reactionId))
+      .filter(Boolean)
+  }
 
-  return category.match
-    .map((reactionId) => uniqueReactionOptions.value.find((reaction) => reaction.id === reactionId))
-    .filter(Boolean)
+  return uniqueReactionOptions.value.filter((reaction) => reaction.category === category.id)
 })
 
 const toggleEmojiPicker = () => {
