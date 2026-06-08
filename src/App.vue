@@ -116,6 +116,12 @@ const createUniqueReactionOptions = (options) => {
 
 const reactionOptions = ref(createUniqueReactionOptions(BASE_REACTION_OPTIONS))
 const customReactionOptions = ref([])
+const isCustomReactionModalOpen = ref(false)
+const customReactionTargetMessage = ref(null)
+const customReactionImagePath = ref('')
+const customReactionName = ref('')
+const customReactionError = ref('')
+const isSavingCustomReaction = ref(false)
 
 const hashText = (value) => {
   let hash = 0x811c9dc5
@@ -134,11 +140,11 @@ const reactionLabelFromImagePath = (imagePath) => {
   return baseName.replace(/\.[^.]+$/, '') || 'カスタム'
 }
 
-const createImageReactionOption = (imagePath) => ({
+const createImageReactionOption = (imagePath, label = '') => ({
   id: `${CUSTOM_IMAGE_REACTION_PREFIX}${hashText(imagePath)}`,
   imagePath,
   imageSrc: convertFileSrc(imagePath),
-  label: reactionLabelFromImagePath(imagePath),
+  label: label.trim() || reactionLabelFromImagePath(imagePath),
 })
 
 const restoreImageReactionOption = (option) => {
@@ -235,6 +241,16 @@ const ensureImageReactionOption = async (option) => {
   ensureReactionOptions([option])
   await saveCustomReactionOptions()
 }
+
+const customReactionImageSrc = computed(() =>
+  customReactionImagePath.value ? convertFileSrc(customReactionImagePath.value) : '',
+)
+
+const isCustomReactionSaveDisabled = computed(() =>
+  isSavingCustomReaction.value ||
+  !customReactionImagePath.value ||
+  !customReactionName.value.trim(),
+)
 
 const normalizeThemeColor = (value) => {
   const normalizedValue = String(value ?? '').trim()
@@ -712,8 +728,25 @@ const toggleMessageReaction = async (message, payload) => {
   }
 }
 
-const handleAddImageReaction = async (message) => {
-  sendMessageError.value = ''
+const closeCustomReactionModal = () => {
+  isCustomReactionModalOpen.value = false
+  customReactionTargetMessage.value = null
+  customReactionImagePath.value = ''
+  customReactionName.value = ''
+  customReactionError.value = ''
+  isSavingCustomReaction.value = false
+}
+
+const openCustomReactionModal = (message) => {
+  customReactionTargetMessage.value = message
+  customReactionImagePath.value = ''
+  customReactionName.value = ''
+  customReactionError.value = ''
+  isCustomReactionModalOpen.value = true
+}
+
+const handleBrowseCustomReactionImage = async () => {
+  customReactionError.value = ''
 
   try {
     const selectedPath = await open({
@@ -729,13 +762,37 @@ const handleAddImageReaction = async (message) => {
 
     if (typeof selectedPath !== 'string') return
 
-    const reaction = createImageReactionOption(selectedPath)
-    await ensureImageReactionOption(reaction)
-    await toggleMessageReaction(message, reaction)
+    customReactionImagePath.value = selectedPath
+    if (!customReactionName.value.trim()) {
+      customReactionName.value = reactionLabelFromImagePath(selectedPath)
+    }
   } catch (error) {
-    sendMessageError.value = error instanceof Error
-      ? `リアクション画像の追加に失敗しました: ${error.message}`
-      : 'リアクション画像の追加に失敗しました'
+    customReactionError.value = error instanceof Error
+      ? `画像の選択に失敗しました: ${error.message}`
+      : '画像の選択に失敗しました'
+  }
+}
+
+const handleSaveCustomReaction = async () => {
+  if (isCustomReactionSaveDisabled.value || !customReactionTargetMessage.value) return
+
+  isSavingCustomReaction.value = true
+  customReactionError.value = ''
+
+  try {
+    const reaction = createImageReactionOption(
+      customReactionImagePath.value,
+      customReactionName.value,
+    )
+    await ensureImageReactionOption(reaction)
+    await toggleMessageReaction(customReactionTargetMessage.value, reaction)
+    closeCustomReactionModal()
+  } catch (error) {
+    customReactionError.value = error instanceof Error
+      ? `カスタム絵文字の保存に失敗しました: ${error.message}`
+      : 'カスタム絵文字の保存に失敗しました'
+  } finally {
+    isSavingCustomReaction.value = false
   }
 }
 
@@ -2102,7 +2159,7 @@ onBeforeUnmount(() => {
               :reactions="message.reactions"
               :reaction-options="reactionOptions"
               @toggle-reaction="toggleMessageReaction(message, $event)"
-              @add-image-reaction="handleAddImageReaction(message)"
+              @add-image-reaction="openCustomReactionModal(message)"
             />
           </template>
         </div>
@@ -2146,6 +2203,98 @@ onBeforeUnmount(() => {
           @submit="sendMessage"
         />
       </main>
+    </div>
+    <div
+      v-if="isCustomReactionModalOpen"
+      class="custom-reaction-modal-backdrop"
+      role="presentation"
+      @click.self="closeCustomReactionModal"
+    >
+      <form
+        class="custom-reaction-modal"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="custom-reaction-title"
+        @submit.prevent="handleSaveCustomReaction"
+      >
+        <div class="custom-reaction-header">
+          <h2 id="custom-reaction-title" class="custom-reaction-title">絵文字を追加する</h2>
+          <button
+            type="button"
+            class="custom-reaction-close"
+            aria-label="閉じる"
+            @click="closeCustomReactionModal"
+          >
+            ×
+          </button>
+        </div>
+        <div class="custom-reaction-tabs" role="tablist" aria-label="絵文字追加方法">
+          <button type="button" class="custom-reaction-tab active" role="tab" aria-selected="true">
+            カスタム絵文字
+          </button>
+          <button type="button" class="custom-reaction-tab" role="tab" aria-selected="false" disabled>
+            絵文字パック
+          </button>
+        </div>
+        <div class="custom-reaction-content">
+          <p class="custom-reaction-description">
+            カスタム絵文字はこの端末で利用でき、リアクションの追加候補に表示されます。
+          </p>
+
+          <section class="custom-reaction-section" aria-labelledby="custom-reaction-image-heading">
+            <h3 id="custom-reaction-image-heading" class="custom-reaction-step">
+              1. 画像をアップロードする
+            </h3>
+            <p class="custom-reaction-help">
+              背景が透明な四角形の画像が最適です。PNG、JPG、WebP、GIF、SVG を選択できます。
+            </p>
+            <div class="custom-reaction-upload-row">
+              <div class="custom-reaction-preview" aria-label="選択中の画像プレビュー">
+                <img
+                  v-if="customReactionImageSrc"
+                  :src="customReactionImageSrc"
+                  alt=""
+                />
+                <span v-else class="custom-reaction-preview-placeholder">□</span>
+              </div>
+              <div class="custom-reaction-upload-actions">
+                <p class="custom-reaction-upload-label">画像を選択する</p>
+                <button type="button" class="secondary-button" @click="handleBrowseCustomReactionImage">
+                  画像をアップロードする
+                </button>
+              </div>
+            </div>
+          </section>
+
+          <section class="custom-reaction-section" aria-labelledby="custom-reaction-name-heading">
+            <h3 id="custom-reaction-name-heading" class="custom-reaction-step">
+              2. 名前を付ける
+            </h3>
+            <p class="custom-reaction-help">
+              追加後の候補やツールチップに表示される名前です。
+            </p>
+            <input
+              v-model="customReactionName"
+              class="path-input custom-reaction-name-input"
+              type="text"
+              placeholder="アボカド"
+              aria-label="カスタム絵文字名"
+            />
+          </section>
+
+          <p v-if="customReactionError" class="settings-status is-error" role="alert">
+            {{ customReactionError }}
+          </p>
+        </div>
+        <div class="custom-reaction-footer">
+          <button type="button" class="secondary-button" @click="closeCustomReactionModal">
+            キャンセル
+          </button>
+          <button type="submit" class="primary-button" :disabled="isCustomReactionSaveDisabled">
+            {{ isSavingCustomReaction ? '保存中' : '保存する' }}
+          </button>
+        </div>
+      </form>
     </div>
     <Modal v-model="isModalOpen" :size="modalSize">
       <template #header>
@@ -2522,6 +2671,245 @@ onBeforeUnmount(() => {
 
 .export-status.is-warning {
   color: var(--text-secondary);
+}
+
+.custom-reaction-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: color-mix(in srgb, var(--overlay-backdrop) 82%, transparent);
+}
+
+.custom-reaction-modal {
+  display: flex;
+  width: min(860px, calc(100vw - 48px));
+  max-height: min(820px, calc(100vh - 48px));
+  flex-direction: column;
+  overflow: hidden;
+  border: 1px solid var(--border-strong);
+  border-radius: 12px;
+  color: var(--text-primary);
+  background: var(--surface-panel);
+  box-shadow: var(--shadow-modal);
+}
+
+.custom-reaction-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 88px;
+  padding: 0 44px 0 48px;
+}
+
+.custom-reaction-title {
+  margin: 0;
+  font-size: 32px;
+  font-weight: 800;
+  letter-spacing: 0;
+}
+
+.custom-reaction-close {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  color: var(--text-tertiary);
+  background: transparent;
+  border: 0;
+  border-radius: 50%;
+  cursor: pointer;
+  font-size: 38px;
+  line-height: 1;
+}
+
+.custom-reaction-close:hover,
+.custom-reaction-close:focus-visible {
+  color: var(--text-primary);
+  background: var(--surface-elevated-hover);
+  outline: none;
+}
+
+.custom-reaction-tabs {
+  display: flex;
+  gap: 30px;
+  min-height: 48px;
+  padding: 0 48px;
+  border-bottom: 1px solid var(--border-default);
+}
+
+.custom-reaction-tab {
+  position: relative;
+  padding: 0 10px;
+  color: var(--text-tertiary);
+  background: transparent;
+  border: 0;
+  font-size: 18px;
+  font-weight: 800;
+}
+
+.custom-reaction-tab.active {
+  color: var(--text-primary);
+}
+
+.custom-reaction-tab.active::after {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  height: 3px;
+  background: color-mix(in srgb, var(--bg-primary) 34%, #FFFFFF);
+  content: '';
+}
+
+.custom-reaction-tab:disabled {
+  cursor: not-allowed;
+  opacity: 0.68;
+}
+
+.custom-reaction-content {
+  display: flex;
+  flex-direction: column;
+  gap: 28px;
+  min-height: 0;
+  padding: 28px 48px 36px;
+  overflow-y: auto;
+}
+
+.custom-reaction-description {
+  max-width: 720px;
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: 18px;
+  line-height: 1.7;
+}
+
+.custom-reaction-section {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.custom-reaction-step {
+  margin: 0;
+  font-size: 20px;
+  font-weight: 800;
+}
+
+.custom-reaction-help {
+  max-width: 720px;
+  margin: 0 0 0 28px;
+  color: var(--text-tertiary);
+  font-size: 16px;
+  line-height: 1.6;
+}
+
+.custom-reaction-upload-row {
+  display: flex;
+  align-items: center;
+  gap: 24px;
+  margin: 18px 0 0 28px;
+}
+
+.custom-reaction-preview {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 96px;
+  height: 96px;
+  border: 1px solid var(--border-strong);
+  border-radius: 4px;
+  background: var(--surface-input);
+}
+
+.custom-reaction-preview img {
+  width: 72px;
+  height: 72px;
+  object-fit: contain;
+}
+
+.custom-reaction-preview-placeholder {
+  color: var(--text-tertiary);
+  font-size: 42px;
+  line-height: 1;
+}
+
+.custom-reaction-upload-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  align-items: flex-start;
+}
+
+.custom-reaction-upload-label {
+  margin: 0;
+  color: var(--text-tertiary);
+  font-size: 16px;
+  font-weight: 700;
+}
+
+.custom-reaction-name-input {
+  width: min(100%, 720px);
+  height: 54px;
+  margin: 18px 0 0 28px;
+  font-size: 18px;
+}
+
+.custom-reaction-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 16px;
+  padding: 24px 48px 40px;
+}
+
+@media (max-width: 640px) {
+  .custom-reaction-modal-backdrop {
+    padding: 12px;
+  }
+
+  .custom-reaction-modal {
+    width: calc(100vw - 24px);
+    max-height: calc(100vh - 24px);
+  }
+
+  .custom-reaction-header {
+    min-height: 72px;
+    padding: 0 18px 0 22px;
+  }
+
+  .custom-reaction-title {
+    font-size: 24px;
+  }
+
+  .custom-reaction-tabs,
+  .custom-reaction-content,
+  .custom-reaction-footer {
+    padding-right: 22px;
+    padding-left: 22px;
+  }
+
+  .custom-reaction-description {
+    font-size: 15px;
+  }
+
+  .custom-reaction-help,
+  .custom-reaction-upload-row,
+  .custom-reaction-name-input {
+    margin-left: 0;
+  }
+
+  .custom-reaction-upload-row {
+    align-items: flex-start;
+  }
+
+  .custom-reaction-footer {
+    flex-wrap: wrap;
+  }
 }
 
 .modal-title {

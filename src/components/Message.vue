@@ -140,17 +140,6 @@ const addImageReaction = () => {
             <X :size="18" aria-hidden="true" />
           </button>
         </div>
-        <div class="emoji-custom-entry">
-          <p class="emoji-custom-label">画像リアクションを追加</p>
-          <p class="emoji-custom-help">PNG、JPG、WebP、GIF、SVG を選択できます。</p>
-          <button
-            type="button"
-            class="emoji-custom-add"
-            @click="addImageReaction"
-          >
-            画像を選択
-          </button>
-        </div>
         <p v-if="pickerReactionOptions.length > 0" class="emoji-picker-section-title">追加済み</p>
         <div
           v-if="pickerReactionOptions.length > 0"
@@ -176,6 +165,15 @@ const addImageReaction = () => {
               alt=""
               aria-hidden="true"
             />
+          </button>
+        </div>
+        <div class="emoji-custom-entry">
+          <button
+            type="button"
+            class="emoji-custom-add"
+            @click="addImageReaction"
+          >
+            絵文字を追加する
           </button>
         </div>
       </div>
@@ -454,34 +452,17 @@ const addImageReaction = () => {
 }
 
 .emoji-custom-entry {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
   padding: 12px;
-  border-bottom: 1px solid var(--border-subtle);
-}
-
-.emoji-custom-label {
-  margin: 0;
-  color: var(--text-secondary);
-  font-size: 12px;
-  font-weight: 700;
-}
-
-.emoji-custom-help {
-  margin: 0;
-  color: var(--text-tertiary);
-  font-size: 12px;
-  line-height: 1.5;
+  border-top: 1px solid var(--border-subtle);
 }
 
 .emoji-custom-add {
   min-height: 40px;
   padding: 0 12px;
-  color: var(--text-inverse);
-  background: var(--bg-primary);
-  border: 0;
-  border-radius: 10px;
+  color: var(--text-primary);
+  background: transparent;
+  border: 1px solid var(--border-strong);
+  border-radius: 8px;
   font-size: 13px;
   font-weight: 700;
   cursor: pointer;
@@ -489,7 +470,7 @@ const addImageReaction = () => {
 
 .emoji-custom-add:hover,
 .emoji-custom-add:focus-visible {
-  background: var(--bg-primary-hover);
+  background: var(--surface-elevated-hover);
   outline: none;
 }
 
