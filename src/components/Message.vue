@@ -390,8 +390,9 @@ const addImageReaction = () => {
 }
 
 .reaction-button.active {
-  border-color: color-mix(in srgb, var(--bg-primary) 38%, var(--border-default));
-  background: color-mix(in srgb, var(--surface-accent) 84%, transparent);
+  color: var(--text-primary);
+  border-color: transparent;
+  background: transparent;
 }
 
 .reaction-button:active {
