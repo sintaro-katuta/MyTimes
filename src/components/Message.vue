@@ -345,7 +345,8 @@ const addImageReaction = () => {
 }
 
 .message:hover .message-actions,
-.message:focus-within .message-actions {
+.message:focus-within .message-actions,
+.message.is-picker-open .message-actions {
   opacity: 1;
   transform: translateY(-50%);
 }
