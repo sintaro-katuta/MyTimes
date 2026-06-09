@@ -140,7 +140,7 @@ const addImageReaction = () => {
             <X :size="18" aria-hidden="true" />
           </button>
         </div>
-        <p v-if="pickerReactionOptions.length > 0" class="emoji-picker-section-title">追加済み</p>
+        <p v-if="pickerReactionOptions.length > 0" class="emoji-picker-section-title">カスタム</p>
         <div
           v-if="pickerReactionOptions.length > 0"
           class="emoji-grid"
