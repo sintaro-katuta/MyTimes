@@ -270,20 +270,20 @@ const addImageReaction = () => {
 .reaction-tooltip {
   position: absolute;
   left: 50%;
-  bottom: calc(100% + 14px);
+  bottom: calc(100% + 10px);
   z-index: 60;
   display: flex;
-  width: min(300px, calc(100vw - 40px));
-  min-height: 118px;
-  padding: 16px 20px 18px;
+  width: min(220px, calc(100vw - 40px));
+  min-height: 88px;
+  padding: 12px 14px 14px;
   align-items: center;
   flex-direction: column;
   justify-content: center;
-  gap: 12px;
+  gap: 8px;
   color: var(--text-primary);
   background: color-mix(in srgb, var(--surface-panel) 98%, transparent);
   border: 1px solid color-mix(in srgb, var(--border-default) 82%, transparent);
-  border-radius: 14px;
+  border-radius: 12px;
   box-shadow: var(--shadow-modal);
   pointer-events: none;
   opacity: 0;
@@ -296,9 +296,9 @@ const addImageReaction = () => {
 .reaction-tooltip::after {
   position: absolute;
   left: 50%;
-  bottom: -8px;
-  width: 16px;
-  height: 16px;
+  bottom: -6px;
+  width: 12px;
+  height: 12px;
   content: '';
   background: color-mix(in srgb, var(--surface-panel) 98%, transparent);
   border-right: 1px solid color-mix(in srgb, var(--border-default) 82%, transparent);
@@ -317,8 +317,8 @@ const addImageReaction = () => {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 88px;
-  height: 88px;
+  width: 56px;
+  height: 56px;
   flex: 0 0 auto;
   border-radius: 8px;
   background: var(--surface-elevated);
@@ -334,16 +334,16 @@ const addImageReaction = () => {
     'Segoe UI Emoji',
     'Noto Color Emoji',
     sans-serif;
-  font-size: 52px;
+  font-size: 34px;
   line-height: 1;
 }
 
 .reaction-tooltip-text {
   max-width: 100%;
   color: var(--text-primary);
-  font-size: 14px;
+  font-size: 12px;
   font-weight: 700;
-  line-height: 1.45;
+  line-height: 1.4;
   text-align: center;
   white-space: normal;
   word-break: keep-all;
