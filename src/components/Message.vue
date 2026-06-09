@@ -15,6 +15,7 @@ const emit = defineEmits(['toggle-reaction', 'add-image-reaction'])
 const isReactionSelected = (reactionId) => props.reactions.includes(reactionId)
 
 const isEmojiPickerOpen = ref(false)
+const isReactionTooltipOpen = ref(false)
 
 const QUICK_REACTION_IDS = [
   'thumbs_up',
@@ -74,7 +75,13 @@ const addImageReaction = () => {
 </script>
 
 <template>
-  <div class="message" :class="{ 'is-picker-open': isEmojiPickerOpen }">
+  <div
+    class="message"
+    :class="{
+      'is-picker-open': isEmojiPickerOpen,
+      'is-reaction-tooltip-open': isReactionTooltipOpen,
+    }"
+  >
     <Icon src="./example1.jpg" />
     <div class="message-body">
       <div class="message-info">
@@ -92,6 +99,10 @@ const addImageReaction = () => {
           class="reaction-chip"
           :class="{ active: isReactionSelected(reaction.id) }"
           :aria-label="`${reaction.label}リアクションを解除`"
+          @mouseenter="isReactionTooltipOpen = true"
+          @mouseleave="isReactionTooltipOpen = false"
+          @focus="isReactionTooltipOpen = true"
+          @blur="isReactionTooltipOpen = false"
           @click="toggleReaction(reaction.id)"
         >
           <span class="reaction-tooltip" role="tooltip">
@@ -224,13 +235,12 @@ const addImageReaction = () => {
   z-index: 20;
 }
 
-.message:has(.reaction-chip:hover),
-.message:has(.reaction-chip:focus-visible) {
-  z-index: 120;
-}
-
 .message.is-picker-open {
   z-index: 100;
+}
+
+.message.is-reaction-tooltip-open {
+  z-index: 1000;
 }
 
 .message-body {
@@ -276,7 +286,7 @@ const addImageReaction = () => {
   position: absolute;
   left: 50%;
   bottom: calc(100% + 10px);
-  z-index: 60;
+  z-index: 1001;
   display: flex;
   width: min(220px, calc(100vw - 40px));
   min-height: 88px;
