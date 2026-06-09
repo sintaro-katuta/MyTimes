@@ -15,7 +15,8 @@ const emit = defineEmits(['toggle-reaction', 'add-image-reaction'])
 const isReactionSelected = (reactionId) => props.reactions.includes(reactionId)
 
 const isEmojiPickerOpen = ref(false)
-const isReactionTooltipOpen = ref(false)
+const activeReactionTooltip = ref(null)
+const reactionTooltipPosition = ref({ left: 0, top: 0 })
 
 const QUICK_REACTION_IDS = [
   'thumbs_up',
@@ -46,6 +47,29 @@ const pickerReactionOptions = computed(() =>
   uniqueReactionOptions.value.filter((reaction) => reaction.imageSrc),
 )
 
+const reactionTooltipStyle = computed(() => ({
+  left: `${reactionTooltipPosition.value.left}px`,
+  top: `${reactionTooltipPosition.value.top}px`,
+}))
+
+const clamp = (value, min, max) => Math.min(Math.max(value, min), max)
+
+const showReactionTooltip = (reaction, event) => {
+  const rect = event.currentTarget.getBoundingClientRect()
+  const tooltipHalfWidth = 110
+  const viewportWidth = window.innerWidth || document.documentElement.clientWidth
+
+  activeReactionTooltip.value = reaction
+  reactionTooltipPosition.value = {
+    left: clamp(rect.left + rect.width / 2, tooltipHalfWidth + 12, viewportWidth - tooltipHalfWidth - 12),
+    top: rect.top - 10,
+  }
+}
+
+const hideReactionTooltip = () => {
+  activeReactionTooltip.value = null
+}
+
 const toggleEmojiPicker = () => {
   if (pickerReactionOptions.value.length === 0) {
     addImageReaction()
@@ -61,6 +85,11 @@ const closeEmojiPicker = () => {
 
 const toggleReaction = (reactionId) => {
   emit('toggle-reaction', reactionId)
+}
+
+const toggleChipReaction = (reactionId) => {
+  toggleReaction(reactionId)
+  hideReactionTooltip()
 }
 
 const togglePickerReaction = (reactionId) => {
@@ -79,7 +108,6 @@ const addImageReaction = () => {
     class="message"
     :class="{
       'is-picker-open': isEmojiPickerOpen,
-      'is-reaction-tooltip-open': isReactionTooltipOpen,
     }"
   >
     <Icon src="./example1.jpg" />
@@ -99,25 +127,12 @@ const addImageReaction = () => {
           class="reaction-chip"
           :class="{ active: isReactionSelected(reaction.id) }"
           :aria-label="`${reaction.label}リアクションを解除`"
-          @mouseenter="isReactionTooltipOpen = true"
-          @mouseleave="isReactionTooltipOpen = false"
-          @focus="isReactionTooltipOpen = true"
-          @blur="isReactionTooltipOpen = false"
-          @click="toggleReaction(reaction.id)"
+          @mouseenter="showReactionTooltip(reaction, $event)"
+          @mouseleave="hideReactionTooltip"
+          @focus="showReactionTooltip(reaction, $event)"
+          @blur="hideReactionTooltip"
+          @click="toggleChipReaction(reaction.id)"
         >
-          <span class="reaction-tooltip" role="tooltip">
-            <img
-              v-if="reaction.imageSrc"
-              class="reaction-tooltip-image"
-              :src="reaction.imageSrc"
-              alt=""
-              aria-hidden="true"
-            />
-            <span v-else class="reaction-tooltip-emoji" aria-hidden="true">{{ reaction.emoji }}</span>
-            <span class="reaction-tooltip-text">
-              あなたが :{{ reaction.label }}: でリアクションしました（クリックして削除）
-            </span>
-          </span>
           <img
             v-if="reaction.imageSrc"
             class="reaction-image"
@@ -208,6 +223,26 @@ const addImageReaction = () => {
       </div>
     </div>
   </div>
+  <Teleport to="body">
+    <div
+      v-if="activeReactionTooltip"
+      class="reaction-tooltip"
+      :style="reactionTooltipStyle"
+      role="tooltip"
+    >
+      <img
+        v-if="activeReactionTooltip.imageSrc"
+        class="reaction-tooltip-image"
+        :src="activeReactionTooltip.imageSrc"
+        alt=""
+        aria-hidden="true"
+      />
+      <span v-else class="reaction-tooltip-emoji" aria-hidden="true">{{ activeReactionTooltip.emoji }}</span>
+      <span class="reaction-tooltip-text">
+        あなたが :{{ activeReactionTooltip.label }}: でリアクションしました（クリックして削除）
+      </span>
+    </div>
+  </Teleport>
 </template>
 
 <style scoped>
@@ -237,10 +272,6 @@ const addImageReaction = () => {
 
 .message.is-picker-open {
   z-index: 100;
-}
-
-.message.is-reaction-tooltip-open {
-  z-index: 1000;
 }
 
 .message-body {
@@ -283,10 +314,8 @@ const addImageReaction = () => {
 }
 
 .reaction-tooltip {
-  position: absolute;
-  left: 50%;
-  bottom: calc(100% + 10px);
-  z-index: 1001;
+  position: fixed;
+  z-index: 5000;
   display: flex;
   width: min(220px, calc(100vw - 40px));
   min-height: 88px;
@@ -301,8 +330,7 @@ const addImageReaction = () => {
   border-radius: 12px;
   box-shadow: var(--shadow-modal);
   pointer-events: none;
-  opacity: 0;
-  transform: translate(-50%, 6px);
+  transform: translate(-50%, -100%);
   transition:
     opacity 140ms ease,
     transform 140ms ease;
@@ -319,12 +347,6 @@ const addImageReaction = () => {
   border-right: 1px solid var(--border-default);
   border-bottom: 1px solid var(--border-default);
   transform: translateX(-50%) rotate(45deg);
-}
-
-.reaction-chip:hover .reaction-tooltip,
-.reaction-chip:focus-visible .reaction-tooltip {
-  opacity: 1;
-  transform: translate(-50%, 0);
 }
 
 .reaction-tooltip-image,
