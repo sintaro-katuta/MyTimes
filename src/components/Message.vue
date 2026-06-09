@@ -46,6 +46,11 @@ const pickerReactionOptions = computed(() =>
 )
 
 const toggleEmojiPicker = () => {
+  if (pickerReactionOptions.value.length === 0) {
+    addImageReaction()
+    return
+  }
+
   isEmojiPickerOpen.value = !isEmojiPickerOpen.value
 }
 
@@ -56,7 +61,7 @@ const closeEmojiPicker = () => {
 const toggleReaction = (reactionId, closePicker = false) => {
   emit('toggle-reaction', reactionId)
 
-  if (closePicker) {
+  if (closePicker || isEmojiPickerOpen.value) {
     closeEmojiPicker()
   }
 }
