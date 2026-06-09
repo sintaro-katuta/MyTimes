@@ -296,8 +296,8 @@ const addImageReaction = () => {
   justify-content: center;
   gap: 8px;
   color: var(--text-primary);
-  background: color-mix(in srgb, var(--surface-panel) 98%, transparent);
-  border: 1px solid color-mix(in srgb, var(--border-default) 82%, transparent);
+  background: var(--surface-panel);
+  border: 1px solid var(--border-default);
   border-radius: 12px;
   box-shadow: var(--shadow-modal);
   pointer-events: none;
@@ -315,9 +315,9 @@ const addImageReaction = () => {
   width: 12px;
   height: 12px;
   content: '';
-  background: color-mix(in srgb, var(--surface-panel) 98%, transparent);
-  border-right: 1px solid color-mix(in srgb, var(--border-default) 82%, transparent);
-  border-bottom: 1px solid color-mix(in srgb, var(--border-default) 82%, transparent);
+  background: var(--surface-panel);
+  border-right: 1px solid var(--border-default);
+  border-bottom: 1px solid var(--border-default);
   transform: translateX(-50%) rotate(45deg);
 }
 
