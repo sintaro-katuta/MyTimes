@@ -91,10 +91,22 @@ const addImageReaction = () => {
           type="button"
           class="reaction-chip"
           :class="{ active: isReactionSelected(reaction.id) }"
-          :title="reaction.label"
           :aria-label="`${reaction.label}リアクションを解除`"
           @click="toggleReaction(reaction.id)"
         >
+          <span class="reaction-tooltip" role="tooltip">
+            <img
+              v-if="reaction.imageSrc"
+              class="reaction-tooltip-image"
+              :src="reaction.imageSrc"
+              alt=""
+              aria-hidden="true"
+            />
+            <span v-else class="reaction-tooltip-emoji" aria-hidden="true">{{ reaction.emoji }}</span>
+            <span class="reaction-tooltip-text">
+              あなたが :{{ reaction.label }}: でリアクションしました（クリックして削除）
+            </span>
+          </span>
           <img
             v-if="reaction.imageSrc"
             class="reaction-image"
@@ -235,6 +247,7 @@ const addImageReaction = () => {
 }
 
 .reaction-chip {
+  position: relative;
   display: inline-flex;
   align-items: center;
   gap: 5px;
@@ -252,6 +265,89 @@ const addImageReaction = () => {
     background-color 160ms ease,
     border-color 160ms ease,
     transform 160ms ease;
+}
+
+.reaction-tooltip {
+  position: absolute;
+  left: 50%;
+  bottom: calc(100% + 14px);
+  z-index: 60;
+  display: flex;
+  width: min(300px, calc(100vw - 40px));
+  min-height: 118px;
+  padding: 16px 20px 18px;
+  align-items: center;
+  flex-direction: column;
+  justify-content: center;
+  gap: 12px;
+  color: var(--text-primary);
+  background: color-mix(in srgb, var(--surface-panel) 98%, transparent);
+  border: 1px solid color-mix(in srgb, var(--border-default) 82%, transparent);
+  border-radius: 14px;
+  box-shadow: var(--shadow-modal);
+  pointer-events: none;
+  opacity: 0;
+  transform: translate(-50%, 6px);
+  transition:
+    opacity 140ms ease,
+    transform 140ms ease;
+}
+
+.reaction-tooltip::after {
+  position: absolute;
+  left: 50%;
+  bottom: -8px;
+  width: 16px;
+  height: 16px;
+  content: '';
+  background: color-mix(in srgb, var(--surface-panel) 98%, transparent);
+  border-right: 1px solid color-mix(in srgb, var(--border-default) 82%, transparent);
+  border-bottom: 1px solid color-mix(in srgb, var(--border-default) 82%, transparent);
+  transform: translateX(-50%) rotate(45deg);
+}
+
+.reaction-chip:hover .reaction-tooltip,
+.reaction-chip:focus-visible .reaction-tooltip {
+  opacity: 1;
+  transform: translate(-50%, 0);
+}
+
+.reaction-tooltip-image,
+.reaction-tooltip-emoji {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 88px;
+  height: 88px;
+  flex: 0 0 auto;
+  border-radius: 8px;
+  background: var(--surface-elevated);
+}
+
+.reaction-tooltip-image {
+  object-fit: contain;
+}
+
+.reaction-tooltip-emoji {
+  font-family:
+    'Apple Color Emoji',
+    'Segoe UI Emoji',
+    'Noto Color Emoji',
+    sans-serif;
+  font-size: 52px;
+  line-height: 1;
+}
+
+.reaction-tooltip-text {
+  max-width: 100%;
+  color: var(--text-primary);
+  font-size: 14px;
+  font-weight: 700;
+  line-height: 1.45;
+  text-align: center;
+  white-space: normal;
+  word-break: keep-all;
+  overflow-wrap: anywhere;
 }
 
 .reaction-chip:hover,
