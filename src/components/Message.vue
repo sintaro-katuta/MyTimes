@@ -328,7 +328,7 @@ const addImageReaction = () => {
   border: 1px solid color-mix(in srgb, var(--border-default) 76%, transparent);
   border-radius: 14px;
   z-index: 30;
-  opacity: 0;
+  opacity: 1;
   display: flex;
   flex-direction: row;
   align-items: center;
@@ -341,13 +341,6 @@ const addImageReaction = () => {
   transition:
     opacity 160ms ease,
     transform 160ms ease;
-  transform: translateY(calc(-50% - 4px));
-}
-
-.message:hover .message-actions,
-.message:focus-within .message-actions,
-.message.is-picker-open .message-actions {
-  opacity: 1;
   transform: translateY(-50%);
 }
 
