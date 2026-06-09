@@ -224,6 +224,11 @@ const addImageReaction = () => {
   z-index: 20;
 }
 
+.message:has(.reaction-chip:hover),
+.message:has(.reaction-chip:focus-visible) {
+  z-index: 120;
+}
+
 .message.is-picker-open {
   z-index: 100;
 }
