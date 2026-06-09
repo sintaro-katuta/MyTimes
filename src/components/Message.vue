@@ -62,6 +62,11 @@ const toggleReaction = (reactionId) => {
   emit('toggle-reaction', reactionId)
 }
 
+const togglePickerReaction = (reactionId) => {
+  toggleReaction(reactionId)
+  closeEmojiPicker()
+}
+
 const addImageReaction = () => {
   emit('add-image-reaction')
   closeEmojiPicker()
@@ -158,7 +163,7 @@ const addImageReaction = () => {
             :title="reaction.label"
             role="option"
             :aria-selected="isReactionSelected(reaction.id)"
-            @click="toggleReaction(reaction.id)"
+            @click="togglePickerReaction(reaction.id)"
           >
             <img
               class="reaction-image"
