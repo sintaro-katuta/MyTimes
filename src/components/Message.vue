@@ -490,6 +490,8 @@ const addImageReaction = () => {
 .message-message :deep(h1),
 .message-message :deep(h2),
 .message-message :deep(h3) {
+  padding-bottom: 4px;
+  border-bottom: 1px solid var(--border-subtle);
   color: var(--text-primary);
   font-weight: 700;
   line-height: 1.35;
