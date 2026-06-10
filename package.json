@@ -21,6 +21,7 @@
     "@tauri-apps/api": "^2.10.1",
     "@tauri-apps/cli": "^2.10.1",
     "@vitejs/plugin-vue": "^6.0.5",
+    "playwright": "^1.60.0",
     "vite": "^8.0.0"
   }
 }

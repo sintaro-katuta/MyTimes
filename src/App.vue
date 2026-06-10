@@ -1,5 +1,6 @@
 <script setup>
 import { open } from '@tauri-apps/plugin-dialog'
+import { convertFileSrc } from '@tauri-apps/api/core'
 import { LogicalPosition } from '@tauri-apps/api/dpi'
 import { Menu } from '@tauri-apps/api/menu'
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
@@ -21,17 +22,23 @@ import {
 import {
   clearMarkdownMessages,
   createMessage,
+  deleteMarkdownMessagesWithReactions,
   deleteFolder,
   exportMessagesToMarkdown,
   loadFolders as loadStoredFolders,
   loadFolderNotes as loadStoredFolderNotes,
   loadMarkdownExportPath,
+  loadMessageReactions,
   loadMessages as loadStoredMessages,
   loadSetting,
+  legacyMessageReactionKey,
+  migrateMessageReactions,
+  messageReactionKey,
   registerProject,
   saveFolderIconPath,
   saveFolderMarkdownExportPath,
   saveMarkdownExportPath,
+  saveMessageReaction,
   saveProjectDisplayName,
   saveSetting,
   syncMarkdownMessages,
@@ -49,6 +56,7 @@ const SETTINGS_KEYS = {
   reopenLastNote: 'reopen_last_note',
   lastWorkspaceFolderId: 'last_workspace_folder_id',
   lastWorkspaceNotePath: 'last_workspace_note_path',
+  customReactionOptions: 'custom_reaction_options',
 }
 
 const DEFAULT_SETTINGS = {
@@ -88,6 +96,177 @@ const THEME_COLORS = {
     accentDark: '#3F1724',
   },
 }
+
+const BASE_REACTION_OPTIONS = [
+  { id: 'thumbs_up', emoji: '👍', label: 'いいね' },
+  { id: 'heart', emoji: '❤️', label: '共感' },
+  { id: 'eyes', emoji: '👀', label: '見ました' },
+  { id: 'white_check_mark', emoji: '✅', label: '確認済み' },
+]
+
+const CUSTOM_IMAGE_REACTION_PREFIX = 'custom_image_'
+
+const createUniqueReactionOptions = (options) => {
+  const seenIds = new Set()
+
+  return options.filter((option) => {
+    if (seenIds.has(option.id)) return false
+
+    seenIds.add(option.id)
+    return true
+  })
+}
+
+const uniqueValues = (values) => [...new Set(values.filter(Boolean))]
+
+const reactionOptions = ref(createUniqueReactionOptions(BASE_REACTION_OPTIONS))
+const customReactionOptions = ref([])
+const isCustomReactionModalOpen = ref(false)
+const customReactionTargetMessage = ref(null)
+const customReactionImagePath = ref('')
+const customReactionName = ref('')
+const customReactionError = ref('')
+const isSavingCustomReaction = ref(false)
+
+const hashText = (value) => {
+  let hash = 0x811c9dc5
+
+  for (let index = 0; index < value.length; index += 1) {
+    hash ^= value.charCodeAt(index)
+    hash = Math.imul(hash, 0x01000193)
+  }
+
+  return (hash >>> 0).toString(16)
+}
+
+const reactionLabelFromImagePath = (imagePath) => {
+  const baseName = getPathBaseName(imagePath)
+
+  return baseName.replace(/\.[^.]+$/, '') || 'カスタム'
+}
+
+const createImageReactionOption = (imagePath, label = '') => ({
+  id: `${CUSTOM_IMAGE_REACTION_PREFIX}${hashText(imagePath)}`,
+  imagePath,
+  imageSrc: convertFileSrc(imagePath),
+  label: label.trim() || reactionLabelFromImagePath(imagePath),
+})
+
+const restoreImageReactionOption = (option) => {
+  if (!option?.id || !option?.imagePath) return null
+
+  return {
+    id: option.id,
+    imagePath: option.imagePath,
+    imageSrc: convertFileSrc(option.imagePath),
+    label: option.label || reactionLabelFromImagePath(option.imagePath),
+  }
+}
+
+const serializeCustomReactionOptions = () =>
+  customReactionOptions.value.map((option) => ({
+    id: option.id,
+    imagePath: option.imagePath,
+    label: option.label,
+  }))
+
+const saveCustomReactionOptions = async () => {
+  await saveSetting(
+    SETTINGS_KEYS.customReactionOptions,
+    JSON.stringify(serializeCustomReactionOptions()),
+  )
+}
+
+const loadCustomReactionOptions = async () => {
+  const value = await loadSetting(SETTINGS_KEYS.customReactionOptions, '[]')
+  let parsed = []
+
+  try {
+    parsed = JSON.parse(value)
+  } catch {
+    parsed = []
+  }
+
+  customReactionOptions.value = createUniqueReactionOptions(
+    parsed.map(restoreImageReactionOption).filter(Boolean),
+  )
+  reactionOptions.value = createUniqueReactionOptions([
+    ...BASE_REACTION_OPTIONS,
+    ...customReactionOptions.value,
+  ])
+}
+
+const reactionOptionFromId = (reactionId) => {
+  if (!reactionId.startsWith('custom_') && !reactionId.startsWith('emoji_')) return null
+
+  const codePoints = reactionId
+    .replace(/^custom_/, '')
+    .replace(/^emoji_/, '')
+    .split('_')
+    .map((value) => Number.parseInt(value, 16))
+
+  if (codePoints.some((value) => Number.isNaN(value))) return null
+
+  const emoji = String.fromCodePoint(...codePoints)
+  return {
+    id: reactionId,
+    emoji,
+    label: `カスタム ${emoji}`,
+  }
+}
+
+const ensureReactionOptions = (options) => {
+  reactionOptions.value = createUniqueReactionOptions([
+    ...reactionOptions.value,
+    ...options.filter(Boolean),
+  ])
+}
+
+const normalizeReactionPayload = (payload) => {
+  if (typeof payload === 'string') {
+    return reactionOptions.value.find((reaction) => reaction.id === payload) ?? reactionOptionFromId(payload)
+  }
+
+  if (!payload?.id) return null
+
+  if (payload.imagePath || payload.imageSrc) {
+    return {
+      id: payload.id,
+      imagePath: payload.imagePath,
+      imageSrc: payload.imageSrc,
+      label: payload.label ?? reactionLabelFromImagePath(payload.imagePath ?? ''),
+    }
+  }
+
+  if (!payload.emoji) return null
+
+  return {
+    id: payload.id,
+    emoji: payload.emoji,
+    label: payload.label ?? `カスタム ${payload.emoji}`,
+  }
+}
+
+const ensureImageReactionOption = async (option) => {
+  const nextCustomOptions = createUniqueReactionOptions([
+    ...customReactionOptions.value,
+    option,
+  ])
+
+  customReactionOptions.value = nextCustomOptions
+  ensureReactionOptions([option])
+  await saveCustomReactionOptions()
+}
+
+const customReactionImageSrc = computed(() =>
+  customReactionImagePath.value ? convertFileSrc(customReactionImagePath.value) : '',
+)
+
+const isCustomReactionSaveDisabled = computed(() =>
+  isSavingCustomReaction.value ||
+  !customReactionImagePath.value ||
+  !customReactionName.value.trim(),
+)
 
 const normalizeThemeColor = (value) => {
   const normalizedValue = String(value ?? '').trim()
@@ -352,6 +531,16 @@ const formatMessageDate = (value) => {
   }).format(date)
 }
 
+const formatLocalDate = (date) => {
+  const pad = (value) => String(value).padStart(2, '0')
+
+  return [
+    date.getFullYear(),
+    pad(date.getMonth() + 1),
+    pad(date.getDate()),
+  ].join('-')
+}
+
 const scrollMessagesToBottom = async () => {
   await nextTick()
 
@@ -472,19 +661,301 @@ const confirmDiscardMarkdownChanges = () => {
   return shouldDiscard
 }
 
-const toViewMessage = (row) => ({
-  ...row,
-  name: '自分',
+const createViewMessage = ({
+  id,
+  folderId = selectedFolderId.value,
+  notePath = selectedNotePath.value,
+  createdAt,
+  date,
+  content,
+  reactions = [],
+}) => {
+  const messageKey = messageReactionKey({
+    id,
+    folderId,
+    notePath,
+    createdAt,
+    content,
+  })
+  const legacyReactionKey = legacyMessageReactionKey({
+    folderId,
+    notePath,
+    createdAt,
+    content,
+  })
+
+  return {
+    id,
+    folderId,
+    notePath,
+    messageKey,
+    legacyReactionKey,
+    legacyReactionKeys: [legacyReactionKey],
+    createdAt,
+    name: '自分',
+    date,
+    message: content,
+    reactions,
+  }
+}
+
+const withStoredReactions = async (viewMessages) => {
+  const reactionGroups = await loadMessageReactions(
+    viewMessages.flatMap((message) =>
+      [
+        message.messageKey,
+        ...(message.legacyReactionKeys ?? [message.legacyReactionKey]).filter(Boolean),
+      ],
+    ),
+  )
+  const storedReactionTypes = [...reactionGroups.values()].flat()
+  ensureReactionOptions(storedReactionTypes.map(reactionOptionFromId))
+
+  for (const message of viewMessages) {
+    if (
+      reactionGroups.has(message.messageKey) ||
+      !(message.legacyReactionKeys ?? [message.legacyReactionKey]).some((legacyKey) =>
+        legacyKey &&
+        legacyKey !== message.messageKey &&
+        reactionGroups.has(legacyKey),
+      )
+    ) {
+      continue
+    }
+
+    const currentMessageKey = (message.legacyReactionKeys ?? [message.legacyReactionKey])
+      .find((legacyKey) =>
+        legacyKey &&
+        legacyKey !== message.messageKey &&
+        reactionGroups.has(legacyKey),
+      )
+
+    await migrateMessageReactions({
+      currentMessageKey,
+      nextMessageKey: message.messageKey,
+      folderId: message.folderId,
+      notePath: message.notePath,
+    })
+  }
+
+  return viewMessages.map((message) => {
+    const reactions = reactionGroups.get(message.messageKey)
+      ?? (message.legacyReactionKeys ?? [message.legacyReactionKey])
+        .map((legacyKey) => reactionGroups.get(legacyKey))
+        .find(Boolean)
+      ?? []
+
+    return {
+      ...message,
+      reactions,
+    }
+  })
+}
+
+const toggleMessageReaction = async (message, payload) => {
+  const reaction = normalizeReactionPayload(payload)
+  if (!reaction) return
+
+  ensureReactionOptions([reaction])
+
+  const reactionType = reaction.id
+
+  const reactions = new Set(message.reactions)
+  const selected = !reactions.has(reactionType)
+
+  if (selected) {
+    reactions.add(reactionType)
+  } else {
+    reactions.delete(reactionType)
+  }
+
+  messages.value = messages.value.map((currentMessage) =>
+    currentMessage.id === message.id
+      ? { ...currentMessage, reactions: [...reactions] }
+      : currentMessage,
+  )
+
+  try {
+    await saveMessageReaction({
+      messageKey: message.messageKey,
+      folderId: message.folderId,
+      notePath: message.notePath,
+      reactionType,
+      selected,
+    })
+  } catch (error) {
+    messages.value = messages.value.map((currentMessage) =>
+      currentMessage.id === message.id
+        ? { ...currentMessage, reactions: message.reactions }
+        : currentMessage,
+    )
+    sendMessageError.value = error instanceof Error
+      ? `リアクションの保存に失敗しました: ${error.message}`
+      : 'リアクションの保存に失敗しました'
+  }
+}
+
+const closeCustomReactionModal = () => {
+  isCustomReactionModalOpen.value = false
+  customReactionTargetMessage.value = null
+  customReactionImagePath.value = ''
+  customReactionName.value = ''
+  customReactionError.value = ''
+  isSavingCustomReaction.value = false
+}
+
+const openCustomReactionModal = (message) => {
+  customReactionTargetMessage.value = message
+  customReactionImagePath.value = ''
+  customReactionName.value = ''
+  customReactionError.value = ''
+  isCustomReactionModalOpen.value = true
+}
+
+const handleBrowseCustomReactionImage = async () => {
+  customReactionError.value = ''
+
+  try {
+    const selectedPath = await open({
+      multiple: false,
+      filters: [
+        {
+          name: '画像',
+          extensions: ['png', 'jpg', 'jpeg', 'webp', 'gif', 'bmp', 'svg'],
+        },
+      ],
+      title: 'リアクション画像を選択',
+    })
+
+    if (typeof selectedPath !== 'string') return
+
+    customReactionImagePath.value = selectedPath
+    if (!customReactionName.value.trim()) {
+      customReactionName.value = reactionLabelFromImagePath(selectedPath)
+    }
+  } catch (error) {
+    customReactionError.value = error instanceof Error
+      ? `画像の選択に失敗しました: ${error.message}`
+      : '画像の選択に失敗しました'
+  }
+}
+
+const handleSaveCustomReaction = async () => {
+  if (isCustomReactionSaveDisabled.value || !customReactionTargetMessage.value) return
+
+  isSavingCustomReaction.value = true
+  customReactionError.value = ''
+
+  try {
+    const reaction = createImageReactionOption(
+      customReactionImagePath.value,
+      customReactionName.value,
+    )
+    await ensureImageReactionOption(reaction)
+    await toggleMessageReaction(customReactionTargetMessage.value, reaction)
+    closeCustomReactionModal()
+  } catch (error) {
+    customReactionError.value = error instanceof Error
+      ? `カスタム絵文字の保存に失敗しました: ${error.message}`
+      : 'カスタム絵文字の保存に失敗しました'
+  } finally {
+    isSavingCustomReaction.value = false
+  }
+}
+
+const toViewMessage = (row) => createViewMessage({
+  id: row.id,
+  folderId: row.folder_id ?? selectedFolderId.value,
+  notePath: row.note_path ?? selectedNotePath.value,
+  createdAt: row.created_at,
   date: formatMessageDate(row.created_at),
-  message: row.content,
+  content: row.content,
 })
 
-const toMarkdownViewMessage = (message, index, notePath = selectedNotePath.value) => ({
-  id: `${notePath ?? 'markdown'}:${message.sortOrder ?? index}`,
-  name: '自分',
-  date: [message.date, message.time].filter(Boolean).join(' '),
-  message: message.content,
-})
+const markdownMessageIdentity = (message) => [
+  message.date ?? '',
+  message.time ?? '',
+  message.content ?? '',
+].join('\u001f')
+
+const markdownMessageId = (message, occurrenceIndex) =>
+  `markdown:${hashText(`${markdownMessageIdentity(message)}\u001f${occurrenceIndex}`)}`
+
+const buildMarkdownViewMessages = async (parsedMessages, notePath = selectedNotePath.value) => {
+  const folderId = selectedFolder.value?.id ?? selectedFolderId.value
+  const cachedRows = folderId && notePath
+    ? await loadStoredMessages({ folderId, notePath })
+    : []
+  const cachedRowsByMessage = cachedRows.reduce((groups, row) => {
+    const key = `${row.created_at}\u001f${row.content}`
+
+    if (!groups.has(key)) {
+      groups.set(key, [])
+    }
+
+    groups.get(key).push(row)
+    return groups
+  }, new Map())
+  const occurrenceCounts = new Map()
+
+  return parsedMessages.map((message, index) =>
+    toMarkdownViewMessage({
+      message,
+      index,
+      notePath,
+      folderId,
+      occurrenceCounts,
+      cachedRowsByMessage,
+    }),
+  )
+}
+
+const toMarkdownViewMessage = ({
+  message,
+  index,
+  notePath = selectedNotePath.value,
+  folderId = selectedFolder.value?.id ?? selectedFolderId.value,
+  occurrenceCounts = new Map(),
+  cachedRowsByMessage = new Map(),
+}) => {
+  const createdAt = formatParsedMessageTimestamp(message, index)
+  const identity = markdownMessageIdentity(message)
+  const occurrenceIndex = occurrenceCounts.get(identity) ?? 0
+  occurrenceCounts.set(identity, occurrenceIndex + 1)
+  const previousPathBasedId = `${notePath ?? 'markdown'}:${message.sortOrder ?? index}`
+  const dbCacheRows = cachedRowsByMessage.get(`${createdAt}\u001f${message.content}`) ?? []
+  const viewMessage = createViewMessage({
+    id: markdownMessageId(message, occurrenceIndex),
+    folderId,
+    notePath,
+    createdAt,
+    date: [message.date, message.time].filter(Boolean).join(' '),
+    content: message.content,
+  })
+
+  return {
+    ...viewMessage,
+    legacyReactionKeys: uniqueValues([
+      viewMessage.legacyReactionKey,
+      messageReactionKey({
+        id: previousPathBasedId,
+        folderId,
+        notePath,
+        createdAt,
+        content: message.content,
+      }),
+      ...dbCacheRows.map((row) =>
+        messageReactionKey({
+          id: row.id,
+          folderId: row.folder_id ?? folderId,
+          notePath: row.note_path ?? notePath,
+          createdAt: row.created_at,
+          content: row.content,
+        }),
+      ),
+    ]),
+  }
+}
 
 const markdownSignature = (markdown) => {
   let hash = 0x811c9dc5
@@ -495,6 +966,16 @@ const markdownSignature = (markdown) => {
   }
 
   return hash.toString(16)
+}
+
+const formatParsedMessageTimestamp = (message, index) => {
+  const date = /^\d{4}-\d{2}-\d{2}$/.test(message.date ?? '')
+    ? message.date
+    : formatLocalDate(new Date())
+  const time = /^\d{2}:\d{2}$/.test(message.time ?? '') ? message.time : '00:00'
+  const seconds = String(index % 60).padStart(2, '0')
+
+  return `${date}T${time}:${seconds}`
 }
 
 const syncParsedMarkdownMessages = async ({ folderId, notePath, parsed }) => {
@@ -514,13 +995,23 @@ const clearSelectedMarkdownMessages = async () => {
   })
 }
 
-const applyMarkdownDocument = async ({ markdown, parsed, relativePath, syncCache = true }) => {
+const applyMarkdownDocument = async ({
+  markdown,
+  parsed,
+  relativePath,
+  syncCache = true,
+  shouldApply = null,
+}) => {
+  const nextMessages = await withStoredReactions(
+    await buildMarkdownViewMessages(parsed.messages, relativePath),
+  )
+
+  if (shouldApply && !shouldApply()) return false
+
   selectedMarkdownContent.value = markdown
   markdownDraft.value = markdown
   selectedMarkdownSignature.value = markdownSignature(markdown)
-  messages.value = parsed.messages.map((message, index) =>
-    toMarkdownViewMessage(message, index, relativePath),
-  )
+  messages.value = nextMessages
 
   if (syncCache && selectedFolder.value) {
     await syncParsedMarkdownMessages({
@@ -529,6 +1020,8 @@ const applyMarkdownDocument = async ({ markdown, parsed, relativePath, syncCache
       parsed,
     })
   }
+
+  return true
 }
 
 const refreshMessages = async () => {
@@ -575,7 +1068,18 @@ const refreshMessages = async () => {
           return
         }
 
-        messages.value = rows.map(toViewMessage)
+        const nextMessages = await withStoredReactions(rows.map(toViewMessage))
+        if (
+          requestId !== refreshMessagesRequestId.value ||
+          !selectedFolder.value ||
+          selectedFolder.value.id !== folderId ||
+          currentMarkdownExportPath() !== projectDir ||
+          selectedNotePath.value !== relativePath
+        ) {
+          return
+        }
+
+        messages.value = nextMessages
         isSelectedNoteDbFallback.value = true
         viewMode.value = 'chat'
         await scrollMessagesToBottom()
@@ -595,7 +1099,19 @@ const refreshMessages = async () => {
         return
       }
 
-      await applyMarkdownDocument({ markdown, parsed, relativePath })
+      const didApplyMarkdownDocument = await applyMarkdownDocument({
+        markdown,
+        parsed,
+        relativePath,
+        shouldApply: () => (
+          requestId === refreshMessagesRequestId.value &&
+          Boolean(selectedFolder.value) &&
+          selectedFolder.value.id === folderId &&
+          currentMarkdownExportPath() === projectDir &&
+          selectedNotePath.value === relativePath
+        ),
+      })
+      if (!didApplyMarkdownDocument) return
       isSelectedNoteDbFallback.value = false
 
       await scrollMessagesToBottom()
@@ -618,7 +1134,10 @@ const refreshMessages = async () => {
 
     if (requestId !== refreshMessagesRequestId.value) return
 
-    messages.value = rows.map(toViewMessage)
+    const nextMessages = await withStoredReactions(rows.map(toViewMessage))
+    if (requestId !== refreshMessagesRequestId.value) return
+
+    messages.value = nextMessages
 
     await scrollMessagesToBottom()
     if (requestId !== refreshMessagesRequestId.value) return
@@ -892,7 +1411,7 @@ const handleDeleteNote = async (notePath) => {
       projectDir: currentMarkdownExportPath(),
       relativePath: notePath,
     })
-    await clearMarkdownMessages({
+    await deleteMarkdownMessagesWithReactions({
       folderId,
       notePath,
     })
@@ -1347,6 +1866,41 @@ const appendPendingTimelineMessagesToMarkdown = async ({ markdown, folderId, rel
   }
 }
 
+const migrateExportedMessageReactions = async ({ rows, files, folderId }) => {
+  const filePathByDate = new Map(files.map((file) => [file.date, file.path]))
+
+  for (const row of rows) {
+    const nextNotePath = filePathByDate.get(row.created_at.slice(0, 10))
+
+    if (!nextNotePath) continue
+
+    const currentMessage = {
+      id: row.id,
+      folderId: row.folder_id ?? folderId,
+      notePath: row.note_path ?? null,
+      createdAt: row.created_at,
+      content: row.content,
+    }
+    const nextMessage = {
+      ...currentMessage,
+      notePath: nextNotePath,
+    }
+
+    await migrateMessageReactions({
+      currentMessageKey: messageReactionKey(currentMessage),
+      nextMessageKey: messageReactionKey(nextMessage),
+      folderId: nextMessage.folderId,
+      notePath: nextNotePath,
+    })
+    await migrateMessageReactions({
+      currentMessageKey: legacyMessageReactionKey(currentMessage),
+      nextMessageKey: legacyMessageReactionKey(nextMessage),
+      folderId: nextMessage.folderId,
+      notePath: nextNotePath,
+    })
+  }
+}
+
 const sendMessage = async () => {
   const content = draftMessage.value.trim()
 
@@ -1465,8 +2019,8 @@ const sendMessage = async () => {
         if (markdownDraft.value === draftBeforeSend) {
           markdownDraft.value = nextMarkdownDraft ?? nextMarkdown
         }
-        messages.value = parsed.messages.map((message, index) =>
-          toMarkdownViewMessage(message, index, relativePath),
+        messages.value = await withStoredReactions(
+          await buildMarkdownViewMessages(parsed.messages, relativePath),
         )
         await scrollMessagesToBottom()
       }
@@ -1497,22 +2051,37 @@ const sendMessage = async () => {
       return
     }
 
+    const exportFolderId = selectedFolderId.value
+    const exportNotePath = selectedNotePath.value
+
     await createMessage(content, {
-      folderId: selectedFolderId.value,
-      notePath: selectedNotePath.value,
+      folderId: exportFolderId,
+      notePath: exportNotePath,
     })
     const rows = await loadStoredMessages({
-      folderId: selectedFolderId.value,
-      notePath: selectedNotePath.value,
+      folderId: exportFolderId,
+      notePath: exportNotePath,
     })
 
     draftMessage.value = ''
-    messages.value = rows.map(toViewMessage)
+    messages.value = await withStoredReactions(rows.map(toViewMessage))
     await scrollMessagesToBottom()
 
     try {
       const result = await exportMessagesToMarkdown(rows, currentMarkdownExportPath())
+      await migrateExportedMessageReactions({
+        rows,
+        files: result.files,
+        folderId: exportFolderId,
+      })
       exportStatus.value = `${result.exported_count}件を書き出しました`
+      if (selectedFolderId.value === exportFolderId && selectedNotePath.value === exportNotePath) {
+        const refreshedRows = await loadStoredMessages({
+          folderId: exportFolderId,
+          notePath: exportNotePath,
+        })
+        messages.value = await withStoredReactions(refreshedRows.map(toViewMessage))
+      }
       await refreshFolderNotes()
     } catch (error) {
       exportStatus.value = error instanceof Error
@@ -1591,8 +2160,8 @@ const saveMarkdownDraft = async (expectedTarget = null) => {
     ) {
       selectedMarkdownContent.value = draftToSave
       selectedMarkdownSignature.value = markdownSignature(draftToSave)
-      messages.value = parsed.messages.map((message, index) =>
-        toMarkdownViewMessage(message, index, relativePath),
+      messages.value = await withStoredReactions(
+        await buildMarkdownViewMessages(parsed.messages, relativePath),
       )
       await syncParsedMarkdownMessages({
         folderId: selectedFolder.value.id,
@@ -1726,6 +2295,9 @@ onMounted(async () => {
   await loadAppSettings().catch((error) => {
     loadMessageError.value = error instanceof Error ? error.message : '設定の読み込みに失敗しました'
   })
+  await loadCustomReactionOptions().catch((error) => {
+    loadMessageError.value = error instanceof Error ? error.message : 'カスタムリアクションの読み込みに失敗しました'
+  })
   await refreshMarkdownExportPath().catch((error) => {
     loadMessageError.value = error instanceof Error ? error.message : '設定の読み込みに失敗しました'
   })
@@ -1811,6 +2383,10 @@ onBeforeUnmount(() => {
               :name="message.name"
               :date="message.date"
               :message="message.message"
+              :reactions="message.reactions"
+              :reaction-options="reactionOptions"
+              @toggle-reaction="toggleMessageReaction(message, $event)"
+              @add-image-reaction="openCustomReactionModal(message)"
             />
           </template>
         </div>
@@ -1854,6 +2430,98 @@ onBeforeUnmount(() => {
           @submit="sendMessage"
         />
       </main>
+    </div>
+    <div
+      v-if="isCustomReactionModalOpen"
+      class="custom-reaction-modal-backdrop"
+      role="presentation"
+      @click.self="closeCustomReactionModal"
+    >
+      <form
+        class="custom-reaction-modal"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="custom-reaction-title"
+        @submit.prevent="handleSaveCustomReaction"
+      >
+        <div class="custom-reaction-header">
+          <h2 id="custom-reaction-title" class="custom-reaction-title">絵文字を追加する</h2>
+          <button
+            type="button"
+            class="custom-reaction-close"
+            aria-label="閉じる"
+            @click="closeCustomReactionModal"
+          >
+            ×
+          </button>
+        </div>
+        <div class="custom-reaction-tabs" role="tablist" aria-label="絵文字追加方法">
+          <button type="button" class="custom-reaction-tab active" role="tab" aria-selected="true">
+            カスタム絵文字
+          </button>
+          <button type="button" class="custom-reaction-tab" role="tab" aria-selected="false" disabled>
+            絵文字パック
+          </button>
+        </div>
+        <div class="custom-reaction-content">
+          <p class="custom-reaction-description">
+            カスタム絵文字はこの端末で利用でき、リアクションの追加候補に表示されます。
+          </p>
+
+          <section class="custom-reaction-section" aria-labelledby="custom-reaction-image-heading">
+            <h3 id="custom-reaction-image-heading" class="custom-reaction-step">
+              1. 画像をアップロードする
+            </h3>
+            <p class="custom-reaction-help">
+              背景が透明な四角形の画像が最適です。PNG、JPG、WebP、GIF、SVG を選択できます。
+            </p>
+            <div class="custom-reaction-upload-row">
+              <div class="custom-reaction-preview" aria-label="選択中の画像プレビュー">
+                <img
+                  v-if="customReactionImageSrc"
+                  :src="customReactionImageSrc"
+                  alt=""
+                />
+                <span v-else class="custom-reaction-preview-placeholder">□</span>
+              </div>
+              <div class="custom-reaction-upload-actions">
+                <p class="custom-reaction-upload-label">画像を選択する</p>
+                <button type="button" class="secondary-button" @click="handleBrowseCustomReactionImage">
+                  画像をアップロードする
+                </button>
+              </div>
+            </div>
+          </section>
+
+          <section class="custom-reaction-section" aria-labelledby="custom-reaction-name-heading">
+            <h3 id="custom-reaction-name-heading" class="custom-reaction-step">
+              2. 名前を付ける
+            </h3>
+            <p class="custom-reaction-help">
+              追加後の候補やツールチップに表示される名前です。
+            </p>
+            <input
+              v-model="customReactionName"
+              class="path-input custom-reaction-name-input"
+              type="text"
+              placeholder="アボカド"
+              aria-label="カスタム絵文字名"
+            />
+          </section>
+
+          <p v-if="customReactionError" class="settings-status is-error" role="alert">
+            {{ customReactionError }}
+          </p>
+        </div>
+        <div class="custom-reaction-footer">
+          <button type="button" class="secondary-button" @click="closeCustomReactionModal">
+            キャンセル
+          </button>
+          <button type="submit" class="primary-button" :disabled="isCustomReactionSaveDisabled">
+            {{ isSavingCustomReaction ? '保存中' : '保存する' }}
+          </button>
+        </div>
+      </form>
     </div>
     <Modal v-model="isModalOpen" :size="modalSize">
       <template #header>
@@ -2230,6 +2898,245 @@ onBeforeUnmount(() => {
 
 .export-status.is-warning {
   color: var(--text-secondary);
+}
+
+.custom-reaction-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: color-mix(in srgb, var(--overlay-backdrop) 82%, transparent);
+}
+
+.custom-reaction-modal {
+  display: flex;
+  width: min(860px, calc(100vw - 48px));
+  max-height: min(820px, calc(100vh - 48px));
+  flex-direction: column;
+  overflow: hidden;
+  border: 1px solid var(--border-strong);
+  border-radius: 12px;
+  color: var(--text-primary);
+  background: var(--surface-panel);
+  box-shadow: var(--shadow-modal);
+}
+
+.custom-reaction-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 88px;
+  padding: 0 44px 0 48px;
+}
+
+.custom-reaction-title {
+  margin: 0;
+  font-size: 32px;
+  font-weight: 800;
+  letter-spacing: 0;
+}
+
+.custom-reaction-close {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  color: var(--text-tertiary);
+  background: transparent;
+  border: 0;
+  border-radius: 50%;
+  cursor: pointer;
+  font-size: 38px;
+  line-height: 1;
+}
+
+.custom-reaction-close:hover,
+.custom-reaction-close:focus-visible {
+  color: var(--text-primary);
+  background: var(--surface-elevated-hover);
+  outline: none;
+}
+
+.custom-reaction-tabs {
+  display: flex;
+  gap: 30px;
+  min-height: 48px;
+  padding: 0 48px;
+  border-bottom: 1px solid var(--border-default);
+}
+
+.custom-reaction-tab {
+  position: relative;
+  padding: 0 10px;
+  color: var(--text-tertiary);
+  background: transparent;
+  border: 0;
+  font-size: 18px;
+  font-weight: 800;
+}
+
+.custom-reaction-tab.active {
+  color: var(--text-primary);
+}
+
+.custom-reaction-tab.active::after {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  height: 3px;
+  background: color-mix(in srgb, var(--bg-primary) 34%, #FFFFFF);
+  content: '';
+}
+
+.custom-reaction-tab:disabled {
+  cursor: not-allowed;
+  opacity: 0.68;
+}
+
+.custom-reaction-content {
+  display: flex;
+  flex-direction: column;
+  gap: 28px;
+  min-height: 0;
+  padding: 28px 48px 36px;
+  overflow-y: auto;
+}
+
+.custom-reaction-description {
+  max-width: 720px;
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: 18px;
+  line-height: 1.7;
+}
+
+.custom-reaction-section {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.custom-reaction-step {
+  margin: 0;
+  font-size: 20px;
+  font-weight: 800;
+}
+
+.custom-reaction-help {
+  max-width: 720px;
+  margin: 0 0 0 28px;
+  color: var(--text-tertiary);
+  font-size: 16px;
+  line-height: 1.6;
+}
+
+.custom-reaction-upload-row {
+  display: flex;
+  align-items: center;
+  gap: 24px;
+  margin: 18px 0 0 28px;
+}
+
+.custom-reaction-preview {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 96px;
+  height: 96px;
+  border: 1px solid var(--border-strong);
+  border-radius: 4px;
+  background: var(--surface-input);
+}
+
+.custom-reaction-preview img {
+  width: 72px;
+  height: 72px;
+  object-fit: contain;
+}
+
+.custom-reaction-preview-placeholder {
+  color: var(--text-tertiary);
+  font-size: 42px;
+  line-height: 1;
+}
+
+.custom-reaction-upload-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  align-items: flex-start;
+}
+
+.custom-reaction-upload-label {
+  margin: 0;
+  color: var(--text-tertiary);
+  font-size: 16px;
+  font-weight: 700;
+}
+
+.custom-reaction-name-input {
+  width: min(100%, 720px);
+  height: 54px;
+  margin: 18px 0 0 28px;
+  font-size: 18px;
+}
+
+.custom-reaction-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 16px;
+  padding: 24px 48px 40px;
+}
+
+@media (max-width: 640px) {
+  .custom-reaction-modal-backdrop {
+    padding: 12px;
+  }
+
+  .custom-reaction-modal {
+    width: calc(100vw - 24px);
+    max-height: calc(100vh - 24px);
+  }
+
+  .custom-reaction-header {
+    min-height: 72px;
+    padding: 0 18px 0 22px;
+  }
+
+  .custom-reaction-title {
+    font-size: 24px;
+  }
+
+  .custom-reaction-tabs,
+  .custom-reaction-content,
+  .custom-reaction-footer {
+    padding-right: 22px;
+    padding-left: 22px;
+  }
+
+  .custom-reaction-description {
+    font-size: 15px;
+  }
+
+  .custom-reaction-help,
+  .custom-reaction-upload-row,
+  .custom-reaction-name-input {
+    margin-left: 0;
+  }
+
+  .custom-reaction-upload-row {
+    align-items: flex-start;
+  }
+
+  .custom-reaction-footer {
+    flex-wrap: wrap;
+  }
 }
 
 .modal-title {
