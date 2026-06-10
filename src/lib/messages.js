@@ -46,6 +46,32 @@ export const loadMessages = async ({ folderId = null, notePath = null } = {}) =>
 }
 
 export const messageReactionKey = ({
+  id = null,
+  folderId = null,
+  notePath = null,
+  createdAt = '',
+  content = '',
+}) => {
+  const normalizedFolderId = folderId === null || folderId === undefined ? '' : String(folderId)
+
+  if (id !== null && id !== undefined && id !== '') {
+    return [
+      'v2',
+      normalizedFolderId,
+      notePath ?? '',
+      String(id),
+    ].join(MESSAGE_KEY_SEPARATOR)
+  }
+
+  return [
+    normalizedFolderId,
+    notePath ?? '',
+    createdAt ?? '',
+    content ?? '',
+  ].join(MESSAGE_KEY_SEPARATOR)
+}
+
+export const legacyMessageReactionKey = ({
   folderId = null,
   notePath = null,
   createdAt = '',
@@ -111,6 +137,45 @@ export const saveMessageReaction = async ({
       updatedAt,
     ],
   )
+}
+
+export const migrateMessageReactions = async ({
+  currentMessageKey,
+  nextMessageKey,
+  folderId = null,
+  notePath = null,
+}) => {
+  if (!currentMessageKey || !nextMessageKey || currentMessageKey === nextMessageKey) return
+
+  const db = await getDatabase()
+  const updatedAt = formatLocalTimestamp(new Date())
+
+  await db.execute('BEGIN')
+
+  try {
+    await db.execute(
+      `INSERT INTO message_reactions
+         (message_key, folder_id, note_path, reaction_type, selected, created_at, updated_at)
+       SELECT ?, ?, ?, reaction_type, selected, created_at, ?
+       FROM message_reactions
+       WHERE message_key = ?
+       ON CONFLICT(message_key, reaction_type) DO UPDATE SET
+         folder_id = excluded.folder_id,
+         note_path = excluded.note_path,
+         selected = excluded.selected,
+         updated_at = excluded.updated_at`,
+      [nextMessageKey, folderId, notePath, updatedAt, currentMessageKey],
+    )
+    await db.execute(
+      `DELETE FROM message_reactions
+       WHERE message_key = ?`,
+      [currentMessageKey],
+    )
+    await db.execute('COMMIT')
+  } catch (error) {
+    await db.execute('ROLLBACK')
+    throw error
+  }
 }
 
 export const loadFolders = async () => {
@@ -528,23 +593,92 @@ export const syncMarkdownMessages = async ({ folderId, notePath, messages }) => 
 export const clearMarkdownMessages = async ({ folderId, notePath }) => {
   const db = await getDatabase()
 
-  await db.execute(
-    `DELETE FROM messages
-     WHERE folder_id = ? AND COALESCE(note_path, '') = ?`,
-    [folderId, notePath],
-  )
+  await db.execute('BEGIN')
+
+  try {
+    await db.execute(
+      `DELETE FROM messages
+       WHERE folder_id = ? AND COALESCE(note_path, '') = ?`,
+      [folderId, notePath],
+    )
+    await db.execute(
+      `DELETE FROM message_reactions
+       WHERE folder_id = ? AND COALESCE(note_path, '') = ?`,
+      [folderId, notePath],
+    )
+    await db.execute('COMMIT')
+  } catch (error) {
+    await db.execute('ROLLBACK')
+    throw error
+  }
 }
 
 export const updateMarkdownMessagePath = async ({ folderId, currentNotePath, nextNotePath }) => {
   const db = await getDatabase()
   const updatedAt = formatLocalTimestamp(new Date())
 
-  await db.execute(
-    `UPDATE messages
-     SET note_path = ?, updated_at = ?
-     WHERE folder_id = ? AND COALESCE(note_path, '') = ?`,
-    [nextNotePath, updatedAt, folderId, currentNotePath],
-  )
+  await db.execute('BEGIN')
+
+  try {
+    await db.execute(
+      `UPDATE messages
+       SET note_path = ?, updated_at = ?
+       WHERE folder_id = ? AND COALESCE(note_path, '') = ?`,
+      [nextNotePath, updatedAt, folderId, currentNotePath],
+    )
+
+    const reactionRows = await db.select(
+      `SELECT message_key AS messageKey, reaction_type AS reactionType
+       FROM message_reactions
+       WHERE folder_id = ? AND COALESCE(note_path, '') = ?`,
+      [folderId, currentNotePath],
+    )
+
+    for (const row of reactionRows) {
+      const keyParts = row.messageKey.split(MESSAGE_KEY_SEPARATOR)
+      const notePathIndex = keyParts[0] === 'v2' ? 2 : 1
+
+      if (keyParts[notePathIndex] !== currentNotePath) {
+        await db.execute(
+          `UPDATE message_reactions
+           SET note_path = ?, updated_at = ?
+           WHERE message_key = ? AND reaction_type = ?`,
+          [nextNotePath, updatedAt, row.messageKey, row.reactionType],
+        )
+        continue
+      }
+
+      keyParts[notePathIndex] = nextNotePath
+      if (keyParts[0] === 'v2' && keyParts[3]?.startsWith(`${currentNotePath}:`)) {
+        keyParts[3] = `markdown:${keyParts[3].slice(currentNotePath.length + 1)}`
+      }
+      const nextMessageKey = keyParts.join(MESSAGE_KEY_SEPARATOR)
+
+      await db.execute(
+        `INSERT INTO message_reactions
+           (message_key, folder_id, note_path, reaction_type, selected, created_at, updated_at)
+         SELECT ?, folder_id, ?, reaction_type, selected, created_at, ?
+         FROM message_reactions
+         WHERE message_key = ? AND reaction_type = ?
+         ON CONFLICT(message_key, reaction_type) DO UPDATE SET
+           folder_id = excluded.folder_id,
+           note_path = excluded.note_path,
+           selected = excluded.selected,
+           updated_at = excluded.updated_at`,
+        [nextMessageKey, nextNotePath, updatedAt, row.messageKey, row.reactionType],
+      )
+      await db.execute(
+        `DELETE FROM message_reactions
+         WHERE message_key = ? AND reaction_type = ?`,
+        [row.messageKey, row.reactionType],
+      )
+    }
+
+    await db.execute('COMMIT')
+  } catch (error) {
+    await db.execute('ROLLBACK')
+    throw error
+  }
 }
 
 export const exportMessagesToMarkdown = async (messages, exportDir = '') => {

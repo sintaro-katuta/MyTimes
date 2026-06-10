@@ -30,6 +30,8 @@ import {
   loadMessageReactions,
   loadMessages as loadStoredMessages,
   loadSetting,
+  legacyMessageReactionKey,
+  migrateMessageReactions,
   messageReactionKey,
   registerProject,
   saveFolderIconPath,
@@ -113,6 +115,8 @@ const createUniqueReactionOptions = (options) => {
     return true
   })
 }
+
+const uniqueValues = (values) => [...new Set(values.filter(Boolean))]
 
 const reactionOptions = ref(createUniqueReactionOptions(BASE_REACTION_OPTIONS))
 const customReactionOptions = ref([])
@@ -222,7 +226,18 @@ const normalizeReactionPayload = (payload) => {
     return reactionOptions.value.find((reaction) => reaction.id === payload) ?? reactionOptionFromId(payload)
   }
 
-  if (!payload?.id || !payload?.emoji) return null
+  if (!payload?.id) return null
+
+  if (payload.imagePath || payload.imageSrc) {
+    return {
+      id: payload.id,
+      imagePath: payload.imagePath,
+      imageSrc: payload.imageSrc,
+      label: payload.label ?? reactionLabelFromImagePath(payload.imagePath ?? ''),
+    }
+  }
+
+  if (!payload.emoji) return null
 
   return {
     id: payload.id,
@@ -655,6 +670,13 @@ const createViewMessage = ({
   reactions = [],
 }) => {
   const messageKey = messageReactionKey({
+    id,
+    folderId,
+    notePath,
+    createdAt,
+    content,
+  })
+  const legacyReactionKey = legacyMessageReactionKey({
     folderId,
     notePath,
     createdAt,
@@ -666,6 +688,8 @@ const createViewMessage = ({
     folderId,
     notePath,
     messageKey,
+    legacyReactionKey,
+    legacyReactionKeys: [legacyReactionKey],
     createdAt,
     name: '自分',
     date,
@@ -675,14 +699,56 @@ const createViewMessage = ({
 }
 
 const withStoredReactions = async (viewMessages) => {
-  const reactionGroups = await loadMessageReactions(viewMessages.map((message) => message.messageKey))
+  const reactionGroups = await loadMessageReactions(
+    viewMessages.flatMap((message) =>
+      [
+        message.messageKey,
+        ...(message.legacyReactionKeys ?? [message.legacyReactionKey]).filter(Boolean),
+      ],
+    ),
+  )
   const storedReactionTypes = [...reactionGroups.values()].flat()
   ensureReactionOptions(storedReactionTypes.map(reactionOptionFromId))
 
-  return viewMessages.map((message) => ({
-    ...message,
-    reactions: reactionGroups.get(message.messageKey) ?? [],
-  }))
+  for (const message of viewMessages) {
+    if (
+      reactionGroups.has(message.messageKey) ||
+      !(message.legacyReactionKeys ?? [message.legacyReactionKey]).some((legacyKey) =>
+        legacyKey &&
+        legacyKey !== message.messageKey &&
+        reactionGroups.has(legacyKey),
+      )
+    ) {
+      continue
+    }
+
+    const currentMessageKey = (message.legacyReactionKeys ?? [message.legacyReactionKey])
+      .find((legacyKey) =>
+        legacyKey &&
+        legacyKey !== message.messageKey &&
+        reactionGroups.has(legacyKey),
+      )
+
+    await migrateMessageReactions({
+      currentMessageKey,
+      nextMessageKey: message.messageKey,
+      folderId: message.folderId,
+      notePath: message.notePath,
+    })
+  }
+
+  return viewMessages.map((message) => {
+    const reactions = reactionGroups.get(message.messageKey)
+      ?? (message.legacyReactionKeys ?? [message.legacyReactionKey])
+        .map((legacyKey) => reactionGroups.get(legacyKey))
+        .find(Boolean)
+      ?? []
+
+    return {
+      ...message,
+      reactions,
+    }
+  })
 }
 
 const toggleMessageReaction = async (message, payload) => {
@@ -703,7 +769,7 @@ const toggleMessageReaction = async (message, payload) => {
   }
 
   messages.value = messages.value.map((currentMessage) =>
-    currentMessage.messageKey === message.messageKey
+    currentMessage.id === message.id
       ? { ...currentMessage, reactions: [...reactions] }
       : currentMessage,
   )
@@ -718,7 +784,7 @@ const toggleMessageReaction = async (message, payload) => {
     })
   } catch (error) {
     messages.value = messages.value.map((currentMessage) =>
-      currentMessage.messageKey === message.messageKey
+      currentMessage.id === message.id
         ? { ...currentMessage, reactions: message.reactions }
         : currentMessage,
     )
@@ -807,15 +873,31 @@ const toViewMessage = (row) => createViewMessage({
 
 const toMarkdownViewMessage = (message, index, notePath = selectedNotePath.value) => {
   const createdAt = formatParsedMessageTimestamp(message, index)
-
-  return createViewMessage({
-    id: `${notePath ?? 'markdown'}:${message.sortOrder ?? index}`,
-    folderId: selectedFolder.value?.id ?? selectedFolderId.value,
+  const folderId = selectedFolder.value?.id ?? selectedFolderId.value
+  const sortOrder = message.sortOrder ?? index
+  const previousPathBasedId = `${notePath ?? 'markdown'}:${sortOrder}`
+  const viewMessage = createViewMessage({
+    id: `markdown:${sortOrder}`,
+    folderId,
     notePath,
     createdAt,
     date: [message.date, message.time].filter(Boolean).join(' '),
     content: message.content,
   })
+
+  return {
+    ...viewMessage,
+    legacyReactionKeys: uniqueValues([
+      viewMessage.legacyReactionKey,
+      messageReactionKey({
+        id: previousPathBasedId,
+        folderId,
+        notePath,
+        createdAt,
+        content: message.content,
+      }),
+    ]),
+  }
 }
 
 const markdownSignature = (markdown) => {
@@ -856,13 +938,23 @@ const clearSelectedMarkdownMessages = async () => {
   })
 }
 
-const applyMarkdownDocument = async ({ markdown, parsed, relativePath, syncCache = true }) => {
+const applyMarkdownDocument = async ({
+  markdown,
+  parsed,
+  relativePath,
+  syncCache = true,
+  shouldApply = null,
+}) => {
+  const nextMessages = await withStoredReactions(parsed.messages.map((message, index) =>
+    toMarkdownViewMessage(message, index, relativePath),
+  ))
+
+  if (shouldApply && !shouldApply()) return false
+
   selectedMarkdownContent.value = markdown
   markdownDraft.value = markdown
   selectedMarkdownSignature.value = markdownSignature(markdown)
-  messages.value = await withStoredReactions(parsed.messages.map((message, index) =>
-    toMarkdownViewMessage(message, index, relativePath),
-  ))
+  messages.value = nextMessages
 
   if (syncCache && selectedFolder.value) {
     await syncParsedMarkdownMessages({
@@ -871,6 +963,8 @@ const applyMarkdownDocument = async ({ markdown, parsed, relativePath, syncCache
       parsed,
     })
   }
+
+  return true
 }
 
 const refreshMessages = async () => {
@@ -917,7 +1011,18 @@ const refreshMessages = async () => {
           return
         }
 
-        messages.value = await withStoredReactions(rows.map(toViewMessage))
+        const nextMessages = await withStoredReactions(rows.map(toViewMessage))
+        if (
+          requestId !== refreshMessagesRequestId.value ||
+          !selectedFolder.value ||
+          selectedFolder.value.id !== folderId ||
+          currentMarkdownExportPath() !== projectDir ||
+          selectedNotePath.value !== relativePath
+        ) {
+          return
+        }
+
+        messages.value = nextMessages
         isSelectedNoteDbFallback.value = true
         viewMode.value = 'chat'
         await scrollMessagesToBottom()
@@ -937,7 +1042,19 @@ const refreshMessages = async () => {
         return
       }
 
-      await applyMarkdownDocument({ markdown, parsed, relativePath })
+      const didApplyMarkdownDocument = await applyMarkdownDocument({
+        markdown,
+        parsed,
+        relativePath,
+        shouldApply: () => (
+          requestId === refreshMessagesRequestId.value &&
+          Boolean(selectedFolder.value) &&
+          selectedFolder.value.id === folderId &&
+          currentMarkdownExportPath() === projectDir &&
+          selectedNotePath.value === relativePath
+        ),
+      })
+      if (!didApplyMarkdownDocument) return
       isSelectedNoteDbFallback.value = false
 
       await scrollMessagesToBottom()
@@ -960,7 +1077,10 @@ const refreshMessages = async () => {
 
     if (requestId !== refreshMessagesRequestId.value) return
 
-    messages.value = await withStoredReactions(rows.map(toViewMessage))
+    const nextMessages = await withStoredReactions(rows.map(toViewMessage))
+    if (requestId !== refreshMessagesRequestId.value) return
+
+    messages.value = nextMessages
 
     await scrollMessagesToBottom()
     if (requestId !== refreshMessagesRequestId.value) return
