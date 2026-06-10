@@ -1,6 +1,7 @@
 <script setup>
 import { computed, ref } from 'vue'
 import { Plus, X } from '@lucide/vue'
+import { openUrl } from '@tauri-apps/plugin-opener'
 import Icon from './Icon.vue'
 import { markdownToHtml } from '../lib/markdown'
 
@@ -104,6 +105,20 @@ const addImageReaction = () => {
   emit('add-image-reaction')
   closeEmojiPicker()
 }
+
+const handleMessageClick = async (event) => {
+  const link = event.target.closest?.('a[href]')
+
+  if (!link) return
+
+  event.preventDefault()
+
+  try {
+    await openUrl(link.href)
+  } catch (error) {
+    console.error('リンクを開けませんでした', error)
+  }
+}
 </script>
 
 <template>
@@ -119,7 +134,7 @@ const addImageReaction = () => {
         <p class="message-name">{{ props.name }}</p>
         <p class="message-date">{{ props.date }}</p>
       </div>
-      <div class="message-content">
+      <div class="message-content" @click="handleMessageClick">
         <div class="message-message" v-html="renderedMessage"></div>
       </div>
       <div v-if="props.reactions.length > 0" class="message-reactions" aria-label="選択中のリアクション">
