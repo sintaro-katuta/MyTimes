@@ -593,6 +593,16 @@ export const syncMarkdownMessages = async ({ folderId, notePath, messages }) => 
 export const clearMarkdownMessages = async ({ folderId, notePath }) => {
   const db = await getDatabase()
 
+  await db.execute(
+    `DELETE FROM messages
+     WHERE folder_id = ? AND COALESCE(note_path, '') = ?`,
+    [folderId, notePath],
+  )
+}
+
+export const deleteMarkdownMessagesWithReactions = async ({ folderId, notePath }) => {
+  const db = await getDatabase()
+
   await db.execute('BEGIN')
 
   try {

@@ -22,6 +22,7 @@ import {
 import {
   clearMarkdownMessages,
   createMessage,
+  deleteMarkdownMessagesWithReactions,
   deleteFolder,
   exportMessagesToMarkdown,
   loadFolders as loadStoredFolders,
@@ -871,13 +872,60 @@ const toViewMessage = (row) => createViewMessage({
   content: row.content,
 })
 
-const toMarkdownViewMessage = (message, index, notePath = selectedNotePath.value) => {
-  const createdAt = formatParsedMessageTimestamp(message, index)
+const markdownMessageIdentity = (message) => [
+  message.date ?? '',
+  message.time ?? '',
+  message.content ?? '',
+].join('\u001f')
+
+const markdownMessageId = (message, occurrenceIndex) =>
+  `markdown:${hashText(`${markdownMessageIdentity(message)}\u001f${occurrenceIndex}`)}`
+
+const buildMarkdownViewMessages = async (parsedMessages, notePath = selectedNotePath.value) => {
   const folderId = selectedFolder.value?.id ?? selectedFolderId.value
-  const sortOrder = message.sortOrder ?? index
-  const previousPathBasedId = `${notePath ?? 'markdown'}:${sortOrder}`
+  const cachedRows = folderId && notePath
+    ? await loadStoredMessages({ folderId, notePath })
+    : []
+  const cachedRowsByMessage = cachedRows.reduce((groups, row) => {
+    const key = `${row.created_at}\u001f${row.content}`
+
+    if (!groups.has(key)) {
+      groups.set(key, [])
+    }
+
+    groups.get(key).push(row)
+    return groups
+  }, new Map())
+  const occurrenceCounts = new Map()
+
+  return parsedMessages.map((message, index) =>
+    toMarkdownViewMessage({
+      message,
+      index,
+      notePath,
+      folderId,
+      occurrenceCounts,
+      cachedRowsByMessage,
+    }),
+  )
+}
+
+const toMarkdownViewMessage = ({
+  message,
+  index,
+  notePath = selectedNotePath.value,
+  folderId = selectedFolder.value?.id ?? selectedFolderId.value,
+  occurrenceCounts = new Map(),
+  cachedRowsByMessage = new Map(),
+}) => {
+  const createdAt = formatParsedMessageTimestamp(message, index)
+  const identity = markdownMessageIdentity(message)
+  const occurrenceIndex = occurrenceCounts.get(identity) ?? 0
+  occurrenceCounts.set(identity, occurrenceIndex + 1)
+  const previousPathBasedId = `${notePath ?? 'markdown'}:${message.sortOrder ?? index}`
+  const dbCacheRows = cachedRowsByMessage.get(`${createdAt}\u001f${message.content}`) ?? []
   const viewMessage = createViewMessage({
-    id: `markdown:${sortOrder}`,
+    id: markdownMessageId(message, occurrenceIndex),
     folderId,
     notePath,
     createdAt,
@@ -896,6 +944,15 @@ const toMarkdownViewMessage = (message, index, notePath = selectedNotePath.value
         createdAt,
         content: message.content,
       }),
+      ...dbCacheRows.map((row) =>
+        messageReactionKey({
+          id: row.id,
+          folderId: row.folder_id ?? folderId,
+          notePath: row.note_path ?? notePath,
+          createdAt: row.created_at,
+          content: row.content,
+        }),
+      ),
     ]),
   }
 }
@@ -945,9 +1002,9 @@ const applyMarkdownDocument = async ({
   syncCache = true,
   shouldApply = null,
 }) => {
-  const nextMessages = await withStoredReactions(parsed.messages.map((message, index) =>
-    toMarkdownViewMessage(message, index, relativePath),
-  ))
+  const nextMessages = await withStoredReactions(
+    await buildMarkdownViewMessages(parsed.messages, relativePath),
+  )
 
   if (shouldApply && !shouldApply()) return false
 
@@ -1354,7 +1411,7 @@ const handleDeleteNote = async (notePath) => {
       projectDir: currentMarkdownExportPath(),
       relativePath: notePath,
     })
-    await clearMarkdownMessages({
+    await deleteMarkdownMessagesWithReactions({
       folderId,
       notePath,
     })
@@ -1809,6 +1866,41 @@ const appendPendingTimelineMessagesToMarkdown = async ({ markdown, folderId, rel
   }
 }
 
+const migrateExportedMessageReactions = async ({ rows, files, folderId }) => {
+  const filePathByDate = new Map(files.map((file) => [file.date, file.path]))
+
+  for (const row of rows) {
+    const nextNotePath = filePathByDate.get(row.created_at.slice(0, 10))
+
+    if (!nextNotePath) continue
+
+    const currentMessage = {
+      id: row.id,
+      folderId: row.folder_id ?? folderId,
+      notePath: row.note_path ?? null,
+      createdAt: row.created_at,
+      content: row.content,
+    }
+    const nextMessage = {
+      ...currentMessage,
+      notePath: nextNotePath,
+    }
+
+    await migrateMessageReactions({
+      currentMessageKey: messageReactionKey(currentMessage),
+      nextMessageKey: messageReactionKey(nextMessage),
+      folderId: nextMessage.folderId,
+      notePath: nextNotePath,
+    })
+    await migrateMessageReactions({
+      currentMessageKey: legacyMessageReactionKey(currentMessage),
+      nextMessageKey: legacyMessageReactionKey(nextMessage),
+      folderId: nextMessage.folderId,
+      notePath: nextNotePath,
+    })
+  }
+}
+
 const sendMessage = async () => {
   const content = draftMessage.value.trim()
 
@@ -1927,9 +2019,9 @@ const sendMessage = async () => {
         if (markdownDraft.value === draftBeforeSend) {
           markdownDraft.value = nextMarkdownDraft ?? nextMarkdown
         }
-        messages.value = await withStoredReactions(parsed.messages.map((message, index) =>
-          toMarkdownViewMessage(message, index, relativePath),
-        ))
+        messages.value = await withStoredReactions(
+          await buildMarkdownViewMessages(parsed.messages, relativePath),
+        )
         await scrollMessagesToBottom()
       }
 
@@ -1959,13 +2051,16 @@ const sendMessage = async () => {
       return
     }
 
+    const exportFolderId = selectedFolderId.value
+    const exportNotePath = selectedNotePath.value
+
     await createMessage(content, {
-      folderId: selectedFolderId.value,
-      notePath: selectedNotePath.value,
+      folderId: exportFolderId,
+      notePath: exportNotePath,
     })
     const rows = await loadStoredMessages({
-      folderId: selectedFolderId.value,
-      notePath: selectedNotePath.value,
+      folderId: exportFolderId,
+      notePath: exportNotePath,
     })
 
     draftMessage.value = ''
@@ -1974,7 +2069,19 @@ const sendMessage = async () => {
 
     try {
       const result = await exportMessagesToMarkdown(rows, currentMarkdownExportPath())
+      await migrateExportedMessageReactions({
+        rows,
+        files: result.files,
+        folderId: exportFolderId,
+      })
       exportStatus.value = `${result.exported_count}件を書き出しました`
+      if (selectedFolderId.value === exportFolderId && selectedNotePath.value === exportNotePath) {
+        const refreshedRows = await loadStoredMessages({
+          folderId: exportFolderId,
+          notePath: exportNotePath,
+        })
+        messages.value = await withStoredReactions(refreshedRows.map(toViewMessage))
+      }
       await refreshFolderNotes()
     } catch (error) {
       exportStatus.value = error instanceof Error
@@ -2053,9 +2160,9 @@ const saveMarkdownDraft = async (expectedTarget = null) => {
     ) {
       selectedMarkdownContent.value = draftToSave
       selectedMarkdownSignature.value = markdownSignature(draftToSave)
-      messages.value = await withStoredReactions(parsed.messages.map((message, index) =>
-        toMarkdownViewMessage(message, index, relativePath),
-      ))
+      messages.value = await withStoredReactions(
+        await buildMarkdownViewMessages(parsed.messages, relativePath),
+      )
       await syncParsedMarkdownMessages({
         folderId: selectedFolder.value.id,
         notePath: relativePath,
