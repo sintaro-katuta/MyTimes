@@ -24,13 +24,13 @@ const props = defineProps({
 const emit = defineEmits(['update:modelValue', 'submit'])
 
 const tools = [
-  { name: '太字', icon: Bold },
-  { name: '斜体', icon: Italic },
-  { name: '打ち消し線', icon: Strikethrough },
-  { name: 'リンク', icon: Link },
-  { name: '番号付きリスト', icon: ListOrdered },
-  { name: '箇条書き', icon: List },
-  { name: 'コードブロック', icon: SquareCode },
+  { name: '太字', icon: Bold, action: 'bold' },
+  { name: '斜体', icon: Italic, action: 'italic' },
+  { name: '打ち消し線', icon: Strikethrough, action: 'strikethrough' },
+  { name: 'リンク', icon: Link, action: 'link' },
+  { name: '番号付きリスト', icon: ListOrdered, action: 'ordered-list' },
+  { name: '箇条書き', icon: List, action: 'unordered-list' },
+  { name: 'コードブロック', icon: SquareCode, action: 'code-block' },
 ]
 
 const textareaRef = ref(null)
@@ -54,6 +54,84 @@ const focusTextarea = () => {
   nextTick(() => {
     textareaRef.value?.focus()
   })
+}
+
+const updateMessageSelection = ({ value, selectionStart, selectionEnd }) => {
+  message.value = value
+
+  nextTick(() => {
+    if (!textareaRef.value) return
+
+    textareaRef.value.focus()
+    textareaRef.value.setSelectionRange(selectionStart, selectionEnd)
+    resizeTextarea()
+  })
+}
+
+const selectedTextareaRange = () => {
+  const textarea = textareaRef.value
+
+  return {
+    start: textarea?.selectionStart ?? message.value.length,
+    end: textarea?.selectionEnd ?? message.value.length,
+  }
+}
+
+const replaceSelectedText = ({ nextText, selectionStart, selectionEnd }) => {
+  const { start, end } = selectedTextareaRange()
+  const value = message.value
+
+  updateMessageSelection({
+    value: `${value.slice(0, start)}${nextText}${value.slice(end)}`,
+    selectionStart: start + selectionStart,
+    selectionEnd: start + selectionEnd,
+  })
+}
+
+const wrapSelectedText = ({ before, after, placeholder }) => {
+  const { start, end } = selectedTextareaRange()
+  const selectedText = message.value.slice(start, end) || placeholder
+  const nextText = `${before}${selectedText}${after}`
+
+  replaceSelectedText({
+    nextText,
+    selectionStart: before.length,
+    selectionEnd: before.length + selectedText.length,
+  })
+}
+
+const prefixSelectedLines = (prefixFactory) => {
+  const { start, end } = selectedTextareaRange()
+  const value = message.value
+  const lineStart = value.lastIndexOf('\n', Math.max(start - 1, 0)) + 1
+  const lineEndIndex = value.indexOf('\n', end)
+  const lineEnd = lineEndIndex === -1 ? value.length : lineEndIndex
+  const selectedLines = value.slice(lineStart, lineEnd).split('\n')
+  const nextText = selectedLines
+    .map((line, index) => `${prefixFactory(index)}${line.replace(/^\s*(?:[-*]|\d+[.)])\s+/, '')}`)
+    .join('\n')
+
+  updateMessageSelection({
+    value: `${value.slice(0, lineStart)}${nextText}${value.slice(lineEnd)}`,
+    selectionStart: lineStart,
+    selectionEnd: lineStart + nextText.length,
+  })
+}
+
+const applyMarkdownTool = (action) => {
+  if (props.disabled) return
+
+  const toolActions = {
+    bold: () => wrapSelectedText({ before: '**', after: '**', placeholder: '太字' }),
+    italic: () => wrapSelectedText({ before: '*', after: '*', placeholder: '斜体' }),
+    strikethrough: () => wrapSelectedText({ before: '~~', after: '~~', placeholder: '打ち消し線' }),
+    link: () => wrapSelectedText({ before: '[', after: '](https://example.com)', placeholder: 'リンクテキスト' }),
+    'ordered-list': () => prefixSelectedLines((index) => `${index + 1}. `),
+    'unordered-list': () => prefixSelectedLines(() => '- '),
+    'code-block': () => wrapSelectedText({ before: '```\n', after: '\n```', placeholder: 'コード' }),
+  }
+
+  toolActions[action]?.()
 }
 
 const submitMessage = () => {
@@ -117,6 +195,8 @@ watch(
         type="button"
         class="tool-button"
         :aria-label="tool.name"
+        :disabled="disabled"
+        @click="applyMarkdownTool(tool.action)"
       >
         <component :is="tool.icon" :size="17" class="tool-icon" />
       </button>
@@ -214,8 +294,18 @@ watch(
 
 .tool-button:hover,
 .icon-button:hover {
-  background: var(--surface-subtle);
+  background: var(--surface-toolbar);
   color: var(--text-primary);
+}
+
+.tool-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+.tool-button:disabled:hover {
+  color: var(--bg-message-tools-icon);
+  background: transparent;
 }
 
 .tool-button:focus-visible,

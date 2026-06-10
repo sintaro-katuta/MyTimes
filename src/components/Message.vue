@@ -2,6 +2,7 @@
 import { computed, ref } from 'vue'
 import { Plus, X } from '@lucide/vue'
 import Icon from './Icon.vue'
+import { markdownToHtml } from '../lib/markdown'
 
 const props = defineProps({
   name: { type: String, required: true },
@@ -46,6 +47,8 @@ const selectedReactionOptions = computed(() =>
 const pickerReactionOptions = computed(() =>
   uniqueReactionOptions.value.filter((reaction) => reaction.imageSrc),
 )
+
+const renderedMessage = computed(() => markdownToHtml(props.message))
 
 const reactionTooltipStyle = computed(() => ({
   left: `${reactionTooltipPosition.value.left}px`,
@@ -117,7 +120,7 @@ const addImageReaction = () => {
         <p class="message-date">{{ props.date }}</p>
       </div>
       <div class="message-content">
-        <p class="message-message">{{ props.message }}</p>
+        <div class="message-message" v-html="renderedMessage"></div>
       </div>
       <div v-if="props.reactions.length > 0" class="message-reactions" aria-label="選択中のリアクション">
         <button
@@ -456,6 +459,111 @@ const addImageReaction = () => {
   line-height: 1.6;
   word-break: break-word;
   color: var(--text-secondary);
+}
+
+.message-message :deep(p),
+.message-message :deep(ul),
+.message-message :deep(ol),
+.message-message :deep(pre),
+.message-message :deep(blockquote),
+.message-message :deep(h1),
+.message-message :deep(h2),
+.message-message :deep(h3) {
+  margin: 0;
+}
+
+.message-message :deep(p + p),
+.message-message :deep(p + ul),
+.message-message :deep(p + ol),
+.message-message :deep(ul + p),
+.message-message :deep(ol + p),
+.message-message :deep(pre + p),
+.message-message :deep(p + pre),
+.message-message :deep(blockquote + p),
+.message-message :deep(p + blockquote),
+.message-message :deep(h1 + p),
+.message-message :deep(h2 + p),
+.message-message :deep(h3 + p) {
+  margin-top: 8px;
+}
+
+.message-message :deep(h1),
+.message-message :deep(h2),
+.message-message :deep(h3) {
+  color: var(--text-primary);
+  font-weight: 700;
+  line-height: 1.35;
+}
+
+.message-message :deep(h1) {
+  font-size: 18px;
+}
+
+.message-message :deep(h2) {
+  font-size: 17px;
+}
+
+.message-message :deep(h3) {
+  font-size: 16px;
+}
+
+.message-message :deep(ul),
+.message-message :deep(ol) {
+  padding-left: 1.35em;
+}
+
+.message-message :deep(li + li) {
+  margin-top: 2px;
+}
+
+.message-message :deep(strong) {
+  color: var(--text-primary);
+  font-weight: 700;
+}
+
+.message-message :deep(em) {
+  font-style: italic;
+}
+
+.message-message :deep(s) {
+  color: var(--text-tertiary);
+}
+
+.message-message :deep(a) {
+  color: var(--bg-primary);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.message-message :deep(code) {
+  padding: 2px 5px;
+  border-radius: 5px;
+  color: var(--text-primary);
+  background: var(--surface-toolbar);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 0.92em;
+}
+
+.message-message :deep(pre) {
+  max-width: 100%;
+  overflow-x: auto;
+  padding: 10px 12px;
+  border: 1px solid var(--border-subtle);
+  border-radius: 8px;
+  background: var(--surface-toolbar);
+}
+
+.message-message :deep(pre code) {
+  display: block;
+  padding: 0;
+  background: transparent;
+  white-space: pre;
+}
+
+.message-message :deep(blockquote) {
+  padding-left: 10px;
+  border-left: 3px solid var(--border-strong);
+  color: var(--text-tertiary);
 }
 
 .message-actions {
