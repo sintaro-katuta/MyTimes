@@ -70,20 +70,19 @@ const focusTextarea = () => {
   })
 }
 
-const wrapSelectedText = ({ before, after, placeholder }) => {
+const wrapSelectedText = ({ before, after }) => {
   const view = editorView.value
 
   if (!view) return
 
   view.dispatch(view.state.changeByRange((range) => {
-    const selectedText = view.state.doc.sliceString(range.from, range.to) || placeholder
+    const selectedText = view.state.doc.sliceString(range.from, range.to)
     const nextText = `${before}${selectedText}${after}`
-    const anchor = range.from + before.length
-    const head = anchor + selectedText.length
+    const cursorPosition = range.from + nextText.length - after.length
 
     return {
       changes: { from: range.from, to: range.to, insert: nextText },
-      range: EditorSelection.range(anchor, head),
+      range: EditorSelection.cursor(cursorPosition),
     }
   }))
   view.focus()
@@ -120,15 +119,15 @@ const applyMarkdownTool = (action) => {
   if (props.disabled) return
 
   const toolActions = {
-    bold: () => wrapSelectedText({ before: '**', after: '**', placeholder: '太字' }),
-    italic: () => wrapSelectedText({ before: '*', after: '*', placeholder: '斜体' }),
-    strikethrough: () => wrapSelectedText({ before: '~~', after: '~~', placeholder: '打ち消し線' }),
-    link: () => wrapSelectedText({ before: '[', after: '](https://example.com)', placeholder: 'リンクテキスト' }),
+    bold: () => wrapSelectedText({ before: '**', after: '**' }),
+    italic: () => wrapSelectedText({ before: '*', after: '*' }),
+    strikethrough: () => wrapSelectedText({ before: '~~', after: '~~' }),
+    link: () => wrapSelectedText({ before: '[', after: '](https://example.com)' }),
     'ordered-list': () => prefixSelectedLines((index) => `${index + 1}. `),
     'unordered-list': () => prefixSelectedLines(() => '- '),
     quote: () => prefixSelectedLines(() => '> ', /^\s*>\s?/),
-    'inline-code': () => wrapSelectedText({ before: '`', after: '`', placeholder: 'code' }),
-    'code-block': () => wrapSelectedText({ before: '```\n', after: '\n```', placeholder: 'コード' }),
+    'inline-code': () => wrapSelectedText({ before: '`', after: '`' }),
+    'code-block': () => wrapSelectedText({ before: '```\n', after: '\n```' }),
   }
 
   toolActions[action]?.()
