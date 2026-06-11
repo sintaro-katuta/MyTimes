@@ -1,6 +1,18 @@
 <script setup>
 import { computed, nextTick, onMounted, ref, watch } from 'vue'
-import { Bold, Italic, Strikethrough, List, ListOrdered, Link, SquareCode, Plus, SendHorizontal } from '@lucide/vue'
+import {
+  Bold,
+  Code,
+  Italic,
+  List,
+  ListOrdered,
+  Link,
+  Plus,
+  SendHorizontal,
+  SquareCode,
+  Strikethrough,
+  TextQuote,
+} from '@lucide/vue'
 import { markdownToHtml } from '../lib/markdown'
 
 const props = defineProps({
@@ -31,6 +43,8 @@ const tools = [
   { name: 'リンク', icon: Link, action: 'link' },
   { name: '番号付きリスト', icon: ListOrdered, action: 'ordered-list' },
   { name: '箇条書き', icon: List, action: 'unordered-list' },
+  { name: '引用', icon: TextQuote, action: 'quote' },
+  { name: 'インラインコード', icon: Code, action: 'inline-code' },
   { name: 'コードブロック', icon: SquareCode, action: 'code-block' },
 ]
 
@@ -105,7 +119,10 @@ const wrapSelectedText = ({ before, after, placeholder }) => {
   })
 }
 
-const prefixSelectedLines = (prefixFactory) => {
+const prefixSelectedLines = (
+  prefixFactory,
+  stripPattern = /^\s*(?:[-*]|\d+[.)])\s+/,
+) => {
   const { start, end } = selectedTextareaRange()
   const value = message.value
   const lineStart = value.lastIndexOf('\n', Math.max(start - 1, 0)) + 1
@@ -113,7 +130,7 @@ const prefixSelectedLines = (prefixFactory) => {
   const lineEnd = lineEndIndex === -1 ? value.length : lineEndIndex
   const selectedLines = value.slice(lineStart, lineEnd).split('\n')
   const nextText = selectedLines
-    .map((line, index) => `${prefixFactory(index)}${line.replace(/^\s*(?:[-*]|\d+[.)])\s+/, '')}`)
+    .map((line, index) => `${prefixFactory(index)}${line.replace(stripPattern, '')}`)
     .join('\n')
 
   updateMessageSelection({
@@ -133,6 +150,8 @@ const applyMarkdownTool = (action) => {
     link: () => wrapSelectedText({ before: '[', after: '](https://example.com)', placeholder: 'リンクテキスト' }),
     'ordered-list': () => prefixSelectedLines((index) => `${index + 1}. `),
     'unordered-list': () => prefixSelectedLines(() => '- '),
+    quote: () => prefixSelectedLines(() => '> ', /^\s*>\s?/),
+    'inline-code': () => wrapSelectedText({ before: '`', after: '`', placeholder: 'code' }),
     'code-block': () => wrapSelectedText({ before: '```\n', after: '\n```', placeholder: 'コード' }),
   }
 
@@ -200,6 +219,7 @@ watch(
         type="button"
         class="tool-button"
         :aria-label="tool.name"
+        :title="tool.name"
         :disabled="disabled"
         @click="applyMarkdownTool(tool.action)"
       >
