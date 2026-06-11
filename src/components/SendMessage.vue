@@ -88,6 +88,24 @@ const wrapSelectedText = ({ before, after }) => {
   view.focus()
 }
 
+const insertLink = () => {
+  const view = editorView.value
+
+  if (!view) return
+
+  view.dispatch(view.state.changeByRange((range) => {
+    const selectedText = view.state.doc.sliceString(range.from, range.to)
+    const nextText = `[${selectedText}]()`
+    const cursorPosition = range.from + nextText.length - 1
+
+    return {
+      changes: { from: range.from, to: range.to, insert: nextText },
+      range: EditorSelection.cursor(cursorPosition),
+    }
+  }))
+  view.focus()
+}
+
 const replaceMainSelectionLines = ({ prefixFactory, stripPattern }) => {
   const view = editorView.value
 
@@ -122,7 +140,7 @@ const applyMarkdownTool = (action) => {
     bold: () => wrapSelectedText({ before: '**', after: '**' }),
     italic: () => wrapSelectedText({ before: '*', after: '*' }),
     strikethrough: () => wrapSelectedText({ before: '~~', after: '~~' }),
-    link: () => wrapSelectedText({ before: '[', after: '](https://example.com)' }),
+    link: insertLink,
     'ordered-list': () => prefixSelectedLines((index) => `${index + 1}. `),
     'unordered-list': () => prefixSelectedLines(() => '- '),
     quote: () => prefixSelectedLines(() => '> ', /^\s*>\s?/),
