@@ -1,5 +1,9 @@
 <script setup>
-import { computed, nextTick, onMounted, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, shallowRef, watch } from 'vue'
+import { defaultKeymap, history, historyKeymap } from '@codemirror/commands'
+import { markdown } from '@codemirror/lang-markdown'
+import { Compartment, EditorSelection, EditorState } from '@codemirror/state'
+import { EditorView, keymap, placeholder } from '@codemirror/view'
 import {
   Bold,
   Code,
@@ -13,7 +17,6 @@ import {
   Strikethrough,
   TextQuote,
 } from '@lucide/vue'
-import { markdownToHtml } from '../lib/markdown'
 
 const props = defineProps({
   modelValue: {
@@ -48,8 +51,11 @@ const tools = [
   { name: 'コードブロック', icon: SquareCode, action: 'code-block' },
 ]
 
-const textareaRef = ref(null)
-const isComposing = ref(false)
+const editorRootRef = ref(null)
+const editorView = shallowRef(null)
+const isSyncingEditor = ref(false)
+const editableCompartment = new Compartment()
+const readOnlyCompartment = new Compartment()
 const message = computed({
   get: () => props.modelValue,
   set: (value) => {
@@ -57,87 +63,57 @@ const message = computed({
   },
 })
 const canSend = computed(() => message.value.trim().length > 0 && !props.isSending && !props.disabled)
-const hasMarkdownRendering = computed(() =>
-  /(^|\n)\s*(#{1,3}\s+|[-*]\s+|\d+[.)]\s+|>\s?)|\*\*[^*\n]+\*\*|__[^_\n]+__|\*[^*\n]+\*|_[^_\n]+_|~~[^~\n]+~~|`[^`\n]+`|```|\[[^\]\n]+\]\([^)]+\)/.test(message.value),
-)
-const renderedMessage = computed(() => markdownToHtml(message.value))
-
-const resizeTextarea = () => {
-  if (!textareaRef.value) return
-
-  textareaRef.value.style.height = 'auto'
-  textareaRef.value.style.height = `${textareaRef.value.scrollHeight}px`
-}
 
 const focusTextarea = () => {
   nextTick(() => {
-    textareaRef.value?.focus()
-  })
-}
-
-const updateMessageSelection = ({ value, selectionStart, selectionEnd }) => {
-  message.value = value
-
-  nextTick(() => {
-    if (!textareaRef.value) return
-
-    textareaRef.value.focus()
-    textareaRef.value.setSelectionRange(selectionStart, selectionEnd)
-    resizeTextarea()
-  })
-}
-
-const selectedTextareaRange = () => {
-  const textarea = textareaRef.value
-
-  return {
-    start: textarea?.selectionStart ?? message.value.length,
-    end: textarea?.selectionEnd ?? message.value.length,
-  }
-}
-
-const replaceSelectedText = ({ nextText, selectionStart, selectionEnd }) => {
-  const { start, end } = selectedTextareaRange()
-  const value = message.value
-
-  updateMessageSelection({
-    value: `${value.slice(0, start)}${nextText}${value.slice(end)}`,
-    selectionStart: start + selectionStart,
-    selectionEnd: start + selectionEnd,
+    editorView.value?.focus()
   })
 }
 
 const wrapSelectedText = ({ before, after, placeholder }) => {
-  const { start, end } = selectedTextareaRange()
-  const selectedText = message.value.slice(start, end) || placeholder
-  const nextText = `${before}${selectedText}${after}`
+  const view = editorView.value
 
-  replaceSelectedText({
-    nextText,
-    selectionStart: before.length,
-    selectionEnd: before.length + selectedText.length,
+  if (!view) return
+
+  view.dispatch(view.state.changeByRange((range) => {
+    const selectedText = view.state.doc.sliceString(range.from, range.to) || placeholder
+    const nextText = `${before}${selectedText}${after}`
+    const anchor = range.from + before.length
+    const head = anchor + selectedText.length
+
+    return {
+      changes: { from: range.from, to: range.to, insert: nextText },
+      range: EditorSelection.range(anchor, head),
+    }
+  }))
+  view.focus()
+}
+
+const replaceMainSelectionLines = ({ prefixFactory, stripPattern }) => {
+  const view = editorView.value
+
+  if (!view) return
+
+  const range = view.state.selection.main
+  const lineStart = view.state.doc.lineAt(range.from).from
+  const lineEnd = view.state.doc.lineAt(range.to).to
+  const selectedLines = view.state.doc.sliceString(lineStart, lineEnd).split('\n')
+  const nextText = selectedLines
+    .map((line, index) => `${prefixFactory(index)}${line.replace(stripPattern, '')}`)
+    .join('\n')
+
+  view.dispatch({
+    changes: { from: lineStart, to: lineEnd, insert: nextText },
+    selection: EditorSelection.range(lineStart, lineStart + nextText.length),
   })
+  view.focus()
 }
 
 const prefixSelectedLines = (
   prefixFactory,
   stripPattern = /^\s*(?:[-*]|\d+[.)])\s+/,
 ) => {
-  const { start, end } = selectedTextareaRange()
-  const value = message.value
-  const lineStart = value.lastIndexOf('\n', Math.max(start - 1, 0)) + 1
-  const lineEndIndex = value.indexOf('\n', end)
-  const lineEnd = lineEndIndex === -1 ? value.length : lineEndIndex
-  const selectedLines = value.slice(lineStart, lineEnd).split('\n')
-  const nextText = selectedLines
-    .map((line, index) => `${prefixFactory(index)}${line.replace(stripPattern, '')}`)
-    .join('\n')
-
-  updateMessageSelection({
-    value: `${value.slice(0, lineStart)}${nextText}${value.slice(lineEnd)}`,
-    selectionStart: lineStart,
-    selectionEnd: lineStart + nextText.length,
-  })
+  replaceMainSelectionLines({ prefixFactory, stripPattern })
 }
 
 const applyMarkdownTool = (action) => {
@@ -164,38 +140,83 @@ const submitMessage = () => {
   emit('submit')
 }
 
-const handleTextareaKeydown = (event) => {
-  if (event.key !== 'Enter') return
+const editorExtensions = () => [
+  history(),
+  markdown(),
+  placeholder('独り言を呟こう'),
+  EditorView.lineWrapping,
+  editableCompartment.of(EditorView.editable.of(!props.disabled)),
+  readOnlyCompartment.of(EditorState.readOnly.of(props.disabled)),
+  keymap.of([
+    {
+      key: 'Mod-Enter',
+      run: () => {
+        submitMessage()
+        return true
+      },
+    },
+    ...historyKeymap,
+    ...defaultKeymap,
+  ]),
+  EditorView.updateListener.of((update) => {
+    if (!update.docChanged || isSyncingEditor.value) return
 
-  if (event.isComposing || isComposing.value || event.keyCode === 229) return
-  if (!event.metaKey) return
+    emit('update:modelValue', update.state.doc.toString())
+  }),
+]
 
-  event.preventDefault()
-  submitMessage()
-}
+const syncEditorValue = (value) => {
+  const view = editorView.value
 
-const handleCompositionStart = () => {
-  isComposing.value = true
-}
+  if (!view || view.state.doc.toString() === value) return
 
-const handleCompositionEnd = () => {
-  isComposing.value = false
-  nextTick(() => {
-    resizeTextarea()
+  isSyncingEditor.value = true
+  view.dispatch({
+    changes: {
+      from: 0,
+      to: view.state.doc.length,
+      insert: value,
+    },
   })
+  isSyncingEditor.value = false
 }
 
 onMounted(() => {
-  nextTick(() => {
-    resizeTextarea()
+  if (!editorRootRef.value) return
+
+  editorView.value = new EditorView({
+    parent: editorRootRef.value,
+    state: EditorState.create({
+      doc: props.modelValue,
+      extensions: editorExtensions(),
+    }),
   })
+})
+
+onBeforeUnmount(() => {
+  editorView.value?.destroy()
+  editorView.value = null
 })
 
 watch(
   () => props.modelValue,
-  () => {
-    nextTick(() => {
-      resizeTextarea()
+  (value) => {
+    syncEditorValue(value)
+  },
+)
+
+watch(
+  () => props.disabled,
+  (disabled) => {
+    const view = editorView.value
+
+    if (!view) return
+
+    view.dispatch({
+      effects: [
+        editableCompartment.reconfigure(EditorView.editable.of(!disabled)),
+        readOnlyCompartment.reconfigure(EditorState.readOnly.of(disabled)),
+      ],
     })
   },
 )
@@ -230,29 +251,13 @@ watch(
     <div class="message-content">
       <label class="sr-only" for="message-input">メッセージを入力</label>
       <div
+        id="message-input"
+        ref="editorRootRef"
         class="message-editor"
-        :class="{ 'is-rendering-markdown': hasMarkdownRendering }"
-      >
-        <div
-          v-if="hasMarkdownRendering"
-          class="message-rendered"
-          aria-hidden="true"
-          v-html="renderedMessage"
-        ></div>
-        <textarea
-          id="message-input"
-          ref="textareaRef"
-          v-model="message"
-          placeholder="独り言を呟こう"
-          aria-label="メッセージを入力"
-          rows="1"
-          :disabled="disabled"
-          @input="resizeTextarea"
-          @compositionstart="handleCompositionStart"
-          @compositionend="handleCompositionEnd"
-          @keydown="handleTextareaKeydown"
-        />
-      </div>
+        role="textbox"
+        aria-label="メッセージを入力"
+        :aria-disabled="disabled"
+      ></div>
       <p v-if="errorMessage" class="message-error" role="alert">{{ errorMessage }}</p>
 
       <div class="message-actions">
@@ -346,8 +351,7 @@ watch(
 
 .tool-button:focus-visible,
 .icon-button:focus-visible,
-.send-button:focus-visible,
-textarea:focus-visible {
+.send-button:focus-visible {
   outline: none;
 }
 
@@ -358,171 +362,52 @@ textarea:focus-visible {
 }
 
 .message-editor {
-  position: relative;
   width: 100%;
   min-height: 24px;
 }
 
-textarea {
-  display: block;
-  width: 100%;
+.message-editor :deep(.cm-editor) {
   min-height: 24px;
   max-height: 240px;
-  box-sizing: border-box;
-  margin: 0;
-  padding: 4px 2px 0;
-  border: none;
-  outline: none;
-  overflow-y: auto;
-  resize: none;
   background: transparent;
   color: var(--text-tertiary);
+  font-family: inherit;
   font-size: var(--font-size);
   line-height: 1.5;
 }
 
-.message-editor.is-rendering-markdown textarea {
-  position: absolute;
-  z-index: 2;
-  inset: 0;
-  height: 100% !important;
-  color: transparent;
+.message-editor :deep(.cm-editor.cm-focused) {
+  outline: none;
+}
+
+.message-editor :deep(.cm-scroller) {
+  max-height: 240px;
+  overflow-y: auto;
+  font-family: inherit;
+  line-height: 1.5;
+}
+
+.message-editor :deep(.cm-content) {
+  min-height: 24px;
+  padding: 4px 2px 0;
   caret-color: var(--text-primary);
 }
 
-.message-editor.is-rendering-markdown textarea::selection {
-  color: transparent;
-  background: var(--focus-ring);
+.message-editor :deep(.cm-line) {
+  padding: 0;
 }
 
-textarea::placeholder {
+.message-editor :deep(.cm-placeholder) {
   color: var(--icon-muted);
 }
 
-textarea:disabled {
+.message-editor :deep(.cm-activeLine) {
+  background: transparent;
+}
+
+.message-editor[aria-disabled='true'] {
   cursor: not-allowed;
   opacity: 0.58;
-}
-
-.message-rendered {
-  position: relative;
-  z-index: 1;
-  min-height: 24px;
-  padding: 4px 2px 0;
-  max-height: 240px;
-  overflow-y: auto;
-  color: var(--text-secondary);
-  font-size: 15px;
-  line-height: 1.6;
-  pointer-events: none;
-  word-break: break-word;
-}
-
-.message-rendered :deep(p),
-.message-rendered :deep(ul),
-.message-rendered :deep(ol),
-.message-rendered :deep(pre),
-.message-rendered :deep(blockquote),
-.message-rendered :deep(h1),
-.message-rendered :deep(h2),
-.message-rendered :deep(h3) {
-  margin: 0;
-}
-
-.message-rendered :deep(p + p),
-.message-rendered :deep(p + ul),
-.message-rendered :deep(p + ol),
-.message-rendered :deep(ul + p),
-.message-rendered :deep(ol + p),
-.message-rendered :deep(pre + p),
-.message-rendered :deep(p + pre),
-.message-rendered :deep(blockquote + p),
-.message-rendered :deep(p + blockquote),
-.message-rendered :deep(h1 + p),
-.message-rendered :deep(h2 + p),
-.message-rendered :deep(h3 + p) {
-  margin-top: 8px;
-}
-
-.message-rendered :deep(h1),
-.message-rendered :deep(h2),
-.message-rendered :deep(h3) {
-  padding-bottom: 4px;
-  border-bottom: 1px solid var(--border-subtle);
-  color: var(--text-primary);
-  font-weight: 700;
-  line-height: 1.35;
-}
-
-.message-rendered :deep(h1) {
-  font-size: 18px;
-}
-
-.message-rendered :deep(h2) {
-  font-size: 17px;
-}
-
-.message-rendered :deep(h3) {
-  font-size: 16px;
-}
-
-.message-rendered :deep(ul),
-.message-rendered :deep(ol) {
-  padding-left: 1.35em;
-}
-
-.message-rendered :deep(li + li) {
-  margin-top: 2px;
-}
-
-.message-rendered :deep(strong) {
-  color: var(--text-primary);
-  font-weight: 700;
-}
-
-.message-rendered :deep(em) {
-  font-style: italic;
-}
-
-.message-rendered :deep(s) {
-  color: var(--text-tertiary);
-}
-
-.message-rendered :deep(a) {
-  color: var(--bg-primary);
-  text-decoration: underline;
-  text-underline-offset: 3px;
-}
-
-.message-rendered :deep(code) {
-  padding: 2px 5px;
-  border-radius: 5px;
-  color: var(--text-primary);
-  background: var(--surface-toolbar);
-  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
-  font-size: 0.92em;
-}
-
-.message-rendered :deep(pre) {
-  max-width: 100%;
-  overflow-x: auto;
-  padding: 10px 12px;
-  border: 1px solid var(--border-subtle);
-  border-radius: 8px;
-  background: var(--surface-toolbar);
-}
-
-.message-rendered :deep(pre code) {
-  display: block;
-  padding: 0;
-  background: transparent;
-  white-space: pre;
-}
-
-.message-rendered :deep(blockquote) {
-  padding-left: 10px;
-  border-left: 3px solid var(--border-strong);
-  color: var(--text-tertiary);
 }
 
 .message-actions,
@@ -604,7 +489,7 @@ textarea:disabled {
     padding: 8px 8px 6px;
   }
 
-  textarea {
+  .message-editor {
     min-height: 24px;
   }
 }
