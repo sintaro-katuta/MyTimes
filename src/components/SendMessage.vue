@@ -1,6 +1,7 @@
 <script setup>
 import { computed, nextTick, onMounted, ref, watch } from 'vue'
 import { Bold, Italic, Strikethrough, List, ListOrdered, Link, SquareCode, Plus, SendHorizontal } from '@lucide/vue'
+import { markdownToHtml } from '../lib/markdown'
 
 const props = defineProps({
   modelValue: {
@@ -42,6 +43,10 @@ const message = computed({
   },
 })
 const canSend = computed(() => message.value.trim().length > 0 && !props.isSending && !props.disabled)
+const hasMarkdownPreview = computed(() =>
+  /(^|\n)\s*(#{1,3}\s+|[-*]\s+|\d+[.)]\s+|>\s?)|\*\*[^*\n]+\*\*|__[^_\n]+__|\*[^*\n]+\*|_[^_\n]+_|~~[^~\n]+~~|`[^`\n]+`|```|\[[^\]\n]+\]\([^)]+\)/.test(message.value),
+)
+const renderedMessage = computed(() => markdownToHtml(message.value))
 
 const resizeTextarea = () => {
   if (!textareaRef.value) return
@@ -217,6 +222,12 @@ watch(
         @compositionend="handleCompositionEnd"
         @keydown="handleTextareaKeydown"
       />
+      <div
+        v-if="hasMarkdownPreview"
+        class="message-preview"
+        aria-hidden="true"
+        v-html="renderedMessage"
+      ></div>
       <p v-if="errorMessage" class="message-error" role="alert">{{ errorMessage }}</p>
 
       <div class="message-actions">
@@ -346,6 +357,126 @@ textarea::placeholder {
 textarea:disabled {
   cursor: not-allowed;
   opacity: 0.58;
+}
+
+.message-preview {
+  width: 100%;
+  padding: 8px 10px;
+  border: 1px solid var(--border-subtle);
+  border-radius: 8px;
+  color: var(--text-secondary);
+  background: color-mix(in srgb, var(--surface-toolbar) 58%, transparent);
+  font-size: 15px;
+  line-height: 1.6;
+  pointer-events: none;
+  word-break: break-word;
+}
+
+.message-preview :deep(p),
+.message-preview :deep(ul),
+.message-preview :deep(ol),
+.message-preview :deep(pre),
+.message-preview :deep(blockquote),
+.message-preview :deep(h1),
+.message-preview :deep(h2),
+.message-preview :deep(h3) {
+  margin: 0;
+}
+
+.message-preview :deep(p + p),
+.message-preview :deep(p + ul),
+.message-preview :deep(p + ol),
+.message-preview :deep(ul + p),
+.message-preview :deep(ol + p),
+.message-preview :deep(pre + p),
+.message-preview :deep(p + pre),
+.message-preview :deep(blockquote + p),
+.message-preview :deep(p + blockquote),
+.message-preview :deep(h1 + p),
+.message-preview :deep(h2 + p),
+.message-preview :deep(h3 + p) {
+  margin-top: 8px;
+}
+
+.message-preview :deep(h1),
+.message-preview :deep(h2),
+.message-preview :deep(h3) {
+  padding-bottom: 4px;
+  border-bottom: 1px solid var(--border-subtle);
+  color: var(--text-primary);
+  font-weight: 700;
+  line-height: 1.35;
+}
+
+.message-preview :deep(h1) {
+  font-size: 18px;
+}
+
+.message-preview :deep(h2) {
+  font-size: 17px;
+}
+
+.message-preview :deep(h3) {
+  font-size: 16px;
+}
+
+.message-preview :deep(ul),
+.message-preview :deep(ol) {
+  padding-left: 1.35em;
+}
+
+.message-preview :deep(li + li) {
+  margin-top: 2px;
+}
+
+.message-preview :deep(strong) {
+  color: var(--text-primary);
+  font-weight: 700;
+}
+
+.message-preview :deep(em) {
+  font-style: italic;
+}
+
+.message-preview :deep(s) {
+  color: var(--text-tertiary);
+}
+
+.message-preview :deep(a) {
+  color: var(--bg-primary);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.message-preview :deep(code) {
+  padding: 2px 5px;
+  border-radius: 5px;
+  color: var(--text-primary);
+  background: var(--surface-toolbar);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 0.92em;
+}
+
+.message-preview :deep(pre) {
+  max-width: 100%;
+  overflow-x: auto;
+  padding: 10px 12px;
+  border: 1px solid var(--border-subtle);
+  border-radius: 8px;
+  background: var(--surface-toolbar);
+}
+
+.message-preview :deep(pre code) {
+  display: block;
+  padding: 0;
+  background: transparent;
+  white-space: pre;
+}
+
+.message-preview :deep(blockquote) {
+  padding-left: 10px;
+  border-left: 3px solid var(--border-strong);
+  color: var(--text-tertiary);
 }
 
 .message-actions,
