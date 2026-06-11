@@ -143,8 +143,8 @@ const submitMessage = () => {
 const handleTextareaKeydown = (event) => {
   if (event.key !== 'Enter') return
 
-  if (event.shiftKey) return
   if (event.isComposing || isComposing.value || event.keyCode === 229) return
+  if (!event.metaKey) return
 
   event.preventDefault()
   submitMessage()
