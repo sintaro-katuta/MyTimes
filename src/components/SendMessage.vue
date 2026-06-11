@@ -43,7 +43,7 @@ const message = computed({
   },
 })
 const canSend = computed(() => message.value.trim().length > 0 && !props.isSending && !props.disabled)
-const hasMarkdownPreview = computed(() =>
+const hasMarkdownRendering = computed(() =>
   /(^|\n)\s*(#{1,3}\s+|[-*]\s+|\d+[.)]\s+|>\s?)|\*\*[^*\n]+\*\*|__[^_\n]+__|\*[^*\n]+\*|_[^_\n]+_|~~[^~\n]+~~|`[^`\n]+`|```|\[[^\]\n]+\]\([^)]+\)/.test(message.value),
 )
 const renderedMessage = computed(() => markdownToHtml(message.value))
@@ -209,25 +209,30 @@ watch(
 
     <div class="message-content">
       <label class="sr-only" for="message-input">メッセージを入力</label>
-      <textarea
-        id="message-input"
-        ref="textareaRef"
-        v-model="message"
-        placeholder="独り言を呟こう"
-        aria-label="メッセージを入力"
-        rows="1"
-        :disabled="disabled"
-        @input="resizeTextarea"
-        @compositionstart="handleCompositionStart"
-        @compositionend="handleCompositionEnd"
-        @keydown="handleTextareaKeydown"
-      />
       <div
-        v-if="hasMarkdownPreview"
-        class="message-preview"
-        aria-hidden="true"
-        v-html="renderedMessage"
-      ></div>
+        class="message-editor"
+        :class="{ 'is-rendering-markdown': hasMarkdownRendering }"
+      >
+        <div
+          v-if="hasMarkdownRendering"
+          class="message-rendered"
+          aria-hidden="true"
+          v-html="renderedMessage"
+        ></div>
+        <textarea
+          id="message-input"
+          ref="textareaRef"
+          v-model="message"
+          placeholder="独り言を呟こう"
+          aria-label="メッセージを入力"
+          rows="1"
+          :disabled="disabled"
+          @input="resizeTextarea"
+          @compositionstart="handleCompositionStart"
+          @compositionend="handleCompositionEnd"
+          @keydown="handleTextareaKeydown"
+        />
+      </div>
       <p v-if="errorMessage" class="message-error" role="alert">{{ errorMessage }}</p>
 
       <div class="message-actions">
@@ -332,6 +337,12 @@ textarea:focus-visible {
   transform: scale(0.97);
 }
 
+.message-editor {
+  position: relative;
+  width: 100%;
+  min-height: 24px;
+}
+
 textarea {
   display: block;
   width: 100%;
@@ -350,6 +361,20 @@ textarea {
   line-height: 1.5;
 }
 
+.message-editor.is-rendering-markdown textarea {
+  position: absolute;
+  z-index: 2;
+  inset: 0;
+  height: 100% !important;
+  color: transparent;
+  caret-color: var(--text-primary);
+}
+
+.message-editor.is-rendering-markdown textarea::selection {
+  color: transparent;
+  background: var(--focus-ring);
+}
+
 textarea::placeholder {
   color: var(--icon-muted);
 }
@@ -359,48 +384,49 @@ textarea:disabled {
   opacity: 0.58;
 }
 
-.message-preview {
-  width: 100%;
-  padding: 8px 10px;
-  border: 1px solid var(--border-subtle);
-  border-radius: 8px;
+.message-rendered {
+  position: relative;
+  z-index: 1;
+  min-height: 24px;
+  padding: 4px 2px 0;
+  max-height: 240px;
+  overflow-y: auto;
   color: var(--text-secondary);
-  background: color-mix(in srgb, var(--surface-toolbar) 58%, transparent);
   font-size: 15px;
   line-height: 1.6;
   pointer-events: none;
   word-break: break-word;
 }
 
-.message-preview :deep(p),
-.message-preview :deep(ul),
-.message-preview :deep(ol),
-.message-preview :deep(pre),
-.message-preview :deep(blockquote),
-.message-preview :deep(h1),
-.message-preview :deep(h2),
-.message-preview :deep(h3) {
+.message-rendered :deep(p),
+.message-rendered :deep(ul),
+.message-rendered :deep(ol),
+.message-rendered :deep(pre),
+.message-rendered :deep(blockquote),
+.message-rendered :deep(h1),
+.message-rendered :deep(h2),
+.message-rendered :deep(h3) {
   margin: 0;
 }
 
-.message-preview :deep(p + p),
-.message-preview :deep(p + ul),
-.message-preview :deep(p + ol),
-.message-preview :deep(ul + p),
-.message-preview :deep(ol + p),
-.message-preview :deep(pre + p),
-.message-preview :deep(p + pre),
-.message-preview :deep(blockquote + p),
-.message-preview :deep(p + blockquote),
-.message-preview :deep(h1 + p),
-.message-preview :deep(h2 + p),
-.message-preview :deep(h3 + p) {
+.message-rendered :deep(p + p),
+.message-rendered :deep(p + ul),
+.message-rendered :deep(p + ol),
+.message-rendered :deep(ul + p),
+.message-rendered :deep(ol + p),
+.message-rendered :deep(pre + p),
+.message-rendered :deep(p + pre),
+.message-rendered :deep(blockquote + p),
+.message-rendered :deep(p + blockquote),
+.message-rendered :deep(h1 + p),
+.message-rendered :deep(h2 + p),
+.message-rendered :deep(h3 + p) {
   margin-top: 8px;
 }
 
-.message-preview :deep(h1),
-.message-preview :deep(h2),
-.message-preview :deep(h3) {
+.message-rendered :deep(h1),
+.message-rendered :deep(h2),
+.message-rendered :deep(h3) {
   padding-bottom: 4px;
   border-bottom: 1px solid var(--border-subtle);
   color: var(--text-primary);
@@ -408,47 +434,47 @@ textarea:disabled {
   line-height: 1.35;
 }
 
-.message-preview :deep(h1) {
+.message-rendered :deep(h1) {
   font-size: 18px;
 }
 
-.message-preview :deep(h2) {
+.message-rendered :deep(h2) {
   font-size: 17px;
 }
 
-.message-preview :deep(h3) {
+.message-rendered :deep(h3) {
   font-size: 16px;
 }
 
-.message-preview :deep(ul),
-.message-preview :deep(ol) {
+.message-rendered :deep(ul),
+.message-rendered :deep(ol) {
   padding-left: 1.35em;
 }
 
-.message-preview :deep(li + li) {
+.message-rendered :deep(li + li) {
   margin-top: 2px;
 }
 
-.message-preview :deep(strong) {
+.message-rendered :deep(strong) {
   color: var(--text-primary);
   font-weight: 700;
 }
 
-.message-preview :deep(em) {
+.message-rendered :deep(em) {
   font-style: italic;
 }
 
-.message-preview :deep(s) {
+.message-rendered :deep(s) {
   color: var(--text-tertiary);
 }
 
-.message-preview :deep(a) {
+.message-rendered :deep(a) {
   color: var(--bg-primary);
   text-decoration: underline;
   text-underline-offset: 3px;
 }
 
-.message-preview :deep(code) {
+.message-rendered :deep(code) {
   padding: 2px 5px;
   border-radius: 5px;
   color: var(--text-primary);
@@ -457,7 +483,7 @@ textarea:disabled {
   font-size: 0.92em;
 }
 
-.message-preview :deep(pre) {
+.message-rendered :deep(pre) {
   max-width: 100%;
   overflow-x: auto;
   padding: 10px 12px;
@@ -466,14 +492,14 @@ textarea:disabled {
   background: var(--surface-toolbar);
 }
 
-.message-preview :deep(pre code) {
+.message-rendered :deep(pre code) {
   display: block;
   padding: 0;
   background: transparent;
   white-space: pre;
 }
 
-.message-preview :deep(blockquote) {
+.message-rendered :deep(blockquote) {
   padding-left: 10px;
   border-left: 3px solid var(--border-strong);
   color: var(--text-tertiary);
