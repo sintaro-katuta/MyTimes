@@ -88,6 +88,59 @@ const wrapSelectedText = ({ before, after }) => {
   view.focus()
 }
 
+const toggleWrappedText = ({ before, after }) => {
+  const view = editorView.value
+
+  if (!view) return
+
+  view.dispatch(view.state.changeByRange((range) => {
+    const doc = view.state.doc
+    const selectedText = doc.sliceString(range.from, range.to)
+    const selectedStartsWithBefore = selectedText.startsWith(before)
+    const selectedEndsWithAfter = selectedText.endsWith(after)
+    const hasWrappedSelection = selectedStartsWithBefore && selectedEndsWithAfter
+    const beforeSelection = doc.sliceString(
+      Math.max(0, range.from - before.length),
+      range.from,
+    )
+    const afterSelection = doc.sliceString(
+      range.to,
+      Math.min(doc.length, range.to + after.length),
+    )
+
+    if (hasWrappedSelection) {
+      const nextText = selectedText.slice(before.length, selectedText.length - after.length)
+      const cursorPosition = range.from + nextText.length
+
+      return {
+        changes: { from: range.from, to: range.to, insert: nextText },
+        range: EditorSelection.cursor(cursorPosition),
+      }
+    }
+
+    if (beforeSelection === before && afterSelection === after) {
+      const cursorPosition = range.to - before.length
+
+      return {
+        changes: [
+          { from: range.to, to: range.to + after.length },
+          { from: range.from - before.length, to: range.from },
+        ],
+        range: EditorSelection.cursor(cursorPosition),
+      }
+    }
+
+    const nextText = `${before}${selectedText}${after}`
+    const cursorPosition = range.from + nextText.length - after.length
+
+    return {
+      changes: { from: range.from, to: range.to, insert: nextText },
+      range: EditorSelection.cursor(cursorPosition),
+    }
+  }))
+  view.focus()
+}
+
 const insertLink = () => {
   const view = editorView.value
 
@@ -137,9 +190,9 @@ const applyMarkdownTool = (action) => {
   if (props.disabled) return
 
   const toolActions = {
-    bold: () => wrapSelectedText({ before: '**', after: '**' }),
-    italic: () => wrapSelectedText({ before: '*', after: '*' }),
-    strikethrough: () => wrapSelectedText({ before: '~~', after: '~~' }),
+    bold: () => toggleWrappedText({ before: '**', after: '**' }),
+    italic: () => toggleWrappedText({ before: '*', after: '*' }),
+    strikethrough: () => toggleWrappedText({ before: '~~', after: '~~' }),
     link: insertLink,
     'ordered-list': () => prefixSelectedLines((index) => `${index + 1}. `),
     'unordered-list': () => prefixSelectedLines(() => '- '),
