@@ -63,19 +63,24 @@ const renderBlockquote = (lines) => `<blockquote>${renderParagraph(lines)}</bloc
 
 const normalizeCodeLanguage = (language) => String(language ?? '').trim().toLowerCase().replace(/[^\w#+.-]/g, '')
 
+const highlightSmartQuotedStrings = (html) => html.replace(
+  /([“‘])([^“”‘’\n]+)([”’])/g,
+  '<span class="hljs-string">$1$2$3</span>',
+)
+
 const highlightedCode = (code, language, highlightCode) => {
   if (!highlightCode) return escapeHtml(code)
 
   const normalizedLanguage = normalizeCodeLanguage(language)
 
   if (normalizedLanguage && hljs.getLanguage(normalizedLanguage)) {
-    return hljs.highlight(code, {
+    return highlightSmartQuotedStrings(hljs.highlight(code, {
       language: normalizedLanguage,
       ignoreIllegals: true,
-    }).value
+    }).value)
   }
 
-  return hljs.highlightAuto(code).value
+  return highlightSmartQuotedStrings(hljs.highlightAuto(code).value)
 }
 
 export const markdownToHtml = (markdown, options = {}) => {

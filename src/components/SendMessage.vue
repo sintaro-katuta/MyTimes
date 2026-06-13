@@ -819,6 +819,8 @@ watch(
 }
 
 .message-editor :deep(code) {
+  display: inline-block;
+  min-width: 1ch;
   padding: 2px 5px;
   border-radius: 5px;
   color: var(--text-primary);

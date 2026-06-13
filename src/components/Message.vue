@@ -562,6 +562,7 @@ const handleMessageClick = async (event) => {
 }
 
 .message-message :deep(pre) {
+  position: relative;
   max-width: 100%;
   overflow-x: auto;
   padding: 10px 12px;
@@ -570,11 +571,30 @@ const handleMessageClick = async (event) => {
   background: var(--surface-toolbar);
 }
 
+.message-message :deep(pre[data-language]) {
+  padding-top: 28px;
+}
+
+.message-message :deep(pre[data-language]::before) {
+  content: attr(data-language);
+  position: absolute;
+  top: 7px;
+  right: 10px;
+  color: var(--text-tertiary);
+  font-size: 11px;
+  line-height: 1;
+  text-transform: uppercase;
+}
+
 .message-message :deep(pre code) {
   display: block;
   padding: 0;
   background: transparent;
   white-space: pre;
+}
+
+.message-message :deep(pre code.hljs) {
+  color: #c9d1d9;
 }
 
 .message-message :deep(blockquote) {
