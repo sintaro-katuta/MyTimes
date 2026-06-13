@@ -359,6 +359,33 @@ const insertBlockAtCursor = (block, caretTarget) => {
   updateActiveTools()
 }
 
+const insertInlineAtCursor = (inline, caretTarget) => {
+  editorRef.value?.focus()
+
+  const range = currentEditorRange()
+
+  if (!range) {
+    editorRef.value?.append(inline)
+    setCaretInsideNode(caretTarget)
+    syncModelValue()
+    updateActiveTools()
+    return
+  }
+
+  const fragment = range.extractContents()
+
+  if (fragment.textContent?.trim()) {
+    caretTarget.append(fragment)
+  } else {
+    caretTarget.append(document.createTextNode(''))
+  }
+
+  range.insertNode(inline)
+  setCaretInsideNode(caretTarget)
+  syncModelValue()
+  updateActiveTools()
+}
+
 const startList = (tagName) => {
   const list = document.createElement(tagName)
   const item = document.createElement('li')
@@ -374,13 +401,17 @@ const startBlockquote = () => {
 }
 
 const applyInlineCode = () => {
-  const text = selectedText()
+  const code = document.createElement('code')
 
-  if (!text) return
+  insertInlineAtCursor(code, code)
+}
 
-  document.execCommand('insertHTML', false, `<code>${escapeHtml(text)}</code>`)
-  syncModelValue()
-  updateActiveTools()
+const startCodeBlock = () => {
+  const pre = document.createElement('pre')
+  const code = document.createElement('code')
+
+  pre.append(code)
+  insertBlockAtCursor(pre, code)
 }
 
 const applyMarkdownTool = (action) => {
@@ -395,7 +426,7 @@ const applyMarkdownTool = (action) => {
     'unordered-list': () => startList('ul'),
     quote: startBlockquote,
     'inline-code': applyInlineCode,
-    'code-block': () => runCommand('formatBlock', 'pre'),
+    'code-block': startCodeBlock,
   }
 
   toolActions[action]?.()
