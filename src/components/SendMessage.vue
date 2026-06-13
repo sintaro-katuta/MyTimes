@@ -161,12 +161,6 @@ const syncModelValue = () => {
   emit('update:modelValue', nextMarkdown)
 }
 
-const isInsideIgnoredMarkdownLinkParent = (node) => {
-  const parent = node.parentElement
-
-  return Boolean(parent?.closest('a, code, pre'))
-}
-
 const setCaretAfterNode = (node) => {
   const selection = window.getSelection()
   const range = document.createRange()
@@ -206,6 +200,92 @@ const closestElement = (node) => {
   return node.parentElement
 }
 
+const textWithLineBreaks = (node) => {
+  if (node.nodeType === Node.TEXT_NODE) return removeEditingMarkers(node.textContent ?? '')
+  if (node.nodeType !== Node.ELEMENT_NODE && node.nodeType !== Node.DOCUMENT_FRAGMENT_NODE) return ''
+
+  if (node.nodeType === Node.ELEMENT_NODE && node.tagName.toLowerCase() === 'br') return '\n'
+
+  const element = node.nodeType === Node.ELEMENT_NODE ? node : null
+  const tagName = element?.tagName.toLowerCase()
+  const content = Array.from(node.childNodes).map(textWithLineBreaks).join('')
+
+  if (['div', 'p', 'li', 'blockquote', 'pre'].includes(tagName)) return `${content}\n`
+
+  return content
+}
+
+const currentPlainTextLine = () => {
+  const range = currentEditorRange()
+
+  if (!range || !editorRef.value) return ''
+
+  const lineRange = document.createRange()
+  lineRange.setStart(editorRef.value, 0)
+  lineRange.setEnd(range.startContainer, range.startOffset)
+
+  const text = textWithLineBreaks(lineRange.cloneContents())
+  lineRange.detach()
+
+  return text.split('\n').at(-1) ?? ''
+}
+
+const manualMarkdownContinuation = (line) => {
+  const orderedMatch = line.match(/^(\s*)(\d+)([.)])\s+/)
+
+  if (orderedMatch) return `${orderedMatch[1]}${Number(orderedMatch[2]) + 1}${orderedMatch[3]} `
+
+  const unorderedMatch = line.match(/^(\s*)([-*+])\s+/)
+
+  if (unorderedMatch) return `${unorderedMatch[1]}${unorderedMatch[2]} `
+
+  const quoteMatch = line.match(/^(\s*>\s?)/)
+
+  if (quoteMatch) return quoteMatch[1]
+
+  return ''
+}
+
+const insertPlainTextAtCursor = (text) => {
+  const range = currentEditorRange()
+  const selection = window.getSelection()
+
+  if (!range || !selection) return
+
+  const fragment = document.createDocumentFragment()
+  const parts = text.split('\n')
+  let lastInsertedNode = null
+
+  parts.forEach((part, index) => {
+    if (index > 0) {
+      const br = document.createElement('br')
+      fragment.append(br)
+      lastInsertedNode = br
+    }
+
+    if (part) {
+      const textNode = document.createTextNode(part)
+      fragment.append(textNode)
+      lastInsertedNode = textNode
+    }
+  })
+
+  range.deleteContents()
+  range.insertNode(fragment)
+
+  if (lastInsertedNode) {
+    range.setStartAfter(lastInsertedNode)
+    range.setEndAfter(lastInsertedNode)
+  } else {
+    range.collapse(false)
+  }
+
+  selection.removeAllRanges()
+  selection.addRange(range)
+  syncModelValue()
+  updateActiveTools()
+}
+
 const isInlineCodeElement = (element) => element?.tagName?.toLowerCase() === 'code' && !element.closest('pre')
 
 const isMarkerTextNode = (node) => node?.nodeType === Node.TEXT_NODE && node.textContent === editingMarker
@@ -226,60 +306,8 @@ const ensureAllInlineCodeBoundaries = () => {
   editorRef.value?.querySelectorAll('code').forEach(ensureInlineCodeBoundaries)
 }
 
-const convertMarkdownLinksInEditor = () => {
-  if (!editorRef.value) return false
-
-  const selection = window.getSelection()
-  const anchorNode = selection?.anchorNode ?? null
-  const anchorOffset = selection?.anchorOffset ?? 0
-  const treeWalker = document.createTreeWalker(editorRef.value, window.NodeFilter.SHOW_TEXT)
-  const textNodes = []
-  let currentNode = treeWalker.nextNode()
-
-  while (currentNode) {
-    textNodes.push(currentNode)
-    currentNode = treeWalker.nextNode()
-  }
-
-  for (const textNode of textNodes) {
-    if (isInsideIgnoredMarkdownLinkParent(textNode)) continue
-
-    const text = textNode.textContent ?? ''
-    const match = text.match(/\[([^\]\n]+)\]\(([^)\s]+)\)/)
-
-    if (!match || match.index === undefined) continue
-
-    const beforeText = text.slice(0, match.index)
-    const afterText = text.slice(match.index + match[0].length)
-    const link = document.createElement('a')
-    const fragment = document.createDocumentFragment()
-
-    link.setAttribute('href', match[2])
-    link.textContent = match[1]
-
-    if (beforeText) fragment.append(document.createTextNode(beforeText))
-    fragment.append(link)
-    if (afterText) fragment.append(document.createTextNode(afterText))
-
-    const shouldMoveCaret = anchorNode === textNode && anchorOffset >= match.index + match[0].length
-    textNode.parentNode?.replaceChild(fragment, textNode)
-
-    if (shouldMoveCaret) {
-      setCaretAfterNode(link)
-    }
-
-    return true
-  }
-
-  return false
-}
-
 const handleEditorInput = () => {
   if (isComposing.value) return
-
-  while (convertMarkdownLinksInEditor()) {
-    // Continue until pasted text no longer contains Markdown link syntax.
-  }
 
   if (isEditorEmpty() && editorRef.value?.innerHTML) {
     editorRef.value.innerHTML = ''
@@ -593,10 +621,30 @@ const exitInlineCodeOnEnter = (event) => {
   return true
 }
 
+const continueManualMarkdownLine = (event) => {
+  if (event.key !== 'Enter' || event.metaKey || event.shiftKey || event.isComposing || event.keyCode === 229) {
+    return false
+  }
+
+  const range = currentEditorRange()
+
+  if (!range || closestElement(range.startContainer)?.closest('code, pre, blockquote')) return false
+
+  const continuation = manualMarkdownContinuation(currentPlainTextLine())
+
+  if (!continuation) return false
+
+  event.preventDefault()
+  insertPlainTextAtCursor(`\n${continuation}`)
+
+  return true
+}
+
 const handleKeydown = (event) => {
   if (removeEmptyCodeOnDelete(event)) return
   if (exitInlineCodeOnEnter(event)) return
   if (exitBlockquoteOnSecondEnter(event)) return
+  if (continueManualMarkdownLine(event)) return
 
   if (event.key !== 'Enter') return
 
