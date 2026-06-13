@@ -119,7 +119,12 @@ const markdownFromBlock = (node, index = 0) => {
       .map((line) => `> ${line}`)
       .join('\n')
   }
-  if (tagName === 'pre') return `\`\`\`\n${removeEditingMarkers(element.textContent ?? '').replace(/\n$/, '')}\n\`\`\``
+  if (tagName === 'pre') {
+    const language = element.dataset.language ?? element.querySelector('code')?.className.match(/language-([\w#+.-]+)/)?.[1] ?? ''
+    const codeFence = language ? `\`\`\`${language}` : '```'
+
+    return `${codeFence}\n${removeEditingMarkers(element.textContent ?? '').replace(/\n$/, '')}\n\`\`\``
+  }
   if (tagName === 'ul') {
     return Array.from(element.children)
       .filter((child) => child.tagName.toLowerCase() === 'li')
@@ -562,7 +567,7 @@ const syncEditorValue = (value) => {
   if (currentMarkdown === value) return
 
   isSyncingEditor.value = true
-  editorRef.value.innerHTML = value ? markdownToHtml(value) : ''
+  editorRef.value.innerHTML = value ? markdownToHtml(value, { highlightCode: false }) : ''
   ensureAllInlineCodeBoundaries()
   isSyncingEditor.value = false
 }

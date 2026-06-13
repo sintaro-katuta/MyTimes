@@ -1,3 +1,5 @@
+import hljs from 'highlight.js/lib/common'
+
 const escapeHtml = (value) => String(value)
   .replaceAll('&', '&amp;')
   .replaceAll('<', '&lt;')
@@ -59,7 +61,25 @@ const renderList = (items, ordered) => {
 
 const renderBlockquote = (lines) => `<blockquote>${renderParagraph(lines)}</blockquote>`
 
-export const markdownToHtml = (markdown) => {
+const normalizeCodeLanguage = (language) => String(language ?? '').trim().toLowerCase().replace(/[^\w#+.-]/g, '')
+
+const highlightedCode = (code, language, highlightCode) => {
+  if (!highlightCode) return escapeHtml(code)
+
+  const normalizedLanguage = normalizeCodeLanguage(language)
+
+  if (normalizedLanguage && hljs.getLanguage(normalizedLanguage)) {
+    return hljs.highlight(code, {
+      language: normalizedLanguage,
+      ignoreIllegals: true,
+    }).value
+  }
+
+  return hljs.highlightAuto(code).value
+}
+
+export const markdownToHtml = (markdown, options = {}) => {
+  const { highlightCode = true } = options
   const lines = String(markdown ?? '').replace(/\r\n?/g, '\n').split('\n')
   const blocks = []
   let paragraphLines = []
@@ -67,6 +87,7 @@ export const markdownToHtml = (markdown) => {
   let listOrdered = false
   let blockquoteLines = []
   let codeLines = []
+  let codeLanguage = ''
   let inCodeBlock = false
 
   const flushParagraph = () => {
@@ -88,12 +109,19 @@ export const markdownToHtml = (markdown) => {
   }
 
   const flushCodeBlock = () => {
-    blocks.push(`<pre><code>${escapeHtml(codeLines.join('\n'))}</code></pre>`)
+    const normalizedLanguage = normalizeCodeLanguage(codeLanguage)
+    const languageClass = normalizedLanguage ? ` class="hljs language-${escapeAttribute(normalizedLanguage)}"` : ' class="hljs"'
+    const languageAttribute = normalizedLanguage ? ` data-language="${escapeAttribute(normalizedLanguage)}"` : ''
+
+    blocks.push(`<pre${languageAttribute}><code${languageClass}>${highlightedCode(codeLines.join('\n'), normalizedLanguage, highlightCode)}</code></pre>`)
     codeLines = []
+    codeLanguage = ''
   }
 
   for (const line of lines) {
-    if (/^\s*```/.test(line)) {
+    const codeFenceMatch = line.match(/^\s*```([\w#+.-]+)?\s*$/)
+
+    if (codeFenceMatch) {
       if (inCodeBlock) {
         flushCodeBlock()
         inCodeBlock = false
@@ -101,6 +129,7 @@ export const markdownToHtml = (markdown) => {
         flushParagraph()
         flushList()
         flushBlockquote()
+        codeLanguage = codeFenceMatch[1] ?? ''
         inCodeBlock = true
       }
       continue
