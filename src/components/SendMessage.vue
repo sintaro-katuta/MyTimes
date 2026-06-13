@@ -51,15 +51,18 @@ const tools = [
 
 const editorRef = ref(null)
 const isSyncingEditor = ref(false)
+const isComposing = ref(false)
 const isLinkModalOpen = ref(false)
 const linkText = ref('')
 const linkUrl = ref('')
 const savedSelection = ref(null)
+const lastEmittedMarkdown = ref(props.modelValue)
 const activeTools = ref({
   bold: false,
   italic: false,
   strikethrough: false,
 })
+const editingMarker = '\u200B'
 const message = computed({
   get: () => props.modelValue,
   set: (value) => {
@@ -74,11 +77,13 @@ const focusTextarea = () => {
   })
 }
 
-const isEditorEmpty = () => !editorRef.value?.textContent?.trim()
+const removeEditingMarkers = (value) => String(value).replaceAll(editingMarker, '')
+
+const isEditorEmpty = () => !removeEditingMarkers(editorRef.value?.textContent ?? '').trim()
 
 const inlineMarkdownFromNode = (node) => {
   if (node.nodeType === Node.TEXT_NODE) {
-    return node.textContent ?? ''
+    return removeEditingMarkers(node.textContent ?? '')
   }
 
   if (node.nodeType !== Node.ELEMENT_NODE) return ''
@@ -114,7 +119,7 @@ const markdownFromBlock = (node, index = 0) => {
       .map((line) => `> ${line}`)
       .join('\n')
   }
-  if (tagName === 'pre') return `\`\`\`\n${element.textContent?.replace(/\n$/, '') ?? ''}\n\`\`\``
+  if (tagName === 'pre') return `\`\`\`\n${removeEditingMarkers(element.textContent ?? '').replace(/\n$/, '')}\n\`\`\``
   if (tagName === 'ul') {
     return Array.from(element.children)
       .filter((child) => child.tagName.toLowerCase() === 'li')
@@ -144,7 +149,10 @@ const editorMarkdown = () => {
 const syncModelValue = () => {
   if (isSyncingEditor.value) return
 
-  emit('update:modelValue', editorMarkdown())
+  const nextMarkdown = editorMarkdown()
+
+  lastEmittedMarkdown.value = nextMarkdown
+  emit('update:modelValue', nextMarkdown)
 }
 
 const isInsideIgnoredMarkdownLinkParent = (node) => {
@@ -183,6 +191,13 @@ const currentEditorRange = () => {
   if (!editorRef.value.contains(range.commonAncestorContainer)) return null
 
   return range
+}
+
+const closestElement = (node) => {
+  if (!node) return null
+  if (node.nodeType === Node.ELEMENT_NODE) return node
+
+  return node.parentElement
 }
 
 const convertMarkdownLinksInEditor = () => {
@@ -234,6 +249,8 @@ const convertMarkdownLinksInEditor = () => {
 }
 
 const handleEditorInput = () => {
+  if (isComposing.value) return
+
   while (convertMarkdownLinksInEditor()) {
     // Continue until pasted text no longer contains Markdown link syntax.
   }
@@ -244,6 +261,15 @@ const handleEditorInput = () => {
 
   syncModelValue()
   updateActiveTools()
+}
+
+const handleCompositionStart = () => {
+  isComposing.value = true
+}
+
+const handleCompositionEnd = () => {
+  isComposing.value = false
+  handleEditorInput()
 }
 
 const runCommand = (command, value = null) => {
@@ -365,6 +391,10 @@ const insertInlineAtCursor = (inline, caretTarget) => {
   const range = currentEditorRange()
 
   if (!range) {
+    if (!caretTarget.textContent) {
+      caretTarget.append(document.createTextNode(editingMarker))
+    }
+
     editorRef.value?.append(inline)
     setCaretInsideNode(caretTarget)
     syncModelValue()
@@ -377,7 +407,7 @@ const insertInlineAtCursor = (inline, caretTarget) => {
   if (fragment.textContent?.trim()) {
     caretTarget.append(fragment)
   } else {
-    caretTarget.append(document.createTextNode(''))
+    caretTarget.append(document.createTextNode(editingMarker))
   }
 
   range.insertNode(inline)
@@ -440,7 +470,31 @@ const updateActiveTools = () => {
   }
 }
 
+const removeEmptyCodeOnDelete = (event) => {
+  if (event.key !== 'Backspace' && event.key !== 'Delete') return false
+
+  const range = currentEditorRange()
+
+  if (!range || !range.collapsed) return false
+
+  const code = closestElement(range.startContainer)?.closest('code')
+
+  if (!code || removeEditingMarkers(code.textContent ?? '').trim()) return false
+
+  const removable = code.closest('pre') ?? code
+
+  event.preventDefault()
+  setCaretAfterNode(removable)
+  removable.remove()
+  syncModelValue()
+  updateActiveTools()
+
+  return true
+}
+
 const handleKeydown = (event) => {
+  if (removeEmptyCodeOnDelete(event)) return
+
   if (event.key !== 'Enter') return
 
   if (event.metaKey && !event.isComposing && event.keyCode !== 229) {
@@ -474,6 +528,8 @@ onMounted(() => {
 watch(
   () => props.modelValue,
   (value) => {
+    if (value === lastEmittedMarkdown.value || isComposing.value) return
+
     syncEditorValue(value)
   },
 )
@@ -528,6 +584,8 @@ watch(
         aria-label="メッセージを入力"
         :aria-disabled="disabled"
         @input="handleEditorInput"
+        @compositionstart="handleCompositionStart"
+        @compositionend="handleCompositionEnd"
         @keydown="handleKeydown"
         @keyup="updateActiveTools"
         @mouseup="updateActiveTools"
