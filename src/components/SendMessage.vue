@@ -55,6 +55,7 @@ const isComposing = ref(false)
 const isLinkModalOpen = ref(false)
 const linkText = ref('')
 const linkUrl = ref('')
+const linkTextInputRef = ref(null)
 const savedSelection = ref(null)
 const lastEmittedMarkdown = ref(props.modelValue)
 const lastBlockquoteEnterTarget = ref(null)
@@ -372,6 +373,9 @@ const openLinkModal = () => {
   linkText.value = selectedText()
   linkUrl.value = ''
   isLinkModalOpen.value = true
+  nextTick(() => {
+    linkTextInputRef.value?.focus()
+  })
 }
 
 const closeLinkModal = () => {
@@ -746,34 +750,6 @@ watch(
       ></div>
       <p v-if="errorMessage" class="message-error" role="alert">{{ errorMessage }}</p>
 
-      <div v-if="isLinkModalOpen" class="link-dialog" role="dialog" aria-label="リンクを作成">
-        <div class="link-dialog-header">
-          <p class="link-dialog-title">リンク</p>
-          <button type="button" class="link-dialog-close" aria-label="閉じる" @click="closeLinkModal">
-            <X :size="17" aria-hidden="true" />
-          </button>
-        </div>
-        <label class="link-field">
-          <span>テキスト</span>
-          <input v-model="linkText" type="text" autocomplete="off" />
-        </label>
-        <label class="link-field">
-          <span>URL</span>
-          <input v-model="linkUrl" type="url" autocomplete="off" />
-        </label>
-        <div class="link-dialog-actions">
-          <button type="button" class="secondary-action" @click="closeLinkModal">キャンセル</button>
-          <button
-            type="button"
-            class="primary-action"
-            :disabled="!linkText.trim() || !linkUrl.trim()"
-            @click="applyLink"
-          >
-            適用
-          </button>
-        </div>
-      </div>
-
       <div class="message-actions">
         <div class="leading-actions">
           <button type="button" class="icon-button" aria-label="添付を追加">
@@ -794,6 +770,41 @@ watch(
         </div>
       </div>
     </div>
+
+    <Teleport to="body">
+      <div
+        v-if="isLinkModalOpen"
+        class="link-dialog-backdrop"
+        @mousedown.self="closeLinkModal"
+      >
+        <form class="link-dialog" role="dialog" aria-modal="true" aria-labelledby="link-dialog-title" @submit.prevent="applyLink" @keydown.esc.prevent="closeLinkModal">
+          <div class="link-dialog-header">
+            <h2 id="link-dialog-title" class="link-dialog-title">リンクを追加する</h2>
+            <button type="button" class="link-dialog-close" aria-label="閉じる" @click="closeLinkModal">
+              <X :size="20" aria-hidden="true" />
+            </button>
+          </div>
+          <label class="link-field">
+            <span>テキスト</span>
+            <input ref="linkTextInputRef" v-model="linkText" type="text" autocomplete="off" />
+          </label>
+          <label class="link-field">
+            <span>リンク</span>
+            <input v-model="linkUrl" type="url" autocomplete="off" />
+          </label>
+          <div class="link-dialog-actions">
+            <button type="button" class="secondary-action" @click="closeLinkModal">キャンセル</button>
+            <button
+              type="submit"
+              class="primary-action"
+              :disabled="!linkText.trim() || !linkUrl.trim()"
+            >
+              保存する
+            </button>
+          </div>
+        </form>
+      </div>
+    </Teleport>
   </section>
 </template>
 
@@ -962,99 +973,6 @@ watch(
   opacity: 0.58;
 }
 
-.link-dialog {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  padding: 12px;
-  border: 1px solid var(--border-subtle);
-  border-radius: 10px;
-  color: var(--text-primary);
-  background: var(--surface-panel);
-  box-shadow: var(--shadow-panel);
-}
-
-.link-dialog-header,
-.link-dialog-actions {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-}
-
-.link-dialog-title {
-  margin: 0;
-  font-size: 13px;
-  font-weight: 700;
-}
-
-.link-dialog-close {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 28px;
-  height: 28px;
-  border: none;
-  border-radius: 8px;
-  background: transparent;
-  color: var(--icon-default);
-  cursor: pointer;
-}
-
-.link-dialog-close:hover {
-  color: var(--text-primary);
-  background: var(--surface-toolbar);
-}
-
-.link-field {
-  display: grid;
-  grid-template-columns: 72px minmax(0, 1fr);
-  align-items: center;
-  gap: 8px;
-  color: var(--text-tertiary);
-  font-size: 13px;
-}
-
-.link-field input {
-  width: 100%;
-  box-sizing: border-box;
-  padding: 8px 10px;
-  border: 1px solid var(--border-subtle);
-  border-radius: 8px;
-  outline: none;
-  color: var(--text-primary);
-  background: var(--surface-input);
-}
-
-.link-field input:focus {
-  border-color: var(--border-strong);
-  box-shadow: 0 0 0 3px var(--focus-ring);
-}
-
-.secondary-action,
-.primary-action {
-  border: none;
-  border-radius: 8px;
-  padding: 7px 12px;
-  cursor: pointer;
-  font-size: 13px;
-}
-
-.secondary-action {
-  color: var(--text-secondary);
-  background: var(--surface-toolbar);
-}
-
-.primary-action {
-  color: var(--text-inverse);
-  background: var(--bg-primary);
-}
-
-.primary-action:disabled {
-  cursor: not-allowed;
-  opacity: 0.45;
-}
-
 .message-actions,
 .leading-actions,
 .trailing-actions {
@@ -1102,6 +1020,146 @@ watch(
   color: var(--bg-error);
   font-size: 12px;
   line-height: 1.5;
+}
+
+.link-dialog-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 4000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: color-mix(in srgb, #000 64%, transparent);
+}
+
+.link-dialog {
+  display: flex;
+  width: min(540px, calc(100vw - 48px));
+  max-height: min(620px, calc(100vh - 48px));
+  box-sizing: border-box;
+  flex-direction: column;
+  gap: 20px;
+  padding: 24px;
+  overflow-y: auto;
+  border: 1px solid color-mix(in srgb, var(--border-default) 72%, transparent);
+  border-radius: 8px;
+  color: var(--text-primary);
+  background: var(--surface-panel);
+  box-shadow: var(--shadow-modal);
+}
+
+.link-dialog-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.link-dialog-title {
+  margin: 0;
+  color: var(--text-primary);
+  font-size: 24px;
+  font-weight: 800;
+  line-height: 1.25;
+}
+
+.link-dialog-close {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  flex: 0 0 auto;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--icon-default);
+  cursor: pointer;
+}
+
+.link-dialog-close:hover,
+.link-dialog-close:focus-visible {
+  color: var(--text-primary);
+  background: var(--surface-toolbar);
+  outline: none;
+}
+
+.link-field {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  color: var(--text-secondary);
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.link-field input {
+  width: 100%;
+  box-sizing: border-box;
+  min-height: 42px;
+  padding: 9px 12px;
+  border: 1px solid var(--border-strong);
+  border-radius: 6px;
+  outline: none;
+  color: var(--text-primary);
+  background: var(--surface-input);
+  font: inherit;
+}
+
+.link-field input:focus {
+  border-color: var(--bg-primary);
+  box-shadow:
+    0 0 0 1px var(--bg-primary),
+    0 0 0 4px color-mix(in srgb, var(--bg-primary) 24%, transparent);
+}
+
+.link-dialog-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 12px;
+  padding-top: 16px;
+}
+
+.secondary-action,
+.primary-action {
+  min-height: 38px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  padding: 8px 16px;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 800;
+  line-height: 1;
+}
+
+.secondary-action {
+  border-color: var(--border-strong);
+  color: var(--text-primary);
+  background: transparent;
+}
+
+.secondary-action:hover,
+.secondary-action:focus-visible {
+  background: var(--surface-toolbar);
+  outline: none;
+}
+
+.primary-action {
+  color: var(--text-inverse);
+  background: var(--bg-primary);
+}
+
+.primary-action:hover:not(:disabled),
+.primary-action:focus-visible:not(:disabled) {
+  background: var(--bg-primary-hover);
+  outline: none;
+}
+
+.primary-action:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
 }
 
 .tool-icon,
