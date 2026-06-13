@@ -163,6 +163,28 @@ const setCaretAfterNode = (node) => {
   selection?.addRange(range)
 }
 
+const setCaretInsideNode = (node) => {
+  const selection = window.getSelection()
+  const range = document.createRange()
+
+  range.selectNodeContents(node)
+  range.collapse(false)
+  selection?.removeAllRanges()
+  selection?.addRange(range)
+}
+
+const currentEditorRange = () => {
+  const selection = window.getSelection()
+
+  if (!editorRef.value || !selection || selection.rangeCount === 0) return null
+
+  const range = selection.getRangeAt(0)
+
+  if (!editorRef.value.contains(range.commonAncestorContainer)) return null
+
+  return range
+}
+
 const convertMarkdownLinksInEditor = () => {
   if (!editorRef.value) return false
 
@@ -310,8 +332,45 @@ const applyLink = () => {
   updateActiveTools()
 }
 
-const toggleBlockquote = () => {
-  runCommand('formatBlock', 'blockquote')
+const insertBlockAtCursor = (block, caretTarget) => {
+  editorRef.value?.focus()
+
+  const range = currentEditorRange()
+
+  if (!range) {
+    editorRef.value?.append(block)
+    setCaretInsideNode(caretTarget)
+    syncModelValue()
+    updateActiveTools()
+    return
+  }
+
+  const fragment = range.extractContents()
+
+  if (fragment.textContent?.trim()) {
+    caretTarget.append(fragment)
+  } else {
+    caretTarget.append(document.createElement('br'))
+  }
+
+  range.insertNode(block)
+  setCaretInsideNode(caretTarget)
+  syncModelValue()
+  updateActiveTools()
+}
+
+const startList = (tagName) => {
+  const list = document.createElement(tagName)
+  const item = document.createElement('li')
+
+  list.append(item)
+  insertBlockAtCursor(list, item)
+}
+
+const startBlockquote = () => {
+  const blockquote = document.createElement('blockquote')
+
+  insertBlockAtCursor(blockquote, blockquote)
 }
 
 const applyInlineCode = () => {
@@ -332,9 +391,9 @@ const applyMarkdownTool = (action) => {
     italic: () => runCommand('italic'),
     strikethrough: () => runCommand('strikeThrough'),
     link: openLinkModal,
-    'ordered-list': () => runCommand('insertOrderedList'),
-    'unordered-list': () => runCommand('insertUnorderedList'),
-    quote: toggleBlockquote,
+    'ordered-list': () => startList('ol'),
+    'unordered-list': () => startList('ul'),
+    quote: startBlockquote,
     'inline-code': applyInlineCode,
     'code-block': () => runCommand('formatBlock', 'pre'),
   }
