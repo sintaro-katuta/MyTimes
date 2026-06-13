@@ -200,6 +200,26 @@ const closestElement = (node) => {
   return node.parentElement
 }
 
+const isInlineCodeElement = (element) => element?.tagName?.toLowerCase() === 'code' && !element.closest('pre')
+
+const isMarkerTextNode = (node) => node?.nodeType === Node.TEXT_NODE && node.textContent === editingMarker
+
+const ensureInlineCodeBoundaries = (code) => {
+  if (!isInlineCodeElement(code)) return
+
+  if (!isMarkerTextNode(code.previousSibling)) {
+    code.before(document.createTextNode(editingMarker))
+  }
+
+  if (!isMarkerTextNode(code.nextSibling)) {
+    code.after(document.createTextNode(editingMarker))
+  }
+}
+
+const ensureAllInlineCodeBoundaries = () => {
+  editorRef.value?.querySelectorAll('code').forEach(ensureInlineCodeBoundaries)
+}
+
 const convertMarkdownLinksInEditor = () => {
   if (!editorRef.value) return false
 
@@ -396,6 +416,7 @@ const insertInlineAtCursor = (inline, caretTarget) => {
     }
 
     editorRef.value?.append(inline)
+    ensureInlineCodeBoundaries(inline)
     setCaretInsideNode(caretTarget)
     syncModelValue()
     updateActiveTools()
@@ -411,6 +432,7 @@ const insertInlineAtCursor = (inline, caretTarget) => {
   }
 
   range.insertNode(inline)
+  ensureInlineCodeBoundaries(inline)
   setCaretInsideNode(caretTarget)
   syncModelValue()
   updateActiveTools()
@@ -492,8 +514,31 @@ const removeEmptyCodeOnDelete = (event) => {
   return true
 }
 
+const exitInlineCodeOnEnter = (event) => {
+  if (event.key !== 'Enter' || event.metaKey || event.shiftKey || event.isComposing || event.keyCode === 229) {
+    return false
+  }
+
+  const range = currentEditorRange()
+
+  if (!range) return false
+
+  const code = closestElement(range.startContainer)?.closest('code')
+
+  if (!isInlineCodeElement(code)) return false
+
+  event.preventDefault()
+  ensureInlineCodeBoundaries(code)
+  setCaretAfterNode(code.nextSibling)
+  syncModelValue()
+  updateActiveTools()
+
+  return true
+}
+
 const handleKeydown = (event) => {
   if (removeEmptyCodeOnDelete(event)) return
+  if (exitInlineCodeOnEnter(event)) return
 
   if (event.key !== 'Enter') return
 
@@ -518,6 +563,7 @@ const syncEditorValue = (value) => {
 
   isSyncingEditor.value = true
   editorRef.value.innerHTML = value ? markdownToHtml(value) : ''
+  ensureAllInlineCodeBoundaries()
   isSyncingEditor.value = false
 }
 
