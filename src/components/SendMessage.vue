@@ -57,6 +57,7 @@ const linkText = ref('')
 const linkUrl = ref('')
 const savedSelection = ref(null)
 const lastEmittedMarkdown = ref(props.modelValue)
+const lastBlockquoteEnterTarget = ref(null)
 const activeTools = ref({
   bold: false,
   italic: false,
@@ -519,6 +520,57 @@ const removeEmptyCodeOnDelete = (event) => {
   return true
 }
 
+const removeEmptyTrailingBlockquoteLine = (blockquote) => {
+  const lastChild = blockquote.lastElementChild
+
+  if (lastChild && !removeEditingMarkers(lastChild.textContent ?? '').trim()) {
+    lastChild.remove()
+    return
+  }
+
+  const lastChildNode = blockquote.lastChild
+
+  if (lastChildNode?.nodeName === 'BR') {
+    lastChildNode.remove()
+  }
+}
+
+const exitBlockquoteOnSecondEnter = (event) => {
+  if (event.key !== 'Enter' || event.metaKey || event.shiftKey || event.isComposing || event.keyCode === 229) {
+    lastBlockquoteEnterTarget.value = null
+    return false
+  }
+
+  const range = currentEditorRange()
+
+  if (!range) return false
+
+  const blockquote = closestElement(range.startContainer)?.closest('blockquote')
+
+  if (!blockquote) {
+    lastBlockquoteEnterTarget.value = null
+    return false
+  }
+
+  if (lastBlockquoteEnterTarget.value !== blockquote) {
+    lastBlockquoteEnterTarget.value = blockquote
+    return false
+  }
+
+  event.preventDefault()
+  removeEmptyTrailingBlockquoteLine(blockquote)
+
+  const paragraph = document.createElement('div')
+  paragraph.append(document.createElement('br'))
+  blockquote.after(paragraph)
+  setCaretInsideNode(paragraph)
+  lastBlockquoteEnterTarget.value = null
+  syncModelValue()
+  updateActiveTools()
+
+  return true
+}
+
 const exitInlineCodeOnEnter = (event) => {
   if (event.key !== 'Enter' || event.metaKey || event.shiftKey || event.isComposing || event.keyCode === 229) {
     return false
@@ -544,6 +596,7 @@ const exitInlineCodeOnEnter = (event) => {
 const handleKeydown = (event) => {
   if (removeEmptyCodeOnDelete(event)) return
   if (exitInlineCodeOnEnter(event)) return
+  if (exitBlockquoteOnSecondEnter(event)) return
 
   if (event.key !== 'Enter') return
 
@@ -614,6 +667,7 @@ watch(
         class="tool-button"
         :class="{ active: activeTools[tool.action] }"
         :aria-label="tool.name"
+        :aria-pressed="activeTools[tool.action] ?? undefined"
         :title="tool.name"
         :disabled="disabled"
         @mousedown.prevent
@@ -741,15 +795,24 @@ watch(
   width: 30px;
   height: 30px;
   border-radius: 8px;
+  border: 1px solid transparent;
   background: transparent;
   color: var(--bg-message-tools-icon);
 }
 
 .tool-button:hover,
-.tool-button.active,
 .icon-button:hover {
   background: var(--surface-toolbar);
   color: var(--text-primary);
+}
+
+.tool-button.active {
+  border-color: color-mix(in srgb, var(--bg-primary) 64%, var(--border-default));
+  color: var(--text-primary);
+  background: color-mix(in srgb, var(--bg-primary) 24%, var(--surface-toolbar));
+  box-shadow:
+    inset 0 0 0 1px color-mix(in srgb, var(--bg-primary) 26%, transparent),
+    0 0 0 2px color-mix(in srgb, var(--bg-primary) 12%, transparent);
 }
 
 .tool-button:disabled {

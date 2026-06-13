@@ -84,7 +84,7 @@ const highlightedCode = (code, language, highlightCode) => {
 }
 
 export const markdownToHtml = (markdown, options = {}) => {
-  const { highlightCode = true } = options
+  const { highlightCode = true, includeCodeCopy = false } = options
   const lines = String(markdown ?? '').replace(/\r\n?/g, '\n').split('\n')
   const blocks = []
   let paragraphLines = []
@@ -117,8 +117,11 @@ export const markdownToHtml = (markdown, options = {}) => {
     const normalizedLanguage = normalizeCodeLanguage(codeLanguage)
     const languageClass = normalizedLanguage ? ` class="hljs language-${escapeAttribute(normalizedLanguage)}"` : ' class="hljs"'
     const languageAttribute = normalizedLanguage ? ` data-language="${escapeAttribute(normalizedLanguage)}"` : ''
+    const copyButton = includeCodeCopy
+      ? '<button type="button" class="code-copy-button" aria-label="コードをコピー">コピー</button>'
+      : ''
 
-    blocks.push(`<pre${languageAttribute}><code${languageClass}>${highlightedCode(codeLines.join('\n'), normalizedLanguage, highlightCode)}</code></pre>`)
+    blocks.push(`<pre${languageAttribute}>${copyButton}<code${languageClass}>${highlightedCode(codeLines.join('\n'), normalizedLanguage, highlightCode)}</code></pre>`)
     codeLines = []
     codeLanguage = ''
   }

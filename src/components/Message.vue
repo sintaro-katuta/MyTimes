@@ -49,7 +49,7 @@ const pickerReactionOptions = computed(() =>
   uniqueReactionOptions.value.filter((reaction) => reaction.imageSrc),
 )
 
-const renderedMessage = computed(() => markdownToHtml(props.message))
+const renderedMessage = computed(() => markdownToHtml(props.message, { includeCodeCopy: true }))
 
 const reactionTooltipStyle = computed(() => ({
   left: `${reactionTooltipPosition.value.left}px`,
@@ -107,6 +107,28 @@ const addImageReaction = () => {
 }
 
 const handleMessageClick = async (event) => {
+  const copyButton = event.target.closest?.('.code-copy-button')
+
+  if (copyButton) {
+    event.preventDefault()
+
+    const code = copyButton.closest('pre')?.querySelector('code')
+
+    if (!code) return
+
+    try {
+      await navigator.clipboard.writeText(code.textContent ?? '')
+      copyButton.textContent = 'コピー済み'
+      window.setTimeout(() => {
+        copyButton.textContent = 'コピー'
+      }, 1400)
+    } catch (error) {
+      console.error('コードをコピーできませんでした', error)
+    }
+
+    return
+  }
+
   const link = event.target.closest?.('a[href]')
 
   if (!link) return
@@ -565,25 +587,44 @@ const handleMessageClick = async (event) => {
   position: relative;
   max-width: 100%;
   overflow-x: auto;
-  padding: 10px 12px;
+  padding: 32px 12px 10px;
   border: 1px solid var(--border-subtle);
   border-radius: 8px;
   background: var(--surface-toolbar);
-}
-
-.message-message :deep(pre[data-language]) {
-  padding-top: 28px;
 }
 
 .message-message :deep(pre[data-language]::before) {
   content: attr(data-language);
   position: absolute;
   top: 7px;
-  right: 10px;
+  left: 10px;
   color: var(--text-tertiary);
   font-size: 11px;
   line-height: 1;
   text-transform: uppercase;
+}
+
+.message-message :deep(.code-copy-button) {
+  position: absolute;
+  top: 5px;
+  right: 8px;
+  min-width: 54px;
+  min-height: 24px;
+  padding: 4px 8px;
+  border: 1px solid var(--border-subtle);
+  border-radius: 6px;
+  color: var(--text-tertiary);
+  background: color-mix(in srgb, var(--surface-panel) 80%, transparent);
+  cursor: pointer;
+  font-size: 11px;
+  line-height: 1;
+}
+
+.message-message :deep(.code-copy-button:hover),
+.message-message :deep(.code-copy-button:focus-visible) {
+  color: var(--text-primary);
+  background: var(--surface-elevated);
+  outline: none;
 }
 
 .message-message :deep(pre code) {
