@@ -124,6 +124,10 @@ const handleMessageClick = async (event) => {
       }, 1400)
     } catch (error) {
       console.error('コードをコピーできませんでした', error)
+      copyButton.textContent = '失敗'
+      window.setTimeout(() => {
+        copyButton.textContent = 'コピー'
+      }, 1400)
     }
 
     return

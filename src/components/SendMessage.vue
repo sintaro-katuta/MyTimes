@@ -105,7 +105,7 @@ const inlineMarkdownFromNode = (node) => {
 }
 
 const markdownFromBlock = (node, index = 0) => {
-  if (node.nodeType === Node.TEXT_NODE) return node.textContent ?? ''
+  if (node.nodeType === Node.TEXT_NODE) return removeEditingMarkers(node.textContent ?? '')
   if (node.nodeType !== Node.ELEMENT_NODE) return ''
 
   const element = node
@@ -143,11 +143,45 @@ const markdownFromBlock = (node, index = 0) => {
   return inlineMarkdownFromNode(element).trim()
 }
 
+const isBlockMarkdownNode = (node) => {
+  if (node.nodeType !== Node.ELEMENT_NODE) return false
+
+  return ['div', 'p', 'ul', 'ol', 'li', 'blockquote', 'pre'].includes(node.tagName.toLowerCase())
+}
+
+const markdownFromInlineNodes = (nodes) => nodes
+  .map(inlineMarkdownFromNode)
+  .join('')
+  .replace(/\n{3,}/g, '\n\n')
+  .trim()
+
 const editorMarkdown = () => {
   if (!editorRef.value || isEditorEmpty()) return ''
 
-  return Array.from(editorRef.value.childNodes)
-    .map(markdownFromBlock)
+  const blocks = []
+  let inlineNodes = []
+
+  const flushInlineNodes = () => {
+    if (inlineNodes.length === 0) return
+
+    const markdown = markdownFromInlineNodes(inlineNodes)
+
+    if (markdown) blocks.push(markdown)
+    inlineNodes = []
+  }
+
+  Array.from(editorRef.value.childNodes).forEach((node) => {
+    if (isBlockMarkdownNode(node)) {
+      flushInlineNodes()
+      blocks.push(markdownFromBlock(node))
+      return
+    }
+
+    inlineNodes.push(node)
+  })
+  flushInlineNodes()
+
+  return blocks
     .join('\n')
     .replace(/\n{3,}/g, '\n\n')
     .trim()
