@@ -1,52 +1,143 @@
 # MyTimes
 
-Vue 3 と Tauri で構成したデスクトップアプリケーションです。
+MyTimes は、思考や作業ログをチャット感覚で Markdown に残すローカルファーストのデスクトップアプリです。
 
-## DB
+Obsidian やエディタで最初からきれいなノートを書こうとすると手が止まる場面でも、分報のように短い投稿を積み上げられることを目指しています。v1 では、登録したローカルフォルダー配下の `.md` ファイルを読み書きし、本文の正本は Markdown ファイルとして残します。
 
-ローカル DB は `@tauri-apps/plugin-sql` の SQLite 接続を使います。
+## v1 でできること
 
-- 接続名: `sqlite:mytimes.db`
-- SQL プラグイン初期化: `src-tauri/src/lib.rs`
-- マイグレーション: `src-tauri/migrations/1_create_initial_tables.sql`
-- 権限設定: `src-tauri/capabilities/default.json`
+- ローカルフォルダーをプロジェクトとして登録する
+- プロジェクト配下の `.md` ファイルを一覧表示する
+- ノートをチャット表示で読み、下部の入力欄から投稿する
+- プロジェクトを選んだ状態で投稿すると、当日の `YYYY-MM-DD.md` を作成または更新する
+- ノートを選んだ状態で投稿すると、その Markdown ファイルの末尾へ追記する
+- Markdown 表示に切り替えて本文を直接編集、保存、再読み込みする
+- ノートの作成、名前変更、削除を行う
+- メッセージ検索、リアクション、カスタム画像リアクションを使う
+- 表示テーマ、フォントサイズ、UI 密度、起動時に開くワークスペースなどを設定する
 
-`messages` と `folders` テーブルは Tauri 起動時のマイグレーションで作成されます。フロントエンドからは `Database.load('sqlite:mytimes.db')` で同じ DB を読み込み、`SELECT` と `INSERT` を実行します。
+## v1 では見送っていること
 
-- `folders`: 現行実装ではアプリ内の仮想フォルダツリーとMarkdownエクスポート先パスを保持します。Markdown正本化では廃止し、一番左のペインに表示するプロジェクト情報は `projects` テーブルへ移行します。
-- `messages.folder_id`: メッセージが属するフォルダを保持します。
+- ログイン、クラウド同期、複数端末同期
+- ファイル監視による外部編集のリアルタイム反映
+- Obsidian vault との専用連携
+- 複数プロジェクトを横断した編集コンテキスト
+- Markdown 以外のノート形式の読み書き
 
-Markdown をノート本文の正本とし、SQLite を表示、検索、メタ情報、同期判定のためのキャッシュとして扱う方針は [Markdown正本化設計](docs/markdown-canonical.md) にまとめています。
+外部エディタで Markdown を変更した場合は、対象ノートを開き直すか、ノート上部の `再読み込み` を使って反映します。
 
-一番左の選択単位をプロジェクトとして扱い、その右隣のペインにフォルダー / ファイルを表示する方針は [プロジェクト構造設計](docs/project-structure.md) にまとめています。
+## GitHub Release から使う
 
-## 開発
+配布版を使う場合は、GitHub Releases から環境に合うビルド成果物をダウンロードします。
+
+1. [Releases](https://github.com/sintaro-katuta/MyTimes/releases) を開く
+2. 最新リリースの Assets から macOS 用のファイルをダウンロードする
+3. ダウンロードしたアプリを開く
+4. OS の警告が出る場合は、システム設定のセキュリティ項目から実行を許可する
+
+v1 はローカルファイルを扱うアプリです。初回利用時は、MyTimes 用または Obsidian 用の作業フォルダーをあらかじめ作成しておくと、そのままプロジェクトとして登録できます。
+
+## 基本操作
+
+### 1. プロジェクトを登録する
+
+1. 左端の `+` ボタンを押す
+2. `プロジェクトフォルダー` で Markdown を保存するローカルフォルダーを選ぶ
+3. 必要に応じて表示名とアイコン画像を設定する
+4. `登録` する
+
+登録したフォルダーが、MyTimes のプロジェクトです。プロジェクト配下にある `.md` ファイルは、右側のノート一覧に表示されます。
+
+### 2. ノートを作る、または選ぶ
+
+- 既存の `.md` ファイルを開く場合は、ノート一覧から選択する
+- 新しいノートを作る場合は、ノート一覧の `+` ボタンからファイル名を入力する
+- 拡張子を省略した場合は `.md` が付与される
+- `docs/daily.md` のように入力すると、プロジェクト配下にフォルダーを含むノートを作成できる
+
+ノート名の変更や削除は、ノートのコンテキストメニューから行います。削除は実ファイルを削除する操作なので注意してください。
+
+### 3. チャットとして投稿する
+
+画面下部の入力欄に本文を書き、送信ボタンまたは Enter で投稿します。Shift + Enter で改行できます。
+
+- ノートを選んでいる場合: 選択中の Markdown ファイルへ追記する
+- プロジェクトだけを選んでいる場合: 当日の `YYYY-MM-DD.md` へ追記する。ファイルがなければ作成する
+
+投稿は `# YYYY-MM-DD` と `## HH:mm` の見出し、区切り線を使ったチャット形式で Markdown に保存されます。
+
+### 4. Markdown を直接編集する
+
+ノートを選んだ状態で、上部の表示切り替えから `Markdown` を選ぶと本文を直接編集できます。
+
+- `保存` で Markdown ファイル全体を保存する
+- `破棄` で未保存の編集を開いた時点の内容へ戻す
+- `再読み込み` でディスク上の最新内容を読み直す
+- 設定で `Markdownを自動保存` を有効にすると、Markdown 表示中の変更を自動保存する
+
+外部で同じファイルが変更されている可能性がある場合は、保存前に確認が表示されます。
+
+## Markdown 正本化
+
+MyTimes では、ノート本文の正本を SQLite ではなく Markdown ファイルに置きます。
+
+- Markdown ファイル: ノート本文の最終保存先
+- SQLite: 表示用キャッシュ、検索、リアクション、設定、プロジェクト情報の保存先
+
+この方針により、MyTimes を使わなくても Obsidian や任意のエディタでノートを読めます。DB の内容と Markdown が食い違う場合は、Markdown を優先する設計です。
+
+詳しい設計は [Markdown正本化設計](docs/markdown-canonical.md) と [Markdown チャット保存形式](docs/markdown-chat-format.md) を参照してください。
+
+## 開発環境
+
+必要なもの:
+
+- Node.js
+- npm
+- Rust / Cargo
+- Tauri v2 の開発に必要な OS 依存パッケージ
+
+macOS の環境構築メモは [docs/環境構築.md](docs/環境構築.md) にあります。
+
+依存関係をインストールします。
 
 ```sh
 npm ci
-npm run tauri -- dev
 ```
 
-フロントエンドだけを確認する場合:
+Tauri アプリとして起動します。
+
+```sh
+npm run tauri:dev
+```
+
+フロントエンドだけを確認する場合は、次を実行します。
 
 ```sh
 npm run dev
 ```
 
-## ビルド検証
+ただし、MyTimes の主要機能は Tauri API とローカルファイルアクセスに依存します。実際の動作確認は `npm run tauri:dev` を使ってください。
 
-ローカルでは以下のコマンドでビルド検証を行います。
+## ビルドと検証
+
+フロントエンドの production build を確認します。
+
+```sh
+npm run build
+```
+
+Rust 側の format と型チェックを確認します。
 
 ```sh
 cargo fmt --manifest-path src-tauri/Cargo.toml -- --check
 cargo check --manifest-path src-tauri/Cargo.toml
-npm run build
-npm run tauri -- build --verbose
 ```
 
-GitHub Actions では `.github/workflows/build.yml` で同等の検証を実行します。
+配布用 bundle を作成します。
 
-- Pull Request と push: `cargo fmt --check`、`cargo check`、`npm run build`
-- `main` への push: 上記に加えて `npm run tauri -- build --verbose`
+```sh
+npm run tauri:build
+```
 
-Tauri の bundle 作成は実行時間が長いため、PR では通常の Rust / frontend build までを確認し、`main` への取り込み後に macOS runner で bundle 作成まで確認します。
+GitHub Actions では `.github/workflows/build.yml` で Pull Request と push 時に `cargo fmt --check`、`cargo check`、`npm run build` を実行します。`main` への push では、加えて Tauri bundle の作成まで確認します。
