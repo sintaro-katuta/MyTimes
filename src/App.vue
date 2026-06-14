@@ -320,6 +320,7 @@ const modalMode = ref('app-settings')
 const viewMode = ref('chat')
 const messages = ref([])
 const draftMessage = ref('')
+const searchQuery = ref('')
 const markdownDraft = ref('')
 const messagesRef = ref(null)
 const folders = ref([])
@@ -396,6 +397,29 @@ const canUseMarkdownModes = computed(() =>
 )
 
 const isMarkdownDirty = computed(() => markdownDraft.value !== selectedMarkdownContent.value)
+
+const normalizedSearchQuery = computed(() => searchQuery.value.trim().toLowerCase())
+
+const displayedMessages = computed(() => {
+  const query = normalizedSearchQuery.value
+
+  if (!query) return messages.value
+
+  return messages.value.filter((message) =>
+    [
+      message.name,
+      message.date,
+      message.message,
+      message.notePath,
+    ].some((value) => String(value ?? '').toLowerCase().includes(query)),
+  )
+})
+
+const searchResultLabel = computed(() => {
+  if (!normalizedSearchQuery.value) return ''
+
+  return `${displayedMessages.value.length} / ${messages.value.length} 件`
+})
 
 const isReloadMarkdownDisabled = computed(() =>
   !selectedFolder.value ||
@@ -2334,8 +2358,11 @@ onBeforeUnmount(() => {
       />
       <main class="content">
         <div class="header">
-          <Input />
+          <Input v-model="searchQuery" placeholder="メッセージを検索" />
         </div>
+        <p v-if="searchResultLabel" class="search-result-status" aria-live="polite">
+          {{ searchResultLabel }}
+        </p>
         <div v-if="canUseMarkdownModes" class="view-toolbar">
           <div class="view-tabs" role="tablist" aria-label="表示モード">
             <button
@@ -2376,9 +2403,10 @@ onBeforeUnmount(() => {
           <p v-if="isLoadingMessages" class="messages-state">メッセージを読み込み中</p>
           <p v-else-if="loadMessageError" class="messages-state is-error">{{ loadMessageError }}</p>
           <p v-else-if="messages.length === 0" class="messages-state">まだメッセージはありません</p>
+          <p v-else-if="displayedMessages.length === 0" class="messages-state">一致するメッセージはありません</p>
           <template v-else>
             <Message
-              v-for="message in messages"
+              v-for="message in displayedMessages"
               :key="message.id"
               :name="message.name"
               :date="message.date"
@@ -2848,7 +2876,14 @@ onBeforeUnmount(() => {
 .header {
   display: flex;
   align-items: center;
+  min-height: 48px;
   margin-bottom: 16px;
+}
+
+.search-result-status {
+  margin: -8px 0 12px;
+  color: var(--text-tertiary);
+  font-size: 12px;
 }
 
 .view-toolbar {
