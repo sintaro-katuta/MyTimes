@@ -59,6 +59,7 @@ pub fn run() {
             delete_markdown_file
         ])
         .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_opener::init())
         .plugin(
             tauri_plugin_sql::Builder::new()
                 .add_migrations("sqlite:mytimes.db", migrations)
