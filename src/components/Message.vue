@@ -1,5 +1,5 @@
 <script setup>
-import { computed, ref } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
 import { Plus, X } from '@lucide/vue'
 import { openUrl } from '@tauri-apps/plugin-opener'
 import Icon from './Icon.vue'
@@ -19,6 +19,9 @@ const isReactionSelected = (reactionId) => props.reactions.includes(reactionId)
 const isEmojiPickerOpen = ref(false)
 const activeReactionTooltip = ref(null)
 const reactionTooltipPosition = ref({ left: 0, top: 0 })
+const messageActionsRef = ref(null)
+const emojiPickerRef = ref(null)
+const emojiPickerPlacement = ref('below')
 
 const QUICK_REACTION_IDS = [
   'thumbs_up',
@@ -74,6 +77,29 @@ const hideReactionTooltip = () => {
   activeReactionTooltip.value = null
 }
 
+const updateEmojiPickerPlacement = async () => {
+  if (!isEmojiPickerOpen.value) return
+
+  await nextTick()
+
+  const actionsElement = messageActionsRef.value
+  const pickerElement = emojiPickerRef.value
+
+  if (!actionsElement || !pickerElement) return
+
+  const actionsRect = actionsElement.getBoundingClientRect()
+  const viewportHeight = window.innerHeight || document.documentElement.clientHeight
+  const pickerHeight = pickerElement.offsetHeight
+  const pickerGap = 8
+  const viewportPadding = 12
+  const availableBelow = viewportHeight - actionsRect.bottom - pickerGap - viewportPadding
+  const availableAbove = actionsRect.top - pickerGap - viewportPadding
+
+  emojiPickerPlacement.value = availableBelow < pickerHeight && availableAbove > availableBelow
+    ? 'above'
+    : 'below'
+}
+
 const toggleEmojiPicker = () => {
   if (pickerReactionOptions.value.length === 0) {
     addImageReaction()
@@ -81,6 +107,7 @@ const toggleEmojiPicker = () => {
   }
 
   isEmojiPickerOpen.value = !isEmojiPickerOpen.value
+  updateEmojiPickerPlacement()
 }
 
 const closeEmojiPicker = () => {
@@ -104,6 +131,10 @@ const togglePickerReaction = (reactionId) => {
 const addImageReaction = () => {
   emit('add-image-reaction')
   closeEmojiPicker()
+}
+
+const handleWindowChange = () => {
+  updateEmojiPickerPlacement()
 }
 
 const handleMessageClick = async (event) => {
@@ -145,6 +176,16 @@ const handleMessageClick = async (event) => {
     console.error('リンクを開けませんでした', error)
   }
 }
+
+onMounted(() => {
+  window.addEventListener('resize', handleWindowChange)
+  window.addEventListener('scroll', handleWindowChange, true)
+})
+
+onBeforeUnmount(() => {
+  window.removeEventListener('resize', handleWindowChange)
+  window.removeEventListener('scroll', handleWindowChange, true)
+})
 </script>
 
 <template>
@@ -189,7 +230,7 @@ const handleMessageClick = async (event) => {
         </button>
       </div>
     </div>
-    <div class="message-actions">
+    <div ref="messageActionsRef" class="message-actions">
       <button
         v-for="reaction in frequentReactionOptions"
         :key="reaction.id"
@@ -221,7 +262,14 @@ const handleMessageClick = async (event) => {
       >
         <Plus :size="18" aria-hidden="true" />
       </button>
-      <div v-if="isEmojiPickerOpen" class="emoji-picker" role="dialog" aria-label="絵文字を選択">
+      <div
+        v-if="isEmojiPickerOpen"
+        ref="emojiPickerRef"
+        class="emoji-picker"
+        :class="`is-${emojiPickerPlacement}`"
+        role="dialog"
+        aria-label="絵文字を選択"
+      >
         <div class="emoji-picker-header">
           <p class="emoji-picker-title">絵文字</p>
           <button type="button" class="emoji-picker-close" aria-label="閉じる" @click="closeEmojiPicker">
@@ -744,6 +792,11 @@ const handleMessageClick = async (event) => {
   color: var(--text-primary);
   background: color-mix(in srgb, var(--surface-panel) 98%, transparent);
   box-shadow: var(--shadow-modal);
+}
+
+.emoji-picker.is-above {
+  top: auto;
+  bottom: calc(100% + 8px);
 }
 
 .emoji-picker-header {
