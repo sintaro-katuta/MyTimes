@@ -1,28 +1,50 @@
-# MyTimes
-
-## アイコン
-
-<img src="public/icon.svg" alt="MyTimes" width="96" height="96">
+<div align="center">
+  <img src="public/icon.svg" alt="MyTimes" width="128" height="128">
+  <h1>MyTimes</h1>
+  <p>
+    思考や作業ログを、チャット感覚で Markdown に残すローカルファーストなデスクトップアプリです。
+  </p>
+  <p>
+    <a href="https://github.com/sintaro-katuta/MyTimes/releases">
+      <img src="https://img.shields.io/github/v/release/sintaro-katuta/MyTimes?label=release" alt="Release">
+    </a>
+    <a href="https://github.com/sintaro-katuta/MyTimes/actions/workflows/build.yml">
+      <img src="https://github.com/sintaro-katuta/MyTimes/actions/workflows/build.yml/badge.svg" alt="Build">
+    </a>
+  </p>
+  <p>
+    <a href="#技術スタック">技術スタック</a>
+    ·
+    <a href="#インストール方法">インストール</a>
+    ·
+    <a href="#使い方">使い方</a>
+  </p>
+</div>
 
 ## 技術スタック
 
-| Vue 3 | Tauri v2 | Rust | SQLite | Vite |
-| --- | --- | --- | --- | --- |
+| Vue 3                                                              | Tauri v2                                                                | Rust                                                               | SQLite                                                                 | Vite                                                               |
+| ------------------------------------------------------------------ | ----------------------------------------------------------------------- | ------------------------------------------------------------------ | ---------------------------------------------------------------------- | ------------------------------------------------------------------ |
 | <img src="public/tech/vue.svg" alt="Vue 3" width="56" height="56"> | <img src="public/tech/tauri.svg" alt="Tauri v2" width="56" height="56"> | <img src="public/tech/rust.svg" alt="Rust" width="56" height="56"> | <img src="public/tech/sqlite.svg" alt="SQLite" width="56" height="56"> | <img src="public/tech/vite.svg" alt="Vite" width="56" height="56"> |
 
-MyTimes は Vue 3 と Tauri v2 で構成したデスクトップアプリです。UI は Vue 3 / Vite、ローカルファイル操作とアプリ機能は Tauri v2 / Rust、設定や表示用キャッシュは SQLite を使います。
+MyTimes は Vue 3 と Tauri v2 で構成しています。UI は Vue 3 / Vite、ローカルファイル操作とアプリ機能は Tauri v2 / Rust、設定や表示用キャッシュは SQLite を使います。
 
 ## インストール方法
 
-GitHub Releases から、利用している OS に合う配布ファイルをダウンロードしてインストールします。
+[GitHub Releases](https://github.com/sintaro-katuta/MyTimes/releases) から、利用している OS に合う配布ファイルをダウンロードします。
 
-1. [Releases](https://github.com/sintaro-katuta/MyTimes/releases) を開く
-2. 最新リリースの Assets を確認する
-3. macOS、Windows、Linux のうち、利用環境に合うファイルをダウンロードする
-4. ダウンロードしたファイルを開き、OS の案内に沿ってインストールする
-5. 初回起動時に OS のセキュリティ警告が表示された場合は、信頼できるアプリとして実行を許可する
+| OS | ダウンロードするファイルの目安 |
+| --- | --- |
+| macOS | `.dmg` または `.app.tar.gz` |
+| Windows | `.msi` または `.exe` |
+| Linux | `.AppImage`、`.deb`、`.rpm` など |
 
-Tauri はクロスプラットフォームの配布に対応しているため、GitHub Release に各 OS 向けの成果物を置く運用で配布できます。実際に利用できる OS は、各リリースの Assets に含まれるファイルを確認してください。
+1. 最新リリースの Assets を確認する
+2. 利用環境に合うファイルをダウンロードする
+3. ダウンロードしたファイルを開き、OS の案内に沿ってインストールする
+4. 初回起動時にセキュリティ警告が表示された場合は、信頼できるアプリとして実行を許可する
+
+実際に利用できる OS と配布形式は、各リリースの Assets に含まれるファイルを確認してください。
 
 ## 使い方
 
