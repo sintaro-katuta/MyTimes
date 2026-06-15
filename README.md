@@ -1,54 +1,90 @@
-# MyTimes
+<div align="center">
+  <img src="public/icon.svg" alt="MyTimes" width="128" height="128">
+  <h1>MyTimes</h1>
+  <p>
+    思考や作業ログを、チャット感覚で Markdown に残すローカルファーストなデスクトップアプリです。
+  </p>
+  <p>
+    <a href="https://github.com/sintaro-katuta/MyTimes/releases">
+      <img src="https://img.shields.io/github/v/release/sintaro-katuta/MyTimes?label=release" alt="Release">
+    </a>
+    <a href="https://github.com/sintaro-katuta/MyTimes/actions/workflows/build.yml">
+      <img src="https://github.com/sintaro-katuta/MyTimes/actions/workflows/build.yml/badge.svg" alt="Build">
+    </a>
+  </p>
+  <p>
+    <a href="#技術スタック">技術スタック</a>
+    ·
+    <a href="#インストール方法">インストール</a>
+    ·
+    <a href="#使い方">使い方</a>
+  </p>
+</div>
 
-Vue 3 と Tauri で構成したデスクトップアプリケーションです。
+## 技術スタック
 
-## DB
+| Vue 3                                                              | Tauri v2                                                                | Rust                                                               | SQLite                                                                 | Vite                                                               |
+| ------------------------------------------------------------------ | ----------------------------------------------------------------------- | ------------------------------------------------------------------ | ---------------------------------------------------------------------- | ------------------------------------------------------------------ |
+| <img src="public/tech/vue.svg" alt="Vue 3" width="56" height="56"> | <img src="public/tech/tauri.svg" alt="Tauri v2" width="56" height="56"> | <img src="public/tech/rust.svg" alt="Rust" width="56" height="56"> | <img src="public/tech/sqlite.svg" alt="SQLite" width="56" height="56"> | <img src="public/tech/vite.svg" alt="Vite" width="56" height="56"> |
 
-ローカル DB は `@tauri-apps/plugin-sql` の SQLite 接続を使います。
+MyTimes は Vue 3 と Tauri v2 で構成しています。UI は Vue 3 / Vite、ローカルファイル操作とアプリ機能は Tauri v2 / Rust、設定や表示用キャッシュは SQLite を使います。
 
-- 接続名: `sqlite:mytimes.db`
-- SQL プラグイン初期化: `src-tauri/src/lib.rs`
-- マイグレーション: `src-tauri/migrations/1_create_initial_tables.sql`
-- 権限設定: `src-tauri/capabilities/default.json`
+## インストール方法
 
-`messages` と `folders` テーブルは Tauri 起動時のマイグレーションで作成されます。フロントエンドからは `Database.load('sqlite:mytimes.db')` で同じ DB を読み込み、`SELECT` と `INSERT` を実行します。
+[GitHub Releases](https://github.com/sintaro-katuta/MyTimes/releases) から、利用している OS に合う配布ファイルをダウンロードします。
 
-- `folders`: 現行実装ではアプリ内の仮想フォルダツリーとMarkdownエクスポート先パスを保持します。Markdown正本化では廃止し、一番左のペインに表示するプロジェクト情報は `projects` テーブルへ移行します。
-- `messages.folder_id`: メッセージが属するフォルダを保持します。
+| OS | ダウンロードするファイルの目安 |
+| --- | --- |
+| macOS | `.dmg` または `.app.tar.gz` |
+| Windows | `.msi` または `.exe` |
+| Linux | `.AppImage`、`.deb`、`.rpm` など |
 
-Markdown をノート本文の正本とし、SQLite を表示、検索、メタ情報、同期判定のためのキャッシュとして扱う方針は [Markdown正本化設計](docs/markdown-canonical.md) にまとめています。
+1. 最新リリースの Assets を確認する
+2. 利用環境に合うファイルをダウンロードする
+3. ダウンロードしたファイルを開き、OS の案内に沿ってインストールする
+4. 初回起動時にセキュリティ警告が表示された場合は、信頼できるアプリとして実行を許可する
 
-一番左の選択単位をプロジェクトとして扱い、その右隣のペインにフォルダー / ファイルを表示する方針は [プロジェクト構造設計](docs/project-structure.md) にまとめています。
+実際に利用できる OS と配布形式は、各リリースの Assets に含まれるファイルを確認してください。
 
-v1 公開前の動作、品質、公開手順の確認項目は [公開前チェックリスト](docs/pre-release-checklist.md) にまとめています。
-
-## 開発
+リリース成果物がまだ公開されていない場合は、ローカルで起動して確認できます。
 
 ```sh
 npm ci
-npm run tauri -- dev
+npm run tauri:dev
 ```
 
-フロントエンドだけを確認する場合:
+v1 公開前の動作、品質、公開手順の確認項目は [公開前チェックリスト](docs/pre-release-checklist.md) にまとめています。
 
-```sh
-npm run dev
-```
+## 使い方
 
-## ビルド検証
+### 1. プロジェクトを登録する
 
-ローカルでは以下のコマンドでビルド検証を行います。
+1. 左端の `+` ボタンを押す
+2. `プロジェクトフォルダー` で Markdown を保存するローカルフォルダーを選ぶ
+3. 必要に応じて表示名とアイコン画像を設定する
+4. `登録` する
 
-```sh
-cargo fmt --manifest-path src-tauri/Cargo.toml -- --check
-cargo check --manifest-path src-tauri/Cargo.toml
-npm run build
-npm run tauri -- build --verbose
-```
+登録したフォルダーが MyTimes のプロジェクトです。プロジェクト配下の `.md` ファイルはノート一覧に表示されます。
 
-GitHub Actions では `.github/workflows/build.yml` で同等の検証を実行します。
+### 2. ノートを作る、または選ぶ
 
-- Pull Request と push: `cargo fmt --check`、`cargo check`、`npm run build`
-- `main` への push: 上記に加えて `npm run tauri -- build --verbose`
+- 既存の `.md` ファイルを開く場合は、ノート一覧から選択する
+- 新しいノートを作る場合は、ノート一覧の `+` ボタンからファイル名を入力する
+- 拡張子を省略した場合は `.md` が付与される
+- `docs/daily.md` のように入力すると、プロジェクト配下にフォルダーを含むノートを作成できる
 
-Tauri の bundle 作成は実行時間が長いため、PR では通常の Rust / frontend build までを確認し、`main` への取り込み後に macOS runner で bundle 作成まで確認します。
+### 3. チャットとして投稿する
+
+画面下部の入力欄に本文を書き、送信ボタンまたは Command / Meta + Enter で投稿します。Enter または Shift + Enter で改行できます。
+
+- ノートを選んでいる場合: 選択中の Markdown ファイルへ追記する
+- プロジェクトだけを選んでいる場合: 当日の `YYYY-MM-DD.md` へ追記する。ファイルがなければ作成する
+
+### 4. Markdown を直接編集する
+
+ノートを選んだ状態で、上部の表示切り替えから `Markdown` を選ぶと本文を直接編集できます。
+
+- `保存` で Markdown ファイル全体を保存する
+- `破棄` で未保存の編集を開いた時点の内容へ戻す
+- `再読み込み` でディスク上の最新内容を読み直す
+- 設定で `Markdownを自動保存` を有効にすると、Markdown 表示中の変更を自動保存する
