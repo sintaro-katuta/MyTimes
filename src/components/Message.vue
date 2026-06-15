@@ -92,10 +92,13 @@ const updateEmojiPickerPlacement = async () => {
   const pickerHeight = pickerElement.offsetHeight
   const pickerGap = 8
   const viewportPadding = 12
+  const comfortableBottomPadding = 48
   const availableBelow = viewportHeight - actionsRect.bottom - pickerGap - viewportPadding
   const availableAbove = actionsRect.top - pickerGap - viewportPadding
+  const hasEnoughRoomBelow = availableBelow >= pickerHeight + comfortableBottomPadding
+  const hasMoreRoomAbove = availableAbove > availableBelow
 
-  emojiPickerPlacement.value = availableBelow < pickerHeight && availableAbove > availableBelow
+  emojiPickerPlacement.value = !hasEnoughRoomBelow && hasMoreRoomAbove
     ? 'above'
     : 'below'
 }
