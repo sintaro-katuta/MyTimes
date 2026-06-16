@@ -151,6 +151,16 @@ const handleWindowChange = () => {
   updateEmojiPickerPlacement()
 }
 
+const handleDocumentPointerDown = (event) => {
+  if (!props.isReactionPickerOpen) return
+
+  const pickerElement = emojiPickerRef.value
+
+  if (pickerElement?.contains(event.target)) return
+
+  closeEmojiPicker()
+}
+
 watch(
   () => props.isReactionPickerOpen,
   (isOpen) => {
@@ -203,11 +213,13 @@ const handleMessageClick = async (event) => {
 onMounted(() => {
   window.addEventListener('resize', handleWindowChange)
   window.addEventListener('scroll', handleWindowChange, true)
+  document.addEventListener('pointerdown', handleDocumentPointerDown, true)
 })
 
 onBeforeUnmount(() => {
   window.removeEventListener('resize', handleWindowChange)
   window.removeEventListener('scroll', handleWindowChange, true)
+  document.removeEventListener('pointerdown', handleDocumentPointerDown, true)
 })
 </script>
 
