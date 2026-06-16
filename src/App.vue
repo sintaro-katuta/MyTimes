@@ -2457,6 +2457,7 @@ onBeforeUnmount(() => {
               :reactions="message.reactions"
               :reaction-options="reactionOptions"
               :is-reaction-picker-open="openReactionPickerMessageId === message.id"
+              :is-any-reaction-picker-open="openReactionPickerMessageId !== null"
               @toggle-reaction="toggleMessageReaction(message, $event)"
               @add-image-reaction="openCustomReactionModal(message)"
               @open-reaction-picker="openMessageReactionPicker(message)"

@@ -12,6 +12,7 @@ const props = defineProps({
   reactions: { type: Array, default: () => [] },
   reactionOptions: { type: Array, default: () => [] },
   isReactionPickerOpen: { type: Boolean, default: false },
+  isAnyReactionPickerOpen: { type: Boolean, default: false },
 })
 const emit = defineEmits([
   'toggle-reaction',
@@ -228,6 +229,7 @@ onBeforeUnmount(() => {
     class="message"
     :class="{
       'is-picker-open': isEmojiPickerOpen,
+      'is-reaction-hover-suppressed': props.isAnyReactionPickerOpen && !props.isReactionPickerOpen,
     }"
   >
     <Icon src="./example1.jpg" />
@@ -395,6 +397,11 @@ onBeforeUnmount(() => {
 .message:hover,
 .message:focus-within {
   z-index: 20;
+}
+
+.message.is-reaction-hover-suppressed:hover,
+.message.is-reaction-hover-suppressed:focus-within {
+  z-index: 0;
 }
 
 .message.is-picker-open {
@@ -760,6 +767,12 @@ onBeforeUnmount(() => {
 .message.is-picker-open .message-actions {
   opacity: 1;
   transform: translateY(-50%);
+}
+
+.message.is-reaction-hover-suppressed:hover .message-actions,
+.message.is-reaction-hover-suppressed:focus-within .message-actions {
+  opacity: 0;
+  transform: translateY(calc(-50% - 4px));
 }
 
 .message-actions :deep(img) {
