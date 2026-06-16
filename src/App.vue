@@ -432,6 +432,17 @@ const closeMessageReactionPicker = (message) => {
   }
 }
 
+const handleMessagesScrollAttempt = (event) => {
+  if (
+    openReactionPickerMessageId.value === null ||
+    event.target.closest?.('.emoji-grid')
+  ) {
+    return
+  }
+
+  event.preventDefault()
+}
+
 watch(displayedMessages, (nextMessages) => {
   if (
     openReactionPickerMessageId.value !== null &&
@@ -2425,7 +2436,13 @@ onBeforeUnmount(() => {
         <p v-if="viewMode === 'chat' && isMarkdownDirty" class="export-status is-warning">
           Markdownに未保存の変更があります
         </p>
-        <div v-if="viewMode === 'chat'" ref="messagesRef" class="messages">
+        <div
+          v-if="viewMode === 'chat'"
+          ref="messagesRef"
+          class="messages"
+          @wheel="handleMessagesScrollAttempt"
+          @touchmove="handleMessagesScrollAttempt"
+        >
           <p v-if="isLoadingMessages" class="messages-state">メッセージを読み込み中</p>
           <p v-else-if="loadMessageError" class="messages-state is-error">{{ loadMessageError }}</p>
           <p v-else-if="messages.length === 0" class="messages-state">まだメッセージはありません</p>

@@ -161,17 +161,6 @@ const handleDocumentPointerDown = (event) => {
   closeEmojiPicker()
 }
 
-const handleDocumentScrollAttempt = (event) => {
-  if (
-    !props.isReactionPickerOpen ||
-    event.target.closest?.('.emoji-grid')
-  ) {
-    return
-  }
-
-  event.preventDefault()
-}
-
 watch(
   () => props.isReactionPickerOpen,
   (isOpen) => {
@@ -225,16 +214,12 @@ onMounted(() => {
   window.addEventListener('resize', handleWindowChange)
   window.addEventListener('scroll', handleWindowChange, true)
   document.addEventListener('pointerdown', handleDocumentPointerDown, true)
-  document.addEventListener('wheel', handleDocumentScrollAttempt, { capture: true, passive: false })
-  document.addEventListener('touchmove', handleDocumentScrollAttempt, { capture: true, passive: false })
 })
 
 onBeforeUnmount(() => {
   window.removeEventListener('resize', handleWindowChange)
   window.removeEventListener('scroll', handleWindowChange, true)
   document.removeEventListener('pointerdown', handleDocumentPointerDown, true)
-  document.removeEventListener('wheel', handleDocumentScrollAttempt, true)
-  document.removeEventListener('touchmove', handleDocumentScrollAttempt, true)
 })
 </script>
 
