@@ -323,6 +323,7 @@ const draftMessage = ref('')
 const searchQuery = ref('')
 const markdownDraft = ref('')
 const messagesRef = ref(null)
+const openReactionPickerMessageId = ref(null)
 const folders = ref([])
 const folderNotes = ref([])
 const selectedFolderId = ref(null)
@@ -419,6 +420,31 @@ const searchResultLabel = computed(() => {
   if (!normalizedSearchQuery.value) return ''
 
   return `${displayedMessages.value.length} / ${messages.value.length} 件`
+})
+
+const openMessageReactionPicker = (message) => {
+  openReactionPickerMessageId.value = message.id
+}
+
+const closeMessageReactionPicker = (message) => {
+  if (openReactionPickerMessageId.value === message.id) {
+    openReactionPickerMessageId.value = null
+  }
+}
+
+watch(displayedMessages, (nextMessages) => {
+  if (
+    openReactionPickerMessageId.value !== null &&
+    !nextMessages.some((message) => message.id === openReactionPickerMessageId.value)
+  ) {
+    openReactionPickerMessageId.value = null
+  }
+})
+
+watch(viewMode, (mode) => {
+  if (mode !== 'chat') {
+    openReactionPickerMessageId.value = null
+  }
 })
 
 const isReloadMarkdownDisabled = computed(() =>
@@ -2413,8 +2439,11 @@ onBeforeUnmount(() => {
               :message="message.message"
               :reactions="message.reactions"
               :reaction-options="reactionOptions"
+              :is-reaction-picker-open="openReactionPickerMessageId === message.id"
               @toggle-reaction="toggleMessageReaction(message, $event)"
               @add-image-reaction="openCustomReactionModal(message)"
+              @open-reaction-picker="openMessageReactionPicker(message)"
+              @close-reaction-picker="closeMessageReactionPicker(message)"
             />
           </template>
         </div>

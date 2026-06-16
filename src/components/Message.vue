@@ -1,5 +1,5 @@
 <script setup>
-import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { Plus, X } from '@lucide/vue'
 import { openUrl } from '@tauri-apps/plugin-opener'
 import Icon from './Icon.vue'
@@ -11,12 +11,17 @@ const props = defineProps({
   message: { type: String, required: true },
   reactions: { type: Array, default: () => [] },
   reactionOptions: { type: Array, default: () => [] },
+  isReactionPickerOpen: { type: Boolean, default: false },
 })
-const emit = defineEmits(['toggle-reaction', 'add-image-reaction'])
+const emit = defineEmits([
+  'toggle-reaction',
+  'add-image-reaction',
+  'open-reaction-picker',
+  'close-reaction-picker',
+])
 
 const isReactionSelected = (reactionId) => props.reactions.includes(reactionId)
 
-const isEmojiPickerOpen = ref(false)
 const activeReactionTooltip = ref(null)
 const reactionTooltipPosition = ref({ left: 0, top: 0 })
 const messageActionsRef = ref(null)
@@ -52,6 +57,8 @@ const pickerReactionOptions = computed(() =>
   uniqueReactionOptions.value.filter((reaction) => reaction.imageSrc),
 )
 
+const isEmojiPickerOpen = computed(() => props.isReactionPickerOpen)
+
 const renderedMessage = computed(() => markdownToHtml(props.message, { includeCodeCopy: true }))
 
 const reactionTooltipStyle = computed(() => ({
@@ -78,7 +85,7 @@ const hideReactionTooltip = () => {
 }
 
 const updateEmojiPickerPlacement = async () => {
-  if (!isEmojiPickerOpen.value) return
+  if (!props.isReactionPickerOpen) return
 
   await nextTick()
 
@@ -109,12 +116,16 @@ const toggleEmojiPicker = () => {
     return
   }
 
-  isEmojiPickerOpen.value = !isEmojiPickerOpen.value
-  updateEmojiPickerPlacement()
+  if (props.isReactionPickerOpen) {
+    closeEmojiPicker()
+    return
+  }
+
+  emit('open-reaction-picker')
 }
 
 const closeEmojiPicker = () => {
-  isEmojiPickerOpen.value = false
+  emit('close-reaction-picker')
 }
 
 const toggleReaction = (reactionId) => {
@@ -139,6 +150,15 @@ const addImageReaction = () => {
 const handleWindowChange = () => {
   updateEmojiPickerPlacement()
 }
+
+watch(
+  () => props.isReactionPickerOpen,
+  (isOpen) => {
+    if (isOpen) {
+      updateEmojiPickerPlacement()
+    }
+  },
+)
 
 const handleMessageClick = async (event) => {
   const copyButton = event.target.closest?.('.code-copy-button')
