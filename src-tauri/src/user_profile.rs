@@ -1,21 +1,25 @@
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::time::{SystemTime, UNIX_EPOCH};
+
+use tauri::Manager;
 
 const USER_ICON_MAX_BYTES: u64 = 200 * 1024 * 1024;
 const DEFAULT_USER_ICON_FILE_NAME: &str = "default-user-icon.svg";
 const USER_ICON_EXTENSIONS: [&str; 6] = ["png", "jpg", "jpeg", "webp", "svg", "ico"];
 
 #[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct SavedUserIcon {
     file_name: String,
     path: String,
 }
 
-fn public_icon_dir() -> Result<PathBuf, String> {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .parent()
-        .map(|path| path.join("public").join("user-icon"))
-        .ok_or_else(|| "public/user-iconフォルダーを取得できませんでした".to_string())
+fn user_icon_dir(app: &tauri::AppHandle) -> Result<PathBuf, String> {
+    app.path()
+        .app_data_dir()
+        .map(|path| path.join("user-icon"))
+        .map_err(|error| format!("ユーザーアイコンフォルダーを取得できませんでした: {error}"))
 }
 
 fn validate_user_icon_path(source_path: &Path) -> Result<(), String> {
@@ -51,7 +55,7 @@ fn source_file_name(source_path: &Path) -> Result<String, String> {
         .filter(|value| validate_user_icon_file_name(value).is_ok())
         .ok_or_else(|| "画像ファイル名を確認できませんでした".to_string())?;
 
-    if file_name == DEFAULT_USER_ICON_FILE_NAME {
+    if file_name.eq_ignore_ascii_case(DEFAULT_USER_ICON_FILE_NAME) {
         return Err("default-user-icon.svg 以外のファイル名でアップロードしてください".to_string());
     }
 
@@ -85,7 +89,7 @@ fn validate_user_icon_file_name(file_name: &str) -> Result<(), String> {
     Err("ユーザーアイコンのファイル名を確認できませんでした".to_string())
 }
 
-fn remove_uploaded_user_icons(target_dir: &Path, source_path: &Path) -> Result<(), String> {
+fn remove_uploaded_user_icons(target_dir: &Path, protected_paths: &[&Path]) -> Result<(), String> {
     let entries = match fs::read_dir(target_dir) {
         Ok(entries) => entries,
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(()),
@@ -103,7 +107,11 @@ fn remove_uploaded_user_icons(target_dir: &Path, source_path: &Path) -> Result<(
         let file_name = entry.file_name();
         let file_name = file_name.to_string_lossy();
 
-        if file_name == DEFAULT_USER_ICON_FILE_NAME || is_same_path(&path, source_path) {
+        if file_name.eq_ignore_ascii_case(DEFAULT_USER_ICON_FILE_NAME)
+            || protected_paths
+                .iter()
+                .any(|protected_path| is_same_path(&path, protected_path))
+        {
             continue;
         }
 
@@ -117,14 +125,14 @@ fn remove_uploaded_user_icons(target_dir: &Path, source_path: &Path) -> Result<(
     Ok(())
 }
 
-fn resolve_target_path(file_name: &str) -> Result<PathBuf, String> {
+fn resolve_target_path(app: &tauri::AppHandle, file_name: &str) -> Result<PathBuf, String> {
     validate_user_icon_file_name(file_name)?;
 
-    Ok(public_icon_dir()?.join(file_name))
+    Ok(user_icon_dir(app)?.join(file_name))
 }
 
-fn resolved_user_icon_path(file_name: &str) -> Result<String, String> {
-    let target_path = resolve_target_path(file_name)?;
+fn resolved_user_icon_path(app: &tauri::AppHandle, file_name: &str) -> Result<String, String> {
+    let target_path = resolve_target_path(app, file_name)?;
 
     if !target_path.is_file() {
         return Err("ユーザーアイコンが見つかりませんでした".to_string());
@@ -134,12 +142,13 @@ fn resolved_user_icon_path(file_name: &str) -> Result<String, String> {
 }
 
 #[tauri::command]
-pub fn resolve_user_icon_path(file_name: String) -> Result<String, String> {
-    resolved_user_icon_path(&file_name)
+pub fn resolve_user_icon_path(app: tauri::AppHandle, file_name: String) -> Result<String, String> {
+    resolved_user_icon_path(&app, &file_name)
 }
 
 #[tauri::command]
 pub fn save_user_icon(
+    app: tauri::AppHandle,
     source_path: String,
     current_file_name: Option<String>,
 ) -> Result<SavedUserIcon, String> {
@@ -147,22 +156,34 @@ pub fn save_user_icon(
     validate_user_icon_path(&source_path)?;
 
     let file_name = source_file_name(&source_path)?;
-    let target_dir = public_icon_dir()?;
+    let target_dir = user_icon_dir(&app)?;
 
     fs::create_dir_all(&target_dir)
-        .map_err(|error| format!("public/user-iconフォルダーを作成できませんでした: {error}"))?;
+        .map_err(|error| format!("ユーザーアイコンフォルダーを作成できませんでした: {error}"))?;
     if let Some(current_file_name) = current_file_name
         .as_deref()
         .filter(|value| !value.is_empty())
     {
         validate_user_icon_file_name(current_file_name)?;
     }
-    remove_uploaded_user_icons(&target_dir, &source_path)?;
-
     let target_path = target_dir.join(&file_name);
-    if !is_same_path(&source_path, &target_path) {
-        fs::copy(&source_path, &target_path)
+    if is_same_path(&source_path, &target_path) {
+        remove_uploaded_user_icons(&target_dir, &[&target_path])?;
+    } else {
+        let temp_path = target_dir.join(format!(
+            ".upload-{}-{}",
+            SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .map_err(|error| format!("一時ファイル名を作成できませんでした: {error}"))?
+                .as_nanos(),
+            file_name,
+        ));
+
+        fs::copy(&source_path, &temp_path)
             .map_err(|error| format!("ユーザーアイコンを保存できませんでした: {error}"))?;
+        remove_uploaded_user_icons(&target_dir, &[&temp_path])?;
+        fs::rename(&temp_path, &target_path)
+            .map_err(|error| format!("ユーザーアイコンを配置できませんでした: {error}"))?;
     }
 
     Ok(SavedUserIcon {
