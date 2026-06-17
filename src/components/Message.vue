@@ -1,12 +1,12 @@
 <script setup>
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
-import { Plus, X } from '@lucide/vue'
+import { Plus, UserRound, X } from '@lucide/vue'
 import { openUrl } from '@tauri-apps/plugin-opener'
-import Icon from './Icon.vue'
 import { markdownToHtml } from '../lib/markdown'
 
 const props = defineProps({
   name: { type: String, required: true },
+  avatarSrc: { type: String, default: '' },
   date: { type: String, required: true },
   message: { type: String, required: true },
   reactions: { type: Array, default: () => [] },
@@ -28,6 +28,7 @@ const reactionTooltipPosition = ref({ left: 0, top: 0 })
 const messageActionsRef = ref(null)
 const emojiPickerRef = ref(null)
 const emojiPickerPlacement = ref('below')
+const isAvatarLoadFailed = ref(false)
 
 const QUICK_REACTION_IDS = [
   'thumbs_up',
@@ -176,6 +177,13 @@ watch(
   },
 )
 
+watch(
+  () => props.avatarSrc,
+  () => {
+    isAvatarLoadFailed.value = false
+  },
+)
+
 const handleMessageClick = async (event) => {
   const copyButton = event.target.closest?.('.code-copy-button')
 
@@ -237,7 +245,15 @@ onBeforeUnmount(() => {
       'is-reaction-hover-suppressed': props.isAnyReactionPickerOpen && !props.isReactionPickerOpen,
     }"
   >
-    <Icon src="./example1.jpg" />
+    <div class="message-avatar" aria-hidden="true">
+      <img
+        v-if="props.avatarSrc && !isAvatarLoadFailed"
+        :src="props.avatarSrc"
+        alt=""
+        @error="isAvatarLoadFailed = true"
+      />
+      <UserRound v-else :size="22" />
+    </div>
     <div class="message-body">
       <div class="message-info">
         <p class="message-name">{{ props.name }}</p>
@@ -415,6 +431,28 @@ onBeforeUnmount(() => {
 
 .message.is-picker-open {
   z-index: 100;
+}
+
+.message-avatar {
+  display: inline-flex;
+  width: 40px;
+  height: 40px;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  border: 1px solid color-mix(in srgb, var(--border-default) 82%, transparent);
+  border-radius: 50%;
+  color: var(--icon-default);
+  background:
+    radial-gradient(circle at 34% 28%, color-mix(in srgb, var(--bg-primary) 30%, transparent), transparent 34%),
+    var(--surface-accent);
+}
+
+.message-avatar img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
 }
 
 .message-body {
