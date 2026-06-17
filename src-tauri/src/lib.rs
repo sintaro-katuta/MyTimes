@@ -2,6 +2,7 @@ mod markdown_chat;
 mod markdown_export;
 mod markdown_files;
 mod markdown_message_escape;
+mod user_profile;
 
 use markdown_chat::{append_chat_message_to_markdown, parse_markdown_to_chat};
 use markdown_export::export_messages_to_markdown;
@@ -10,6 +11,7 @@ use markdown_files::{
     rename_markdown_file, save_markdown_file,
 };
 use tauri_plugin_sql::{Migration, MigrationKind};
+use user_profile::{resolve_user_icon_path, save_user_icon};
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -56,7 +58,9 @@ pub fn run() {
             save_markdown_file,
             create_markdown_file,
             rename_markdown_file,
-            delete_markdown_file
+            delete_markdown_file,
+            resolve_user_icon_path,
+            save_user_icon
         ])
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())

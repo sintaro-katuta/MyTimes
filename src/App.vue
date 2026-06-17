@@ -1,6 +1,6 @@
 <script setup>
 import { open } from '@tauri-apps/plugin-dialog'
-import { convertFileSrc } from '@tauri-apps/api/core'
+import { convertFileSrc, invoke } from '@tauri-apps/api/core'
 import { LogicalPosition } from '@tauri-apps/api/dpi'
 import { Menu } from '@tauri-apps/api/menu'
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
@@ -57,6 +57,9 @@ const SETTINGS_KEYS = {
   lastWorkspaceFolderId: 'last_workspace_folder_id',
   lastWorkspaceNotePath: 'last_workspace_note_path',
   customReactionOptions: 'custom_reaction_options',
+  userName: 'user_name',
+  userIconFileName: 'user_icon_file_name',
+  userIconPath: 'user_icon_path',
 }
 
 const DEFAULT_SETTINGS = {
@@ -68,7 +71,12 @@ const DEFAULT_SETTINGS = {
   autoSaveMarkdown: 'false',
   reopenLastWorkspace: 'true',
   reopenLastNote: 'true',
+  userName: '',
+  userIconFileName: 'default-user-icon.svg',
+  userIconPath: '',
 }
+
+const USER_NAME_MAX_LENGTH = 20
 
 const THEME_COLORS = {
   orange: {
@@ -310,6 +318,7 @@ const themeColorTokens = (value) => {
 }
 
 const SETTINGS_CATEGORIES = [
+  { id: 'user', label: 'ユーザー' },
   { id: 'appearance', label: '外観' },
   { id: 'editor', label: 'エディタ' },
   { id: 'files', label: 'ファイル' },
@@ -356,6 +365,11 @@ const settingsMarkdownDefaultView = ref(DEFAULT_SETTINGS.markdownDefaultView)
 const settingsAutoSaveMarkdown = ref(DEFAULT_SETTINGS.autoSaveMarkdown)
 const settingsReopenLastWorkspace = ref(DEFAULT_SETTINGS.reopenLastWorkspace)
 const settingsReopenLastNote = ref(DEFAULT_SETTINGS.reopenLastNote)
+const settingsUserName = ref(DEFAULT_SETTINGS.userName)
+const settingsUserIconFileName = ref(DEFAULT_SETTINGS.userIconFileName)
+const settingsUserIconPath = ref(DEFAULT_SETTINGS.userIconPath)
+const settingsUserIconVersion = ref(Date.now())
+const isUserIconPreviewFailed = ref(false)
 const activeSettingsCategory = ref(SETTINGS_CATEGORIES[0].id)
 const folderName = ref('')
 const folderCreateIconPath = ref('')
@@ -422,6 +436,18 @@ const searchResultLabel = computed(() => {
   return `${displayedMessages.value.length} / ${messages.value.length} 件`
 })
 
+const userDisplayName = computed(() => settingsUserName.value.trim() || 'あなた')
+
+const userIconSrc = computed(() => {
+  if (settingsUserIconPath.value) {
+    return `${convertFileSrc(settingsUserIconPath.value)}?v=${settingsUserIconVersion.value}`
+  }
+
+  if (!settingsUserIconFileName.value) return ''
+
+  return `/user-icon/${settingsUserIconFileName.value}?v=${settingsUserIconVersion.value}`
+})
+
 const openMessageReactionPicker = (message) => {
   openReactionPickerMessageId.value = message.id
 }
@@ -450,6 +476,17 @@ watch(displayedMessages, (nextMessages) => {
   ) {
     openReactionPickerMessageId.value = null
   }
+})
+
+watch(userDisplayName, (name) => {
+  messages.value = messages.value.map((message) => ({
+    ...message,
+    name,
+  }))
+})
+
+watch(userIconSrc, () => {
+  isUserIconPreviewFailed.value = false
 })
 
 watch(viewMode, (mode) => {
@@ -484,6 +521,9 @@ const appSettingsPayload = () => ({
   autoSaveMarkdown: settingsAutoSaveMarkdown.value,
   reopenLastWorkspace: settingsReopenLastWorkspace.value,
   reopenLastNote: settingsReopenLastNote.value,
+  userName: normalizeUserName(settingsUserName.value),
+  userIconFileName: settingsUserIconFileName.value,
+  userIconPath: settingsUserIconPath.value,
 })
 
 const appSettingValue = (settingName) => appSettingsPayload()[settingName]
@@ -529,6 +569,33 @@ const loadAppSettings = async () => {
     SETTINGS_KEYS.reopenLastNote,
     DEFAULT_SETTINGS.reopenLastNote,
   )
+  settingsUserName.value = normalizeUserName(
+    await loadSetting(SETTINGS_KEYS.userName, DEFAULT_SETTINGS.userName),
+  )
+  settingsUserIconFileName.value = await loadSetting(
+    SETTINGS_KEYS.userIconFileName,
+    DEFAULT_SETTINGS.userIconFileName,
+  )
+  settingsUserIconPath.value = await loadSetting(
+    SETTINGS_KEYS.userIconPath,
+    DEFAULT_SETTINGS.userIconPath,
+  )
+  if (settingsUserIconFileName.value) {
+    try {
+      settingsUserIconPath.value = await invoke('resolve_user_icon_path', {
+        fileName: settingsUserIconFileName.value,
+      })
+    } catch {
+      settingsUserIconFileName.value = DEFAULT_SETTINGS.userIconFileName
+      try {
+        settingsUserIconPath.value = await invoke('resolve_user_icon_path', {
+          fileName: DEFAULT_SETTINGS.userIconFileName,
+        })
+      } catch {
+        settingsUserIconPath.value = ''
+      }
+    }
+  }
   applyAppearanceSettings()
 }
 
@@ -753,7 +820,7 @@ const createViewMessage = ({
     legacyReactionKey,
     legacyReactionKeys: [legacyReactionKey],
     createdAt,
-    name: '自分',
+    name: userDisplayName.value,
     date,
     message: content,
     reactions,
@@ -1813,6 +1880,46 @@ const handleBrowseCreateProjectDirectory = async () => {
   }
 }
 
+const normalizeUserName = (value) => String(value ?? '').trim().slice(0, USER_NAME_MAX_LENGTH)
+
+const handleSaveUserName = async () => {
+  settingsUserName.value = normalizeUserName(settingsUserName.value)
+  await handleSaveSettings('userName')
+}
+
+const handleBrowseUserIcon = async () => {
+  settingsStatus.value = ''
+
+  try {
+    const selectedPath = await open({
+      multiple: false,
+      filters: [
+        {
+          name: '画像',
+          extensions: ['png', 'jpg', 'jpeg', 'webp', 'svg', 'ico'],
+        },
+      ],
+      title: 'ユーザーアイコンを選択',
+    })
+
+    if (typeof selectedPath !== 'string') return
+
+    const savedIcon = await invoke('save_user_icon', {
+      sourcePath: selectedPath,
+      currentFileName: settingsUserIconFileName.value,
+    })
+
+    settingsUserIconFileName.value = savedIcon.fileName
+    settingsUserIconPath.value = savedIcon.path
+    settingsUserIconVersion.value = Date.now()
+    await handleSaveSettings()
+  } catch (error) {
+    settingsStatus.value = error instanceof Error
+      ? error.message
+      : 'ユーザーアイコンの保存に失敗しました'
+  }
+}
+
 const selectFolder = async (folderId) => {
   if (folderId === selectedFolderId.value && selectedNotePath.value === null) return
   if (!confirmDiscardMarkdownChanges()) return
@@ -2452,6 +2559,7 @@ onBeforeUnmount(() => {
               v-for="message in displayedMessages"
               :key="message.id"
               :name="message.name"
+              :avatar-src="userIconSrc"
               :date="message.date"
               :message="message.message"
               :reactions="message.reactions"
@@ -2628,7 +2736,45 @@ onBeforeUnmount(() => {
           </aside>
 
           <section class="settings-panel">
-            <div v-if="activeSettingsCategory === 'appearance'" class="settings-section">
+            <div v-if="activeSettingsCategory === 'user'" class="settings-section">
+              <div class="settings-group">
+                <div class="settings-row">
+                  <span class="field-label">アイコン</span>
+                  <div class="user-icon-field">
+                    <div class="user-icon-preview" aria-label="ユーザーアイコンのプレビュー">
+                      <img
+                        v-if="userIconSrc && !isUserIconPreviewFailed"
+                        :src="userIconSrc"
+                        alt=""
+                        @error="isUserIconPreviewFailed = true"
+                      />
+                      <span v-else>{{ userDisplayName.slice(0, 1) }}</span>
+                    </div>
+                    <button
+                      type="button"
+                      class="secondary-button browse-button"
+                      @click="handleBrowseUserIcon"
+                    >
+                      変更
+                    </button>
+                  </div>
+                </div>
+                <div class="settings-row">
+                  <label class="field-label" for="user-name">ユーザー名</label>
+                  <input
+                    id="user-name"
+                    v-model="settingsUserName"
+                    class="path-input"
+                    type="text"
+                    :maxlength="USER_NAME_MAX_LENGTH"
+                    :placeholder="`あなた（${USER_NAME_MAX_LENGTH}文字まで）`"
+                    @blur="handleSaveUserName"
+                  />
+                </div>
+              </div>
+            </div>
+
+            <div v-else-if="activeSettingsCategory === 'appearance'" class="settings-section">
               <div class="settings-group">
                 <div class="settings-row">
                   <label class="field-label" for="theme-mode">表示モード</label>
@@ -3369,6 +3515,38 @@ onBeforeUnmount(() => {
   max-width: 140px;
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
   text-transform: uppercase;
+}
+
+.user-icon-field {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 12px;
+  min-width: 0;
+}
+
+.user-icon-preview {
+  display: inline-flex;
+  width: 48px;
+  height: 48px;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  border: 1px solid var(--border-default);
+  border-radius: 50%;
+  color: var(--icon-default);
+  background:
+    radial-gradient(circle at 34% 28%, color-mix(in srgb, var(--bg-primary) 30%, transparent), transparent 34%),
+    var(--surface-accent);
+  font-size: 18px;
+  font-weight: 800;
+}
+
+.user-icon-preview img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
 }
 
 .settings-check {
