@@ -323,6 +323,7 @@ const draftMessage = ref('')
 const searchQuery = ref('')
 const markdownDraft = ref('')
 const messagesRef = ref(null)
+const openReactionPickerMessageId = ref(null)
 const folders = ref([])
 const folderNotes = ref([])
 const selectedFolderId = ref(null)
@@ -419,6 +420,42 @@ const searchResultLabel = computed(() => {
   if (!normalizedSearchQuery.value) return ''
 
   return `${displayedMessages.value.length} / ${messages.value.length} 件`
+})
+
+const openMessageReactionPicker = (message) => {
+  openReactionPickerMessageId.value = message.id
+}
+
+const closeMessageReactionPicker = (message) => {
+  if (openReactionPickerMessageId.value === message.id) {
+    openReactionPickerMessageId.value = null
+  }
+}
+
+const handleMessagesScrollAttempt = (event) => {
+  if (
+    openReactionPickerMessageId.value === null ||
+    event.target.closest?.('.emoji-grid')
+  ) {
+    return
+  }
+
+  event.preventDefault()
+}
+
+watch(displayedMessages, (nextMessages) => {
+  if (
+    openReactionPickerMessageId.value !== null &&
+    !nextMessages.some((message) => message.id === openReactionPickerMessageId.value)
+  ) {
+    openReactionPickerMessageId.value = null
+  }
+})
+
+watch(viewMode, (mode) => {
+  if (mode !== 'chat') {
+    openReactionPickerMessageId.value = null
+  }
 })
 
 const isReloadMarkdownDisabled = computed(() =>
@@ -2399,7 +2436,13 @@ onBeforeUnmount(() => {
         <p v-if="viewMode === 'chat' && isMarkdownDirty" class="export-status is-warning">
           Markdownに未保存の変更があります
         </p>
-        <div v-if="viewMode === 'chat'" ref="messagesRef" class="messages">
+        <div
+          v-if="viewMode === 'chat'"
+          ref="messagesRef"
+          class="messages"
+          @wheel="handleMessagesScrollAttempt"
+          @touchmove="handleMessagesScrollAttempt"
+        >
           <p v-if="isLoadingMessages" class="messages-state">メッセージを読み込み中</p>
           <p v-else-if="loadMessageError" class="messages-state is-error">{{ loadMessageError }}</p>
           <p v-else-if="messages.length === 0" class="messages-state">まだメッセージはありません</p>
@@ -2413,8 +2456,12 @@ onBeforeUnmount(() => {
               :message="message.message"
               :reactions="message.reactions"
               :reaction-options="reactionOptions"
+              :is-reaction-picker-open="openReactionPickerMessageId === message.id"
+              :is-any-reaction-picker-open="openReactionPickerMessageId !== null"
               @toggle-reaction="toggleMessageReaction(message, $event)"
               @add-image-reaction="openCustomReactionModal(message)"
+              @open-reaction-picker="openMessageReactionPicker(message)"
+              @close-reaction-picker="closeMessageReactionPicker(message)"
             />
           </template>
         </div>

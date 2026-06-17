@@ -1,5 +1,5 @@
 <script setup>
-import { computed, ref } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { Plus, X } from '@lucide/vue'
 import { openUrl } from '@tauri-apps/plugin-opener'
 import Icon from './Icon.vue'
@@ -11,14 +11,23 @@ const props = defineProps({
   message: { type: String, required: true },
   reactions: { type: Array, default: () => [] },
   reactionOptions: { type: Array, default: () => [] },
+  isReactionPickerOpen: { type: Boolean, default: false },
+  isAnyReactionPickerOpen: { type: Boolean, default: false },
 })
-const emit = defineEmits(['toggle-reaction', 'add-image-reaction'])
+const emit = defineEmits([
+  'toggle-reaction',
+  'add-image-reaction',
+  'open-reaction-picker',
+  'close-reaction-picker',
+])
 
 const isReactionSelected = (reactionId) => props.reactions.includes(reactionId)
 
-const isEmojiPickerOpen = ref(false)
 const activeReactionTooltip = ref(null)
 const reactionTooltipPosition = ref({ left: 0, top: 0 })
+const messageActionsRef = ref(null)
+const emojiPickerRef = ref(null)
+const emojiPickerPlacement = ref('below')
 
 const QUICK_REACTION_IDS = [
   'thumbs_up',
@@ -49,6 +58,8 @@ const pickerReactionOptions = computed(() =>
   uniqueReactionOptions.value.filter((reaction) => reaction.imageSrc),
 )
 
+const isEmojiPickerOpen = computed(() => props.isReactionPickerOpen)
+
 const renderedMessage = computed(() => markdownToHtml(props.message, { includeCodeCopy: true }))
 
 const reactionTooltipStyle = computed(() => ({
@@ -74,17 +85,51 @@ const hideReactionTooltip = () => {
   activeReactionTooltip.value = null
 }
 
+const updateEmojiPickerPlacement = async () => {
+  if (!props.isReactionPickerOpen) return
+
+  await nextTick()
+
+  const actionsElement = messageActionsRef.value
+  const pickerElement = emojiPickerRef.value
+
+  if (!actionsElement || !pickerElement) return
+
+  const actionsRect = actionsElement.getBoundingClientRect()
+  const viewportHeight = window.innerHeight || document.documentElement.clientHeight
+  const boundaryRect = actionsElement.closest('.messages')?.getBoundingClientRect?.()
+  const pickerHeight = pickerElement.offsetHeight
+  const pickerGap = 8
+  const viewportPadding = 12
+  const comfortableBottomPadding = 48
+  const visibleTop = Math.max(boundaryRect?.top ?? 0, viewportPadding)
+  const visibleBottom = Math.min(boundaryRect?.bottom ?? viewportHeight, viewportHeight) - viewportPadding
+  const availableBelow = visibleBottom - actionsRect.bottom - pickerGap
+  const availableAbove = actionsRect.top - pickerGap - visibleTop
+  const hasEnoughRoomBelow = availableBelow >= pickerHeight + comfortableBottomPadding
+  const hasMoreRoomAbove = availableAbove > availableBelow
+
+  emojiPickerPlacement.value = !hasEnoughRoomBelow && hasMoreRoomAbove
+    ? 'above'
+    : 'below'
+}
+
 const toggleEmojiPicker = () => {
   if (pickerReactionOptions.value.length === 0) {
     addImageReaction()
     return
   }
 
-  isEmojiPickerOpen.value = !isEmojiPickerOpen.value
+  if (props.isReactionPickerOpen) {
+    closeEmojiPicker()
+    return
+  }
+
+  emit('open-reaction-picker')
 }
 
 const closeEmojiPicker = () => {
-  isEmojiPickerOpen.value = false
+  emit('close-reaction-picker')
 }
 
 const toggleReaction = (reactionId) => {
@@ -105,6 +150,31 @@ const addImageReaction = () => {
   emit('add-image-reaction')
   closeEmojiPicker()
 }
+
+const handleWindowChange = () => {
+  updateEmojiPickerPlacement()
+}
+
+const handleDocumentPointerDown = (event) => {
+  if (!props.isReactionPickerOpen) return
+
+  const pickerElement = emojiPickerRef.value
+  const actionsElement = messageActionsRef.value
+
+  if (pickerElement?.contains(event.target)) return
+  if (actionsElement?.contains(event.target)) return
+
+  closeEmojiPicker()
+}
+
+watch(
+  () => props.isReactionPickerOpen,
+  (isOpen) => {
+    if (isOpen) {
+      updateEmojiPickerPlacement()
+    }
+  },
+)
 
 const handleMessageClick = async (event) => {
   const copyButton = event.target.closest?.('.code-copy-button')
@@ -145,6 +215,18 @@ const handleMessageClick = async (event) => {
     console.error('リンクを開けませんでした', error)
   }
 }
+
+onMounted(() => {
+  window.addEventListener('resize', handleWindowChange)
+  window.addEventListener('scroll', handleWindowChange, true)
+  document.addEventListener('pointerdown', handleDocumentPointerDown, true)
+})
+
+onBeforeUnmount(() => {
+  window.removeEventListener('resize', handleWindowChange)
+  window.removeEventListener('scroll', handleWindowChange, true)
+  document.removeEventListener('pointerdown', handleDocumentPointerDown, true)
+})
 </script>
 
 <template>
@@ -152,6 +234,7 @@ const handleMessageClick = async (event) => {
     class="message"
     :class="{
       'is-picker-open': isEmojiPickerOpen,
+      'is-reaction-hover-suppressed': props.isAnyReactionPickerOpen && !props.isReactionPickerOpen,
     }"
   >
     <Icon src="./example1.jpg" />
@@ -189,7 +272,11 @@ const handleMessageClick = async (event) => {
         </button>
       </div>
     </div>
-    <div class="message-actions">
+    <div
+      ref="messageActionsRef"
+      class="message-actions"
+      :inert="props.isAnyReactionPickerOpen && !props.isReactionPickerOpen"
+    >
       <button
         v-for="reaction in frequentReactionOptions"
         :key="reaction.id"
@@ -221,7 +308,14 @@ const handleMessageClick = async (event) => {
       >
         <Plus :size="18" aria-hidden="true" />
       </button>
-      <div v-if="isEmojiPickerOpen" class="emoji-picker" role="dialog" aria-label="絵文字を選択">
+      <div
+        v-if="isEmojiPickerOpen"
+        ref="emojiPickerRef"
+        class="emoji-picker"
+        :class="`is-${emojiPickerPlacement}`"
+        role="dialog"
+        aria-label="絵文字を選択"
+      >
         <div class="emoji-picker-header">
           <p class="emoji-picker-title">絵文字</p>
           <button type="button" class="emoji-picker-close" aria-label="閉じる" @click="closeEmojiPicker">
@@ -312,6 +406,11 @@ const handleMessageClick = async (event) => {
 .message:hover,
 .message:focus-within {
   z-index: 20;
+}
+
+.message.is-reaction-hover-suppressed:hover,
+.message.is-reaction-hover-suppressed:focus-within {
+  z-index: 0;
 }
 
 .message.is-picker-open {
@@ -679,6 +778,13 @@ const handleMessageClick = async (event) => {
   transform: translateY(-50%);
 }
 
+.message.is-reaction-hover-suppressed:hover .message-actions,
+.message.is-reaction-hover-suppressed:focus-within .message-actions {
+  opacity: 0;
+  pointer-events: none;
+  transform: translateY(calc(-50% - 4px));
+}
+
 .message-actions :deep(img) {
   cursor: pointer;
   opacity: 0.82;
@@ -744,6 +850,11 @@ const handleMessageClick = async (event) => {
   color: var(--text-primary);
   background: color-mix(in srgb, var(--surface-panel) 98%, transparent);
   box-shadow: var(--shadow-modal);
+}
+
+.emoji-picker.is-above {
+  top: auto;
+  bottom: calc(100% + 8px);
 }
 
 .emoji-picker-header {
@@ -818,6 +929,7 @@ const handleMessageClick = async (event) => {
   gap: 4px;
   padding: 0 12px 12px;
   overflow-y: auto;
+  overscroll-behavior: contain;
 }
 
 .emoji-grid-button {
