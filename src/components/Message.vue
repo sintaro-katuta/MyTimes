@@ -97,12 +97,15 @@ const updateEmojiPickerPlacement = async () => {
 
   const actionsRect = actionsElement.getBoundingClientRect()
   const viewportHeight = window.innerHeight || document.documentElement.clientHeight
+  const boundaryRect = actionsElement.closest('.messages')?.getBoundingClientRect?.()
   const pickerHeight = pickerElement.offsetHeight
   const pickerGap = 8
   const viewportPadding = 12
   const comfortableBottomPadding = 48
-  const availableBelow = viewportHeight - actionsRect.bottom - pickerGap - viewportPadding
-  const availableAbove = actionsRect.top - pickerGap - viewportPadding
+  const visibleTop = Math.max(boundaryRect?.top ?? 0, viewportPadding)
+  const visibleBottom = Math.min(boundaryRect?.bottom ?? viewportHeight, viewportHeight) - viewportPadding
+  const availableBelow = visibleBottom - actionsRect.bottom - pickerGap
+  const availableAbove = actionsRect.top - pickerGap - visibleTop
   const hasEnoughRoomBelow = availableBelow >= pickerHeight + comfortableBottomPadding
   const hasMoreRoomAbove = availableAbove > availableBelow
 
@@ -156,8 +159,10 @@ const handleDocumentPointerDown = (event) => {
   if (!props.isReactionPickerOpen) return
 
   const pickerElement = emojiPickerRef.value
+  const actionsElement = messageActionsRef.value
 
   if (pickerElement?.contains(event.target)) return
+  if (actionsElement?.contains(event.target)) return
 
   closeEmojiPicker()
 }
@@ -267,7 +272,11 @@ onBeforeUnmount(() => {
         </button>
       </div>
     </div>
-    <div ref="messageActionsRef" class="message-actions">
+    <div
+      ref="messageActionsRef"
+      class="message-actions"
+      :inert="props.isAnyReactionPickerOpen && !props.isReactionPickerOpen"
+    >
       <button
         v-for="reaction in frequentReactionOptions"
         :key="reaction.id"
@@ -772,6 +781,7 @@ onBeforeUnmount(() => {
 .message.is-reaction-hover-suppressed:hover .message-actions,
 .message.is-reaction-hover-suppressed:focus-within .message-actions {
   opacity: 0;
+  pointer-events: none;
   transform: translateY(calc(-50% - 4px));
 }
 
@@ -919,6 +929,7 @@ onBeforeUnmount(() => {
   gap: 4px;
   padding: 0 12px 12px;
   overflow-y: auto;
+  overscroll-behavior: contain;
 }
 
 .emoji-grid-button {
