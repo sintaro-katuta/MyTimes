@@ -760,6 +760,10 @@ watch(
   display: flex;
   flex-direction: column;
   gap: 8px;
+  height: 0;
+  min-height: 0;
+  flex: 1 1 0;
+  overflow-y: auto;
 }
 
 .section {
@@ -827,11 +831,6 @@ watch(
   font-weight: 700;
 }
 
-.notes {
-  min-height: 0;
-  flex: 1;
-  overflow-y: auto;
-}
 
 .new-note-button {
   width: 100%;
@@ -860,8 +859,10 @@ watch(
   width: 100%;
   box-sizing: border-box;
   display: flex;
+  flex: 0 0 auto;
   align-items: center;
   gap: 6px;
+  min-height: 39px;
   padding: 6px;
   overflow: hidden;
   border: none;
@@ -884,6 +885,7 @@ watch(
 .note-select {
   min-width: 0;
   width: 100%;
+  min-height: 27px;
   display: flex;
   flex: 1;
   align-items: center;
@@ -901,6 +903,7 @@ watch(
 .note-directory {
   min-width: 0;
   width: 100%;
+  min-height: 27px;
   display: flex;
   align-items: center;
   gap: 6px;
@@ -941,6 +944,7 @@ watch(
 .note-rename-input {
   min-width: 0;
   width: 100%;
+  height: 27px;
   box-sizing: border-box;
   padding: 4px 6px;
   margin-left: calc(var(--note-depth) * 16px);

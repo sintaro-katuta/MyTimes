@@ -185,6 +185,36 @@ const saveCustomReactionOptions = async () => {
   )
 }
 
+const filterExistingImageReactionOptions = async (options) => {
+  const checks = await Promise.all(
+    options.map(async (option) => ({
+      option,
+      exists: await invoke('file_exists', { path: option.imagePath }).catch(() => false),
+    })),
+  )
+
+  return checks
+    .filter(({ exists }) => exists)
+    .map(({ option }) => option)
+}
+
+const applyCustomReactionOptions = (options) => {
+  customReactionOptions.value = options
+  reactionOptions.value = createUniqueReactionOptions([
+    ...BASE_REACTION_OPTIONS,
+    ...customReactionOptions.value,
+  ])
+}
+
+const cleanupMissingCustomReactionOptions = async () => {
+  const existingOptions = await filterExistingImageReactionOptions(customReactionOptions.value)
+
+  if (existingOptions.length === customReactionOptions.value.length) return
+
+  applyCustomReactionOptions(existingOptions)
+  await saveCustomReactionOptions()
+}
+
 const loadCustomReactionOptions = async () => {
   const value = await loadSetting(SETTINGS_KEYS.customReactionOptions, '[]')
   let parsed = []
@@ -195,13 +225,16 @@ const loadCustomReactionOptions = async () => {
     parsed = []
   }
 
-  customReactionOptions.value = createUniqueReactionOptions(
+  const restoredOptions = createUniqueReactionOptions(
     parsed.map(restoreImageReactionOption).filter(Boolean),
   )
-  reactionOptions.value = createUniqueReactionOptions([
-    ...BASE_REACTION_OPTIONS,
-    ...customReactionOptions.value,
-  ])
+  const existingOptions = await filterExistingImageReactionOptions(restoredOptions)
+
+  applyCustomReactionOptions(existingOptions)
+
+  if (existingOptions.length !== restoredOptions.length) {
+    await saveCustomReactionOptions()
+  }
 }
 
 const reactionOptionFromId = (reactionId) => {
@@ -450,6 +483,7 @@ const userIconSrc = computed(() => {
 
 const openMessageReactionPicker = (message) => {
   openReactionPickerMessageId.value = message.id
+  cleanupMissingCustomReactionOptions()
 }
 
 const closeMessageReactionPicker = (message) => {

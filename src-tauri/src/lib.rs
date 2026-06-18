@@ -1,9 +1,11 @@
+mod file_system;
 mod markdown_chat;
 mod markdown_export;
 mod markdown_files;
 mod markdown_message_escape;
 mod user_profile;
 
+use file_system::file_exists;
 use markdown_chat::{append_chat_message_to_markdown, parse_markdown_to_chat};
 use markdown_export::export_messages_to_markdown;
 use markdown_files::{
@@ -59,6 +61,7 @@ pub fn run() {
             create_markdown_file,
             rename_markdown_file,
             delete_markdown_file,
+            file_exists,
             resolve_user_icon_path,
             save_user_icon
         ])
