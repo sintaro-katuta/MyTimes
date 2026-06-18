@@ -1,5 +1,5 @@
 <div align="center">
-  <img src="public/icon.svg" alt="MyTimes" width="128" height="128">
+  <img src="public/icon.png" alt="MyTimes" width="128" height="128">
   <h1>MyTimes</h1>
   <p>
     思考や作業ログを、チャット感覚で Markdown に残すローカルファーストなデスクトップアプリです。
