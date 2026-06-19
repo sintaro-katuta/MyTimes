@@ -9,6 +9,8 @@ import {
   ChevronRight,
   FileText,
   Folder,
+  PanelLeftClose,
+  PanelLeftOpen,
   Plus,
   Settings,
 } from '@lucide/vue'
@@ -58,6 +60,7 @@ const editingNotePath = ref('')
 const noteRenameInput = ref('')
 const noteRenameInputRef = ref(null)
 const expandedNoteDirectoryPaths = ref(new Set())
+const isTreePanelOpen = ref(true)
 const noteContextMenuTarget = ref(null)
 
 const foldersByParent = computed(() => {
@@ -243,6 +246,10 @@ const expandAncestors = (folderId) => {
 
 const openSettings = () => {
   emit('open-settings')
+}
+
+const toggleTreePanel = () => {
+  isTreePanelOpen.value = !isTreePanelOpen.value
 }
 
 const openCreateFolder = () => {
@@ -511,6 +518,16 @@ watch(
         <button type="button" class="rail-button" aria-label="新規プロジェクト" @click="openCreateFolder">
           <Plus :size="20" />
         </button>
+        <button
+          type="button"
+          class="rail-button"
+          :aria-label="isTreePanelOpen ? 'フォルダツリーを閉じる' : 'フォルダツリーを開く'"
+          :aria-pressed="isTreePanelOpen"
+          @click="toggleTreePanel"
+        >
+          <PanelLeftClose v-if="isTreePanelOpen" :size="20" />
+          <PanelLeftOpen v-else :size="20" />
+        </button>
       </div>
 
       <div class="folder-icons" aria-label="プロジェクト一覧">
@@ -549,7 +566,7 @@ watch(
       </button>
     </div>
 
-    <div class="panel">
+    <div v-show="isTreePanelOpen" class="panel">
       <div class="section notes-section">
         <div class="folder-header">
           <button type="button" class="folder-title-button" @click="selectTimeline">
