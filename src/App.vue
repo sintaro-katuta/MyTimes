@@ -140,6 +140,11 @@ const customReactionName = ref('')
 const customReactionError = ref('')
 const isSavingCustomReaction = ref(false)
 const isTreePanelOpen = ref(true)
+const isMacTitlebarOverlay = computed(() => {
+  if (typeof navigator === 'undefined') return false
+
+  return /mac/i.test(`${navigator.platform} ${navigator.userAgent}`)
+})
 
 const toggleTreePanel = () => {
   isTreePanelOpen.value = !isTreePanelOpen.value
@@ -2523,8 +2528,8 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <div class="container">
-    <div class="window-titlebar" data-tauri-drag-region>
+  <div class="container" :class="{ 'has-titlebar-overlay': isMacTitlebarOverlay }">
+    <div v-if="isMacTitlebarOverlay" class="window-titlebar" data-tauri-drag-region>
       <button
         type="button"
         class="titlebar-tree-toggle"
@@ -2545,6 +2550,8 @@ onBeforeUnmount(() => {
         :selected-folder-id="selectedFolderId"
         :selected-note-path="selectedNotePath"
         :is-tree-panel-open="isTreePanelOpen"
+        :show-tree-panel-toggle="!isMacTitlebarOverlay"
+        @toggle-tree-panel="toggleTreePanel"
         @open-create-folder="openCreateFolderModal"
         @open-folder-settings="openFolderSettingsModal"
         @open-folder-context-menu="openFolderContextMenu"
@@ -3105,6 +3112,11 @@ onBeforeUnmount(() => {
 
 <style scoped>
 .container {
+  --titlebar-height: 0px;
+  padding: calc(16px * var(--density-scale));
+}
+
+.container.has-titlebar-overlay {
   --titlebar-height: 40px;
   padding: calc(var(--titlebar-height) + 8px * var(--density-scale)) calc(16px * var(--density-scale)) calc(16px * var(--density-scale));
 }
