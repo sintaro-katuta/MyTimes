@@ -9,8 +9,6 @@ import {
   ChevronRight,
   FileText,
   Folder,
-  PanelLeftClose,
-  PanelLeftOpen,
   Plus,
   Settings,
 } from '@lucide/vue'
@@ -40,6 +38,10 @@ const props = defineProps({
     type: String,
     default: null,
   },
+  isTreePanelOpen: {
+    type: Boolean,
+    default: true,
+  },
 })
 
 const emit = defineEmits([
@@ -60,7 +62,6 @@ const editingNotePath = ref('')
 const noteRenameInput = ref('')
 const noteRenameInputRef = ref(null)
 const expandedNoteDirectoryPaths = ref(new Set())
-const isTreePanelOpen = ref(true)
 const noteContextMenuTarget = ref(null)
 
 const foldersByParent = computed(() => {
@@ -246,10 +247,6 @@ const expandAncestors = (folderId) => {
 
 const openSettings = () => {
   emit('open-settings')
-}
-
-const toggleTreePanel = () => {
-  isTreePanelOpen.value = !isTreePanelOpen.value
 }
 
 const openCreateFolder = () => {
@@ -518,16 +515,6 @@ watch(
         <button type="button" class="rail-button" aria-label="新規プロジェクト" @click="openCreateFolder">
           <Plus :size="20" />
         </button>
-        <button
-          type="button"
-          class="rail-button"
-          :aria-label="isTreePanelOpen ? 'フォルダツリーを閉じる' : 'フォルダツリーを開く'"
-          :aria-pressed="isTreePanelOpen"
-          @click="toggleTreePanel"
-        >
-          <PanelLeftClose v-if="isTreePanelOpen" :size="20" />
-          <PanelLeftOpen v-else :size="20" />
-        </button>
       </div>
 
       <div class="folder-icons" aria-label="プロジェクト一覧">
@@ -663,7 +650,7 @@ watch(
 
 .rail {
   width: 72px;
-  height: calc(100vh - 32px);
+  height: calc(100vh - var(--titlebar-height, 0px) - 32px);
   box-sizing: border-box;
   display: flex;
   flex-direction: column;
@@ -764,7 +751,7 @@ watch(
 
 .panel {
   width: 280px;
-  height: calc(100vh - 32px);
+  height: calc(100vh - var(--titlebar-height, 0px) - 32px);
   box-sizing: border-box;
   display: flex;
   flex-direction: column;
