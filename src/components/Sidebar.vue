@@ -9,8 +9,6 @@ import {
   ChevronRight,
   FileText,
   Folder,
-  PanelLeftClose,
-  PanelLeftOpen,
   Plus,
   Settings,
 } from '@lucide/vue'
@@ -44,10 +42,6 @@ const props = defineProps({
     type: Boolean,
     default: true,
   },
-  showTreePanelToggle: {
-    type: Boolean,
-    default: false,
-  },
 })
 
 const emit = defineEmits([
@@ -61,7 +55,6 @@ const emit = defineEmits([
   'select-folder',
   'select-folder-notes',
   'select-note',
-  'toggle-tree-panel',
 ])
 
 const expandedFolderIds = ref(new Set())
@@ -254,10 +247,6 @@ const expandAncestors = (folderId) => {
 
 const openSettings = () => {
   emit('open-settings')
-}
-
-const toggleTreePanel = () => {
-  emit('toggle-tree-panel')
 }
 
 const openCreateFolder = () => {
@@ -525,17 +514,6 @@ watch(
       <div class="rail-actions">
         <button type="button" class="rail-button" aria-label="新規プロジェクト" @click="openCreateFolder">
           <Plus :size="20" />
-        </button>
-        <button
-          v-if="showTreePanelToggle"
-          type="button"
-          class="rail-button"
-          :aria-label="isTreePanelOpen ? 'フォルダツリーを閉じる' : 'フォルダツリーを開く'"
-          :aria-pressed="isTreePanelOpen"
-          @click="toggleTreePanel"
-        >
-          <PanelLeftClose v-if="isTreePanelOpen" :size="20" />
-          <PanelLeftOpen v-else :size="20" />
         </button>
       </div>
 
