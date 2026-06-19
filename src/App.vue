@@ -3119,7 +3119,7 @@ onBeforeUnmount(() => {
   box-sizing: border-box;
   display: flex;
   align-items: center;
-  padding-left: 124px;
+  padding-left: calc(16px * var(--density-scale) + 80px);
   background: var(--surface-canvas);
   -webkit-app-region: drag;
 }
