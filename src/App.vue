@@ -3105,8 +3105,8 @@ onBeforeUnmount(() => {
 
 <style scoped>
 .container {
-  --titlebar-height: 64px;
-  padding: calc(var(--titlebar-height) + 16px * var(--density-scale)) calc(16px * var(--density-scale)) calc(16px * var(--density-scale));
+  --titlebar-height: 40px;
+  padding: calc(var(--titlebar-height) + 8px * var(--density-scale)) calc(16px * var(--density-scale)) calc(16px * var(--density-scale));
 }
 
 .window-titlebar {
@@ -3119,37 +3119,30 @@ onBeforeUnmount(() => {
   box-sizing: border-box;
   display: flex;
   align-items: center;
-  padding-left: 172px;
+  padding-left: 124px;
   background: var(--surface-canvas);
   -webkit-app-region: drag;
 }
 
 .titlebar-tree-toggle {
-  width: 52px;
-  height: 52px;
+  width: 28px;
+  height: 28px;
   display: inline-flex;
   flex: 0 0 auto;
   align-items: center;
   justify-content: center;
   padding: 0;
-  border: 1px solid color-mix(in srgb, var(--border-strong) 72%, transparent);
-  border-radius: 14px;
-  background: color-mix(in srgb, var(--surface-panel) 58%, transparent);
-  color: var(--text-secondary);
+  border: 1px solid transparent;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--text-tertiary);
   cursor: pointer;
-  box-shadow: var(--shadow-soft);
   -webkit-app-region: no-drag;
 }
 
 .titlebar-tree-toggle:hover {
-  border-color: color-mix(in srgb, var(--bg-primary) 52%, var(--border-strong));
-  background: color-mix(in srgb, var(--surface-panel) 82%, var(--surface-accent));
-  color: var(--text-primary);
-}
-
-.titlebar-tree-toggle[aria-pressed='true'] {
-  border-color: color-mix(in srgb, var(--bg-primary) 44%, var(--border-strong));
-  background: color-mix(in srgb, var(--surface-panel) 76%, var(--surface-accent));
+  border-color: var(--border-subtle);
+  background: var(--bg-base-2);
   color: var(--text-primary);
 }
 
