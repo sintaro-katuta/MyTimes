@@ -74,9 +74,3 @@ Markdown を保存するローカルフォルダーを選び、必要に応じ�
 ノート上部の表示切り替えで `Markdown` を選ぶと、Markdown ファイル全体を直接編集できます。
 
 ![Markdown 編集画面](docs/images/usage-markdown.png)
-
-README 用スクリーンショットは次のコマンドで再生成できます。
-
-```sh
-npm run capture:readme
-```
