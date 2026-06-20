@@ -719,9 +719,10 @@ watch(
 }
 
 .rail-button.active {
-  border-color: var(--border-subtle);
-  background: var(--bg-base-2);
+  border-color: color-mix(in srgb, var(--bg-primary) 40%, var(--border-subtle));
+  background: color-mix(in srgb, var(--bg-primary) 12%, var(--bg-base-2));
   color: var(--text-primary);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--bg-primary) 12%, transparent);
 }
 
 .rail-button.has-image,

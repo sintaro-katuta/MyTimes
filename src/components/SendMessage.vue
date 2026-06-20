@@ -856,7 +856,7 @@ watch(
   display: flex;
   align-items: center;
   flex-wrap: wrap;
-  gap: 4px;
+  gap: 6px;
   padding: 6px 8px;
   background: var(--bg-message-tools);
   border-bottom: 1px solid var(--border-subtle);
@@ -885,8 +885,8 @@ watch(
 }
 
 .tool-button {
-  width: 30px;
-  height: 30px;
+  width: 32px;
+  height: 32px;
   border-radius: 8px;
   border: 1px solid transparent;
   background: transparent;
