@@ -10,6 +10,10 @@ import SendMessage from './components/SendMessage.vue'
 import Message from './components/Message.vue'
 import Input from './components/Input.vue'
 import {
+  PanelLeftClose,
+  PanelLeftOpen,
+} from '@lucide/vue'
+import {
   appendChatMessageToMarkdown,
   createMarkdownFile,
   deleteMarkdownFile,
@@ -135,6 +139,11 @@ const customReactionImagePath = ref('')
 const customReactionName = ref('')
 const customReactionError = ref('')
 const isSavingCustomReaction = ref(false)
+const isTreePanelOpen = ref(true)
+
+const toggleTreePanel = () => {
+  isTreePanelOpen.value = !isTreePanelOpen.value
+}
 
 const hashText = (value) => {
   let hash = 0x811c9dc5
@@ -2515,6 +2524,18 @@ onBeforeUnmount(() => {
 
 <template>
   <div class="container">
+    <div class="window-titlebar" data-tauri-drag-region>
+      <button
+        type="button"
+        class="titlebar-tree-toggle"
+        :aria-label="isTreePanelOpen ? 'フォルダツリーを閉じる' : 'フォルダツリーを開く'"
+        :aria-pressed="isTreePanelOpen"
+        @click="toggleTreePanel"
+      >
+        <PanelLeftClose v-if="isTreePanelOpen" :size="18" />
+        <PanelLeftOpen v-else :size="18" />
+      </button>
+    </div>
     <div class="layout">
       <Sidebar
         :folders="folders"
@@ -2523,6 +2544,7 @@ onBeforeUnmount(() => {
         :notes-error-message="loadFolderNotesError"
         :selected-folder-id="selectedFolderId"
         :selected-note-path="selectedNotePath"
+        :is-tree-panel-open="isTreePanelOpen"
         @open-create-folder="openCreateFolderModal"
         @open-folder-settings="openFolderSettingsModal"
         @open-folder-context-menu="openFolderContextMenu"
@@ -3083,7 +3105,50 @@ onBeforeUnmount(() => {
 
 <style scoped>
 .container {
-  padding: calc(16px * var(--density-scale));
+  --titlebar-height: 40px;
+  padding: calc(var(--titlebar-height) + 8px * var(--density-scale)) calc(16px * var(--density-scale)) calc(16px * var(--density-scale));
+}
+
+.window-titlebar {
+  position: fixed;
+  z-index: 50;
+  top: 0;
+  right: 0;
+  left: 0;
+  height: var(--titlebar-height);
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  padding-left: calc(16px * var(--density-scale) + 80px);
+  background: var(--surface-canvas);
+  -webkit-app-region: drag;
+}
+
+.titlebar-tree-toggle {
+  width: 28px;
+  height: 28px;
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--text-tertiary);
+  cursor: pointer;
+  -webkit-app-region: no-drag;
+}
+
+.titlebar-tree-toggle:hover {
+  border-color: var(--border-subtle);
+  background: var(--bg-base-2);
+  color: var(--text-primary);
+}
+
+.titlebar-tree-toggle:focus-visible {
+  outline: 3px solid var(--focus-ring);
+  outline-offset: 2px;
 }
 
 .layout {
@@ -3095,7 +3160,7 @@ onBeforeUnmount(() => {
   display: flex;
   flex-direction: column;
   flex: 1;
-  height: calc(100vh - 32px);
+  height: calc(100vh - var(--titlebar-height) - 32px);
   min-width: 0;
   min-height: 0;
 }

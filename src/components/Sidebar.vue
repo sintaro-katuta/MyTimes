@@ -38,6 +38,10 @@ const props = defineProps({
     type: String,
     default: null,
   },
+  isTreePanelOpen: {
+    type: Boolean,
+    default: true,
+  },
 })
 
 const emit = defineEmits([
@@ -549,7 +553,7 @@ watch(
       </button>
     </div>
 
-    <div class="panel">
+    <div v-show="isTreePanelOpen" class="panel">
       <div class="section notes-section">
         <div class="folder-header">
           <button type="button" class="folder-title-button" @click="selectTimeline">
@@ -646,7 +650,7 @@ watch(
 
 .rail {
   width: 72px;
-  height: calc(100vh - 32px);
+  height: calc(100vh - var(--titlebar-height, 0px) - 32px);
   box-sizing: border-box;
   display: flex;
   flex-direction: column;
@@ -747,7 +751,7 @@ watch(
 
 .panel {
   width: 280px;
-  height: calc(100vh - 32px);
+  height: calc(100vh - var(--titlebar-height, 0px) - 32px);
   box-sizing: border-box;
   display: flex;
   flex-direction: column;
