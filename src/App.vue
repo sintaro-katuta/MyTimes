@@ -3616,6 +3616,14 @@ onBeforeUnmount(() => {
 .font-size-input {
   width: 74px;
   text-align: right;
+  -moz-appearance: textfield;
+  appearance: textfield;
+}
+
+.font-size-input::-webkit-outer-spin-button,
+.font-size-input::-webkit-inner-spin-button {
+  margin: 0;
+  -webkit-appearance: none;
 }
 
 .color-field {
