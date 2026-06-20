@@ -1687,6 +1687,13 @@ const openFolderSettingsModalFromMenu = async (folder) => {
   isModalOpen.value = true
 }
 
+const openFolderIconModalFromMenu = async (folder) => {
+  if (!(await prepareFolderContextAction(folder))) return
+
+  modalMode.value = 'folder-icon-settings'
+  isModalOpen.value = true
+}
+
 const browseFolderPathFromMenu = async (folder) => {
   if (!(await prepareFolderContextAction(folder))) return
 
@@ -1740,7 +1747,7 @@ const handleFolderContextMenuAction = async (action, folder) => {
   }
 
   if (action === 'folder-image') {
-    await openFolderSettingsModalFromMenu(folder)
+    await openFolderIconModalFromMenu(folder)
     return
   }
 
@@ -2839,9 +2846,11 @@ onBeforeUnmount(() => {
               ? 'アプリ設定'
               : modalMode === 'folder-settings'
                 ? 'プロジェクト設定'
-                : modalMode === 'create-note'
-                  ? 'ノート作成'
-                  : 'プロジェクト登録'
+                : modalMode === 'folder-icon-settings'
+                  ? 'アイコン変更'
+                  : modalMode === 'create-note'
+                    ? 'ノート作成'
+                    : 'プロジェクト登録'
           }}
         </h2>
       </template>
@@ -3207,6 +3216,53 @@ onBeforeUnmount(() => {
           <p v-if="loadFolderError" class="settings-status is-error">{{ loadFolderError }}</p>
         </form>
         <form
+          v-else-if="modalMode === 'folder-icon-settings'"
+          class="settings-form"
+          @submit.prevent
+        >
+          <span class="field-label">プリセット</span>
+          <div class="project-icon-presets" aria-label="プロジェクトアイコンのプリセット">
+            <button
+              v-for="preset in PROJECT_ICON_PRESETS"
+              :key="preset.id"
+              type="button"
+              class="project-icon-preset-button"
+              :class="{ active: folderIconPath === projectIconPresetValue(preset.id) }"
+              :aria-label="`${preset.label}を選択`"
+              :title="preset.label"
+              @click="handleSelectFolderIconPreset(preset.id)"
+            >
+              <component :is="preset.icon" :size="20" aria-hidden="true" />
+            </button>
+          </div>
+          <label class="field-label" for="folder-icon-only-path">画像を使う</label>
+          <div class="path-field">
+            <input
+              id="folder-icon-only-path"
+              :value="isProjectIconPreset(folderIconPath) ? projectIconPresetFromValue(folderIconPath)?.label : folderIconPath"
+              class="path-input"
+              type="text"
+              placeholder="未設定"
+              readonly
+            />
+            <button
+              type="button"
+              class="secondary-button browse-button"
+              @click="handleBrowseFolderIcon"
+            >
+              参照
+            </button>
+            <button
+              type="button"
+              class="secondary-button browse-button"
+              @click="handleClearFolderIcon"
+            >
+              解除
+            </button>
+          </div>
+          <p v-if="loadFolderError" class="settings-status is-error">{{ loadFolderError }}</p>
+        </form>
+        <form
           v-else-if="modalMode === 'create-note'"
           class="settings-form"
           @submit.prevent="handleCreateNote(closeModal)"
@@ -3236,6 +3292,9 @@ onBeforeUnmount(() => {
         >
           {{ isSavingNote ? '作成中' : '作成' }}
         </button>
+      </template>
+      <template v-else-if="modalMode === 'folder-icon-settings'" #footer="{ close }">
+        <button type="button" class="secondary-button" @click="close">閉じる</button>
       </template>
     </Modal>
   </div>
