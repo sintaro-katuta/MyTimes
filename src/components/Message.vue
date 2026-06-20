@@ -460,7 +460,7 @@ onBeforeUnmount(() => {
   flex-direction: column;
   flex: 1;
   min-width: 0;
-  padding-right: 88px;
+  padding-right: 112px;
   align-items: flex-start;
   justify-content: flex-start;
   gap: 8px;
@@ -614,6 +614,7 @@ onBeforeUnmount(() => {
 .message-content {
   display: flex;
   width: 100%;
+  max-width: 840px;
   text-align: left;
 }
 
@@ -635,7 +636,7 @@ onBeforeUnmount(() => {
   font-size: 15px;
   margin: 0;
   line-height: 1.7;
-  letter-spacing: 0.01em;
+  letter-spacing: 0;
   word-break: break-word;
   color: var(--text-secondary);
 }
@@ -798,8 +799,8 @@ onBeforeUnmount(() => {
 .message-actions {
   position: absolute;
   padding: 6px 10px;
-  top: 0;
-  right: 8px;
+  top: 12px;
+  right: 16px;
   border: 1px solid color-mix(in srgb, var(--border-default) 76%, transparent);
   border-radius: 14px;
   z-index: 30;
@@ -816,21 +817,21 @@ onBeforeUnmount(() => {
   transition:
     opacity 160ms ease,
     transform 160ms ease;
-  transform: translateY(calc(-50% - 4px));
+  transform: translateY(-4px);
 }
 
 .message:hover .message-actions,
 .message:focus-within .message-actions,
 .message.is-picker-open .message-actions {
   opacity: 1;
-  transform: translateY(-50%);
+  transform: translateY(0);
 }
 
 .message.is-reaction-hover-suppressed:hover .message-actions,
 .message.is-reaction-hover-suppressed:focus-within .message-actions {
   opacity: 0;
   pointer-events: none;
-  transform: translateY(calc(-50% - 4px));
+  transform: translateY(-4px);
 }
 
 .message-actions :deep(img) {
