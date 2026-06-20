@@ -2723,30 +2723,17 @@ onBeforeUnmount(() => {
         />
       </main>
     </div>
-    <div
-      v-if="isCustomReactionModalOpen"
-      class="custom-reaction-modal-backdrop"
-      role="presentation"
-      @click.self="closeCustomReactionModal"
-    >
+    <Modal v-model="isCustomReactionModalOpen" size="default" @close="closeCustomReactionModal">
+      <template #header>
+        <h2 id="custom-reaction-title" class="modal-title">絵文字を追加する</h2>
+      </template>
+
+      <template #body>
       <form
-        class="custom-reaction-modal"
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="custom-reaction-title"
+        id="custom-reaction-form"
+        class="custom-reaction-form"
         @submit.prevent="handleSaveCustomReaction"
       >
-        <div class="custom-reaction-header">
-          <h2 id="custom-reaction-title" class="custom-reaction-title">絵文字を追加する</h2>
-          <button
-            type="button"
-            class="custom-reaction-close"
-            aria-label="閉じる"
-            @click="closeCustomReactionModal"
-          >
-            ×
-          </button>
-        </div>
         <div class="custom-reaction-tabs" role="tablist" aria-label="絵文字追加方法">
           <button type="button" class="custom-reaction-tab active" role="tab" aria-selected="true">
             カスタム絵文字
@@ -2805,16 +2792,23 @@ onBeforeUnmount(() => {
             {{ customReactionError }}
           </p>
         </div>
-        <div class="custom-reaction-footer">
-          <button type="button" class="secondary-button" @click="closeCustomReactionModal">
-            キャンセル
-          </button>
-          <button type="submit" class="primary-button" :disabled="isCustomReactionSaveDisabled">
-            {{ isSavingCustomReaction ? '保存中' : '保存する' }}
-          </button>
-        </div>
       </form>
-    </div>
+      </template>
+
+      <template #footer>
+        <button type="button" class="secondary-button" @click="closeCustomReactionModal">
+          キャンセル
+        </button>
+        <button
+          type="submit"
+          form="custom-reaction-form"
+          class="primary-button"
+          :disabled="isCustomReactionSaveDisabled"
+        >
+          {{ isSavingCustomReaction ? '保存中' : '保存する' }}
+        </button>
+      </template>
+    </Modal>
     <Modal v-model="isModalOpen" :size="modalSize">
       <template #header>
         <h2 class="modal-title">
@@ -3304,84 +3298,27 @@ onBeforeUnmount(() => {
   color: var(--text-secondary);
 }
 
-.custom-reaction-modal-backdrop {
-  position: fixed;
-  inset: 0;
-  z-index: 1000;
+.custom-reaction-form {
   display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 24px;
-  background: color-mix(in srgb, var(--overlay-backdrop) 82%, transparent);
-}
-
-.custom-reaction-modal {
-  display: flex;
-  width: min(860px, calc(100vw - 48px));
-  max-height: min(820px, calc(100vh - 48px));
   flex-direction: column;
-  overflow: hidden;
-  border: 1px solid var(--border-strong);
-  border-radius: 12px;
-  color: var(--text-primary);
-  background: var(--surface-panel);
-  box-shadow: var(--shadow-modal);
-}
-
-.custom-reaction-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  min-height: 88px;
-  padding: 0 44px 0 48px;
-}
-
-.custom-reaction-title {
-  margin: 0;
-  font-size: 32px;
-  font-weight: 800;
-  letter-spacing: 0;
-}
-
-.custom-reaction-close {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 44px;
-  height: 44px;
-  padding: 0;
-  color: var(--text-tertiary);
-  background: transparent;
-  border: 0;
-  border-radius: 50%;
-  cursor: pointer;
-  font-size: 38px;
-  line-height: 1;
-}
-
-.custom-reaction-close:hover,
-.custom-reaction-close:focus-visible {
-  color: var(--text-primary);
-  background: var(--surface-elevated-hover);
-  outline: none;
+  gap: 20px;
 }
 
 .custom-reaction-tabs {
   display: flex;
-  gap: 30px;
-  min-height: 48px;
-  padding: 0 48px;
+  gap: 18px;
+  min-height: 40px;
   border-bottom: 1px solid var(--border-default);
 }
 
 .custom-reaction-tab {
   position: relative;
-  padding: 0 10px;
+  padding: 0 6px;
   color: var(--text-tertiary);
   background: transparent;
   border: 0;
-  font-size: 18px;
-  font-weight: 800;
+  font-size: 14px;
+  font-weight: 700;
 }
 
 .custom-reaction-tab.active {
@@ -3406,18 +3343,16 @@ onBeforeUnmount(() => {
 .custom-reaction-content {
   display: flex;
   flex-direction: column;
-  gap: 28px;
+  gap: 22px;
   min-height: 0;
-  padding: 28px 48px 36px;
-  overflow-y: auto;
 }
 
 .custom-reaction-description {
-  max-width: 720px;
+  max-width: 560px;
   margin: 0;
   color: var(--text-secondary);
-  font-size: 18px;
-  line-height: 1.7;
+  font-size: 14px;
+  line-height: 1.6;
 }
 
 .custom-reaction-section {
@@ -3428,45 +3363,45 @@ onBeforeUnmount(() => {
 
 .custom-reaction-step {
   margin: 0;
-  font-size: 20px;
-  font-weight: 800;
+  font-size: 15px;
+  font-weight: 700;
 }
 
 .custom-reaction-help {
-  max-width: 720px;
-  margin: 0 0 0 28px;
+  max-width: 560px;
+  margin: 0;
   color: var(--text-tertiary);
-  font-size: 16px;
+  font-size: 13px;
   line-height: 1.6;
 }
 
 .custom-reaction-upload-row {
   display: flex;
   align-items: center;
-  gap: 24px;
-  margin: 18px 0 0 28px;
+  gap: 16px;
+  margin-top: 10px;
 }
 
 .custom-reaction-preview {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 96px;
-  height: 96px;
+  width: 76px;
+  height: 76px;
   border: 1px solid var(--border-strong);
-  border-radius: 4px;
+  border-radius: 8px;
   background: var(--surface-input);
 }
 
 .custom-reaction-preview img {
-  width: 72px;
-  height: 72px;
+  width: 56px;
+  height: 56px;
   object-fit: contain;
 }
 
 .custom-reaction-preview-placeholder {
   color: var(--text-tertiary);
-  font-size: 42px;
+  font-size: 30px;
   line-height: 1;
 }
 
@@ -3480,66 +3415,19 @@ onBeforeUnmount(() => {
 .custom-reaction-upload-label {
   margin: 0;
   color: var(--text-tertiary);
-  font-size: 16px;
+  font-size: 13px;
   font-weight: 700;
 }
 
 .custom-reaction-name-input {
-  width: min(100%, 720px);
-  height: 54px;
-  margin: 18px 0 0 28px;
-  font-size: 18px;
-}
-
-.custom-reaction-footer {
-  display: flex;
-  justify-content: flex-end;
-  gap: 16px;
-  padding: 24px 48px 40px;
+  width: min(100%, 560px);
+  margin-top: 10px;
 }
 
 @media (max-width: 640px) {
-  .custom-reaction-modal-backdrop {
-    padding: 12px;
-  }
-
-  .custom-reaction-modal {
-    width: calc(100vw - 24px);
-    max-height: calc(100vh - 24px);
-  }
-
-  .custom-reaction-header {
-    min-height: 72px;
-    padding: 0 18px 0 22px;
-  }
-
-  .custom-reaction-title {
-    font-size: 24px;
-  }
-
-  .custom-reaction-tabs,
-  .custom-reaction-content,
-  .custom-reaction-footer {
-    padding-right: 22px;
-    padding-left: 22px;
-  }
-
-  .custom-reaction-description {
-    font-size: 15px;
-  }
-
-  .custom-reaction-help,
-  .custom-reaction-upload-row,
-  .custom-reaction-name-input {
-    margin-left: 0;
-  }
-
   .custom-reaction-upload-row {
     align-items: flex-start;
-  }
-
-  .custom-reaction-footer {
-    flex-wrap: wrap;
+    flex-direction: column;
   }
 }
 
