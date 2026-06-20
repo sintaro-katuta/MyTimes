@@ -634,7 +634,7 @@ onBeforeUnmount(() => {
   width: 100%;
   font-size: 15px;
   margin: 0;
-  line-height: 1.6;
+  line-height: 1.7;
   letter-spacing: 0.01em;
   word-break: break-word;
   color: var(--text-secondary);
@@ -666,6 +666,15 @@ onBeforeUnmount(() => {
   margin-top: 8px;
 }
 
+.message-message :deep(ul + h1),
+.message-message :deep(ol + h1),
+.message-message :deep(ul + h2),
+.message-message :deep(ol + h2),
+.message-message :deep(ul + h3),
+.message-message :deep(ol + h3) {
+  margin-top: 12px;
+}
+
 .message-message :deep(h1),
 .message-message :deep(h2),
 .message-message :deep(h3) {
@@ -694,7 +703,7 @@ onBeforeUnmount(() => {
 }
 
 .message-message :deep(li + li) {
-  margin-top: 2px;
+  margin-top: 5px;
 }
 
 .message-message :deep(strong) {
