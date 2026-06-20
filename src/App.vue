@@ -3,6 +3,8 @@ import { open } from '@tauri-apps/plugin-dialog'
 import { convertFileSrc, invoke } from '@tauri-apps/api/core'
 import { LogicalPosition } from '@tauri-apps/api/dpi'
 import { Menu } from '@tauri-apps/api/menu'
+import { relaunch } from '@tauri-apps/plugin-process'
+import { check } from '@tauri-apps/plugin-updater'
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import Modal from './components/Modal.vue'
 import Sidebar from './components/Sidebar.vue'
@@ -431,6 +433,7 @@ const renameFolderName = ref('')
 const folderIconPath = ref('')
 const folderMarkdownExportPath = ref('')
 const settingsStatus = ref('')
+const isCheckingForUpdates = ref(false)
 const notePathInput = ref('')
 const noteActionError = ref('')
 let saveSettingsRequestId = 0
@@ -2444,6 +2447,43 @@ const handleSaveSettings = async (settingName = null) => {
   }
 }
 
+const handleCheckForUpdates = async () => {
+  if (isCheckingForUpdates.value) return
+
+  isCheckingForUpdates.value = true
+  settingsStatus.value = 'アップデートを確認しています'
+
+  try {
+    const update = await check()
+
+    if (!update) {
+      settingsStatus.value = '利用可能なアップデートはありません'
+      return
+    }
+
+    settingsStatus.value = `バージョン ${update.version} をダウンロードしています`
+    let downloadedBytes = 0
+
+    await update.downloadAndInstall((event) => {
+      if (event.event === 'Progress') {
+        downloadedBytes += event.data.chunkLength
+        settingsStatus.value = `アップデートをダウンロードしています (${Math.round(downloadedBytes / 1024 / 1024)}MB)`
+      }
+
+      if (event.event === 'Finished') {
+        settingsStatus.value = 'アップデートをインストールしています'
+      }
+    })
+
+    settingsStatus.value = 'アップデートをインストールしました。再起動します'
+    await relaunch()
+  } catch (error) {
+    settingsStatus.value = error instanceof Error ? error.message : 'アップデートの確認に失敗しました'
+  } finally {
+    isCheckingForUpdates.value = false
+  }
+}
+
 const restoreLastWorkspace = async () => {
   if (settingsReopenLastWorkspace.value !== 'true' || selectedFolderId.value !== null) return
 
@@ -2946,6 +2986,17 @@ onBeforeUnmount(() => {
 
             <div v-else class="settings-section">
               <div class="settings-group">
+                <div class="settings-row">
+                  <span class="field-label">アプリのアップデート</span>
+                  <button
+                    type="button"
+                    class="secondary-button settings-action-button"
+                    :disabled="isCheckingForUpdates"
+                    @click="handleCheckForUpdates"
+                  >
+                    {{ isCheckingForUpdates ? '確認中' : 'アップデートを確認' }}
+                  </button>
+                </div>
                 <div class="settings-row">
                   <label class="field-label" for="root-markdown-export-path">ルート用Markdown保存先</label>
                   <div class="path-field">
@@ -3838,6 +3889,11 @@ select.path-input {
 .browse-button {
   flex: 0 0 auto;
   min-width: 72px;
+}
+
+.settings-action-button {
+  justify-self: flex-start;
+  min-width: 160px;
 }
 
 .messages {
