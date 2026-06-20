@@ -16,6 +16,12 @@ import {
   PanelLeftOpen,
 } from '@lucide/vue'
 import {
+  PROJECT_ICON_PRESETS,
+  isProjectIconPreset,
+  projectIconPresetFromValue,
+  projectIconPresetValue,
+} from './lib/projectIconPresets'
+import {
   appendChatMessageToMarkdown,
   createMarkdownFile,
   deleteMarkdownFile,
@@ -1687,12 +1693,6 @@ const browseFolderPathFromMenu = async (folder) => {
   await handleBrowseFolderMarkdownExportPath()
 }
 
-const browseFolderIconFromMenu = async (folder) => {
-  if (!(await prepareFolderContextAction(folder))) return
-
-  await handleBrowseFolderIcon()
-}
-
 const deleteFolderFromMenu = async (folder) => {
   if (!folder) return
   if (!confirmDiscardMarkdownChanges()) return
@@ -1740,7 +1740,7 @@ const handleFolderContextMenuAction = async (action, folder) => {
   }
 
   if (action === 'folder-image') {
-    await browseFolderIconFromMenu(folder)
+    await openFolderSettingsModalFromMenu(folder)
     return
   }
 
@@ -1771,7 +1771,7 @@ const getFolderContextMenu = () => {
         },
         {
           id: 'folder-image',
-          text: '画像を変更',
+          text: 'アイコンを変更',
           action: (id) => {
             void handleFolderContextMenuAction(id, folderContextMenuTarget.value)
           },
@@ -1893,6 +1893,20 @@ const handleBrowseFolderIcon = async () => {
   }
 }
 
+const handleSelectFolderIconPreset = async (presetId) => {
+  if (!selectedFolder.value) return
+
+  folderIconPath.value = projectIconPresetValue(presetId)
+  await handleSaveFolderSettings()
+}
+
+const handleClearFolderIcon = async () => {
+  if (!selectedFolder.value) return
+
+  folderIconPath.value = ''
+  await handleSaveFolderSettings()
+}
+
 const handleBrowseCreateFolderIcon = async () => {
   loadFolderError.value = ''
 
@@ -1914,6 +1928,14 @@ const handleBrowseCreateFolderIcon = async () => {
   } catch (error) {
     loadFolderError.value = error instanceof Error ? error.message : 'プロジェクト画像の選択に失敗しました'
   }
+}
+
+const handleSelectCreateFolderIconPreset = (presetId) => {
+  folderCreateIconPath.value = projectIconPresetValue(presetId)
+}
+
+const handleClearCreateFolderIcon = () => {
+  folderCreateIconPath.value = ''
 }
 
 const handleBrowseCreateProjectDirectory = async () => {
@@ -3068,14 +3090,30 @@ onBeforeUnmount(() => {
             type="text"
             :placeholder="getPathBaseName(projectDirectoryPath) || 'MyTimes'"
           />
-          <label class="field-label" for="create-folder-icon-path">プロジェクト画像</label>
+          <span class="field-label">プロジェクトアイコン</span>
+          <div class="project-icon-presets" aria-label="プロジェクトアイコンのプリセット">
+            <button
+              v-for="preset in PROJECT_ICON_PRESETS"
+              :key="preset.id"
+              type="button"
+              class="project-icon-preset-button"
+              :class="{ active: folderCreateIconPath === projectIconPresetValue(preset.id) }"
+              :aria-label="`${preset.label}を選択`"
+              :title="preset.label"
+              @click="handleSelectCreateFolderIconPreset(preset.id)"
+            >
+              <component :is="preset.icon" :size="20" aria-hidden="true" />
+            </button>
+          </div>
+          <label class="field-label" for="create-folder-icon-path">画像を使う</label>
           <div class="path-field">
             <input
               id="create-folder-icon-path"
-              v-model="folderCreateIconPath"
+              :value="isProjectIconPreset(folderCreateIconPath) ? projectIconPresetFromValue(folderCreateIconPath)?.label : folderCreateIconPath"
               class="path-input"
               type="text"
               placeholder="未設定"
+              readonly
             />
             <button
               type="button"
@@ -3083,6 +3121,13 @@ onBeforeUnmount(() => {
               @click="handleBrowseCreateFolderIcon"
             >
               参照
+            </button>
+            <button
+              type="button"
+              class="secondary-button browse-button"
+              @click="handleClearCreateFolderIcon"
+            >
+              解除
             </button>
           </div>
           <p v-if="loadFolderError" class="settings-status is-error">{{ loadFolderError }}</p>
@@ -3101,15 +3146,30 @@ onBeforeUnmount(() => {
             placeholder="表示名"
             @change="handleSaveFolderSettings()"
           />
-          <label class="field-label" for="folder-icon-path">プロジェクト画像</label>
+          <span class="field-label">プロジェクトアイコン</span>
+          <div class="project-icon-presets" aria-label="プロジェクトアイコンのプリセット">
+            <button
+              v-for="preset in PROJECT_ICON_PRESETS"
+              :key="preset.id"
+              type="button"
+              class="project-icon-preset-button"
+              :class="{ active: folderIconPath === projectIconPresetValue(preset.id) }"
+              :aria-label="`${preset.label}を選択`"
+              :title="preset.label"
+              @click="handleSelectFolderIconPreset(preset.id)"
+            >
+              <component :is="preset.icon" :size="20" aria-hidden="true" />
+            </button>
+          </div>
+          <label class="field-label" for="folder-icon-path">画像を使う</label>
           <div class="path-field">
             <input
               id="folder-icon-path"
-              v-model="folderIconPath"
+              :value="isProjectIconPreset(folderIconPath) ? projectIconPresetFromValue(folderIconPath)?.label : folderIconPath"
               class="path-input"
               type="text"
               placeholder="未設定"
-              @change="handleSaveFolderSettings()"
+              readonly
             />
             <button
               type="button"
@@ -3117,6 +3177,13 @@ onBeforeUnmount(() => {
               @click="handleBrowseFolderIcon"
             >
               参照
+            </button>
+            <button
+              type="button"
+              class="secondary-button browse-button"
+              @click="handleClearFolderIcon"
+            >
+              解除
             </button>
           </div>
           <label class="field-label" for="folder-markdown-export-path">プロジェクトのMarkdown保存先</label>
@@ -3442,6 +3509,38 @@ onBeforeUnmount(() => {
   display: flex;
   flex-direction: column;
   gap: 8px;
+}
+
+.project-icon-presets {
+  display: grid;
+  grid-template-columns: repeat(5, 44px);
+  gap: 8px;
+}
+
+.project-icon-preset-button {
+  width: 44px;
+  height: 44px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--border-default);
+  border-radius: 10px;
+  background: var(--surface-input);
+  color: var(--text-tertiary);
+  cursor: pointer;
+}
+
+.project-icon-preset-button:hover {
+  border-color: var(--border-strong);
+  background: var(--surface-elevated-hover);
+  color: var(--text-primary);
+}
+
+.project-icon-preset-button.active {
+  border-color: color-mix(in srgb, var(--bg-primary) 44%, var(--border-default));
+  background: color-mix(in srgb, var(--bg-primary) 14%, var(--surface-input));
+  color: var(--text-primary);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--bg-primary) 16%, transparent);
 }
 
 .settings-layout {

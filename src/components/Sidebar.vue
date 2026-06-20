@@ -3,6 +3,7 @@ import { convertFileSrc } from '@tauri-apps/api/core'
 import { LogicalPosition } from '@tauri-apps/api/dpi'
 import { Menu } from '@tauri-apps/api/menu'
 import { computed, nextTick, ref, watch } from 'vue'
+import { projectIconPresetFromValue } from '../lib/projectIconPresets'
 
 import {
   ChevronDown,
@@ -426,8 +427,13 @@ const commitRenameNote = (note) => {
 }
 
 const folderIconSrc = (folder) => {
-  return folder.iconPath ? convertFileSrc(folder.iconPath) : ''
+  return folder.iconPath && !projectIconPresetFromValue(folder.iconPath) ? convertFileSrc(folder.iconPath) : ''
 }
+
+const folderIconPreset = (folder) => projectIconPresetFromValue(folder.iconPath)
+
+const hasCustomImageIcon = (folder) => Boolean(folder.iconPath && !folderIconPreset(folder))
+const hasPresetIcon = (folder) => Boolean(folderIconPreset(folder))
 
 const toggleFolder = (folder) => {
   const nextExpandedIds = new Set(expandedFolderIds.value)
@@ -535,13 +541,23 @@ watch(
             <button
               type="button"
               class="rail-button"
-              :class="{ active: selectedFolderId === folder.id, 'has-image': folder.iconPath }"
+              :class="{
+                active: selectedFolderId === folder.id,
+                'has-image': hasCustomImageIcon(folder),
+                'has-preset': hasPresetIcon(folder),
+              }"
               :aria-label="folder.name"
               :title="folder.path"
               @click="selectFolder(folder)"
               @contextmenu.prevent="openFolderContextMenu($event, folder)"
             >
-              <img v-if="folder.iconPath" class="folder-image" :src="folderIconSrc(folder)" alt="" />
+              <component
+                :is="folderIconPreset(folder)?.icon"
+                v-if="folderIconPreset(folder)"
+                :size="21"
+                aria-hidden="true"
+              />
+              <img v-else-if="folder.iconPath" class="folder-image" :src="folderIconSrc(folder)" alt="" />
               <Folder v-else :size="20" />
             </button>
           </div>
@@ -723,6 +739,14 @@ watch(
   background: color-mix(in srgb, var(--bg-primary) 12%, var(--bg-base-2));
   color: var(--text-primary);
   box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--bg-primary) 12%, transparent);
+}
+
+.rail-button.has-preset {
+  color: var(--text-secondary);
+}
+
+.rail-button.has-preset.active {
+  color: var(--text-primary);
 }
 
 .rail-button.has-image,
