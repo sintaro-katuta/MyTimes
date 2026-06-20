@@ -3177,6 +3177,9 @@ onBeforeUnmount(() => {
 <style scoped>
 .container {
   --titlebar-height: 40px;
+  height: 100dvh;
+  box-sizing: border-box;
+  overflow: hidden;
   padding: calc(var(--titlebar-height) + 8px * var(--density-scale)) calc(16px * var(--density-scale)) calc(16px * var(--density-scale));
 }
 
