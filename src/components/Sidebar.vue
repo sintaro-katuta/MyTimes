@@ -655,7 +655,7 @@ watch(
   display: flex;
   flex-direction: column;
   align-items: center;
-  background-color: var(--bg-base-1);
+  background-color: var(--surface-canvas);
   padding: 12px;
 }
 
