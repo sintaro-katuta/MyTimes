@@ -93,7 +93,7 @@ const installTauriMocks = async (page) => {
       ['last_workspace_folder_id', '1'],
       ['last_workspace_note_path', notePath],
       ['custom_reaction_options', '[]'],
-      ['user_name', '勝田'],
+      ['user_name', 'shintaro'],
       ['user_icon_file_name', 'default-user-icon.svg'],
       ['user_icon_path', ''],
     ])
