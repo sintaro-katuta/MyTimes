@@ -635,6 +635,7 @@ onBeforeUnmount(() => {
   font-size: 15px;
   margin: 0;
   line-height: 1.6;
+  letter-spacing: 0.01em;
   word-break: break-word;
   color: var(--text-secondary);
 }
