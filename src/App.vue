@@ -81,6 +81,9 @@ const DEFAULT_SETTINGS = {
 }
 
 const USER_NAME_MAX_LENGTH = 20
+const FONT_SIZE_MIN = 12
+const FONT_SIZE_MAX = 28
+const FONT_SIZE_DEFAULT = Number(DEFAULT_SETTINGS.fontSize)
 
 const THEME_COLORS = {
   orange: {
@@ -359,6 +362,14 @@ const themeColorTokens = (value) => {
   }
 }
 
+const normalizeFontSize = (value) => {
+  const fontSize = Number(value)
+
+  if (!Number.isFinite(fontSize)) return String(FONT_SIZE_DEFAULT)
+
+  return String(Math.min(FONT_SIZE_MAX, Math.max(FONT_SIZE_MIN, Math.round(fontSize))))
+}
+
 const SETTINGS_CATEGORIES = [
   { id: 'user', label: 'ユーザー' },
   { id: 'appearance', label: '外観' },
@@ -558,7 +569,7 @@ const isAutoSaveMarkdownEnabled = computed(() => settingsAutoSaveMarkdown.value 
 const appSettingsPayload = () => ({
   themeMode: settingsThemeMode.value,
   themeColor: normalizeThemeColor(settingsThemeColor.value),
-  fontSize: settingsFontSize.value,
+  fontSize: normalizeFontSize(settingsFontSize.value),
   uiDensity: settingsUiDensity.value,
   markdownDefaultView: settingsMarkdownDefaultView.value,
   autoSaveMarkdown: settingsAutoSaveMarkdown.value,
@@ -574,7 +585,7 @@ const appSettingValue = (settingName) => appSettingsPayload()[settingName]
 const applyAppearanceSettings = () => {
   const root = document.documentElement
   const themeColor = themeColorTokens(settingsThemeColor.value)
-  const fontSize = Number(settingsFontSize.value)
+  const fontSize = Number(normalizeFontSize(settingsFontSize.value))
 
   if (settingsThemeMode.value === 'system') {
     delete root.dataset.theme
@@ -586,7 +597,7 @@ const applyAppearanceSettings = () => {
   root.style.setProperty('--bg-primary-hover', themeColor.hover)
   root.style.setProperty('--surface-accent-light', themeColor.accentLight)
   root.style.setProperty('--surface-accent-dark', themeColor.accentDark)
-  root.style.setProperty('--font-size', `${Number.isFinite(fontSize) ? fontSize : 16}px`)
+  root.style.setProperty('--font-size', `${fontSize}px`)
 }
 
 const loadAppSettings = async () => {
@@ -594,7 +605,9 @@ const loadAppSettings = async () => {
   settingsThemeColor.value = normalizeThemeColor(
     await loadSetting(SETTINGS_KEYS.themeColor, DEFAULT_SETTINGS.themeColor),
   )
-  settingsFontSize.value = await loadSetting(SETTINGS_KEYS.fontSize, DEFAULT_SETTINGS.fontSize)
+  settingsFontSize.value = normalizeFontSize(
+    await loadSetting(SETTINGS_KEYS.fontSize, DEFAULT_SETTINGS.fontSize),
+  )
   settingsUiDensity.value = await loadSetting(SETTINGS_KEYS.uiDensity, DEFAULT_SETTINGS.uiDensity)
   settingsMarkdownDefaultView.value = await loadSetting(
     SETTINGS_KEYS.markdownDefaultView,
@@ -2872,12 +2885,25 @@ onBeforeUnmount(() => {
                       v-model="settingsFontSize"
                       class="settings-range"
                       type="range"
-                      min="14"
-                      max="20"
+                      :min="FONT_SIZE_MIN"
+                      :max="FONT_SIZE_MAX"
                       step="1"
                       @change="handleSaveSettings('fontSize')"
                     />
-                    <p class="settings-inline-value">{{ settingsFontSize }}px</p>
+                    <div class="number-field">
+                      <input
+                        v-model="settingsFontSize"
+                        class="path-input font-size-input"
+                        type="number"
+                        :min="FONT_SIZE_MIN"
+                        :max="FONT_SIZE_MAX"
+                        step="1"
+                        inputmode="numeric"
+                        aria-label="フォントサイズの数値"
+                        @change="settingsFontSize = normalizeFontSize(settingsFontSize); handleSaveSettings('fontSize')"
+                      />
+                      <span class="settings-inline-value">px</span>
+                    </div>
                   </div>
                 </div>
                 <div class="settings-row">
@@ -3563,11 +3589,9 @@ onBeforeUnmount(() => {
 }
 
 .settings-inline-value {
-  min-width: 42px;
   margin: 0;
   color: var(--text-tertiary);
   font-size: 12px;
-  text-align: right;
 }
 
 .settings-range {
@@ -3580,6 +3604,18 @@ onBeforeUnmount(() => {
   align-items: center;
   gap: 12px;
   min-width: 0;
+}
+
+.number-field {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 6px;
+}
+
+.font-size-input {
+  width: 74px;
+  text-align: right;
 }
 
 .color-field {
