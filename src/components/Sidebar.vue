@@ -863,13 +863,13 @@ watch(
 
 .new-note-button {
   width: 100%;
-  min-height: 52px;
+  height: 48px;
   display: flex;
   align-items: center;
   justify-content: center;
   gap: 12px;
   margin-top: 8px;
-  padding: 12px 16px;
+  padding: 0 16px;
   border: none;
   border-radius: 10px;
   background: var(--bg-primary);
