@@ -932,7 +932,7 @@ watch(
 
 .message-editor {
   width: 100%;
-  min-height: 24px;
+  min-height: calc(var(--font-size) * 1.5 * 3);
   max-height: 240px;
   box-sizing: border-box;
   padding: 4px 2px 0;
