@@ -7,16 +7,21 @@
     "dev": "vite",
     "build": "vite build",
     "capture:readme": "node scripts/capture-readme-screenshots.mjs",
+    "check:version": "node scripts/sync-version.mjs --check",
     "preview": "vite preview",
+    "sync:version": "node scripts/sync-version.mjs",
     "tauri": "tauri",
     "tauri:dev": "tauri dev",
-    "tauri:build": "tauri build"
+    "tauri:build": "tauri build",
+    "version": "npm run sync:version && git add src-tauri/tauri.conf.json src-tauri/Cargo.toml src-tauri/Cargo.lock"
   },
   "dependencies": {
     "@lucide/vue": "^1.7.0",
     "@tauri-apps/plugin-dialog": "^2.4.0",
     "@tauri-apps/plugin-opener": "^2.5.4",
+    "@tauri-apps/plugin-process": "^2.3.1",
     "@tauri-apps/plugin-sql": "^2.4.0",
+    "@tauri-apps/plugin-updater": "^2.10.1",
     "highlight.js": "^11.11.1",
     "vue": "^3.5.30"
   },

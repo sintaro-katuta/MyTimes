@@ -3,6 +3,8 @@ import { open } from '@tauri-apps/plugin-dialog'
 import { convertFileSrc, invoke } from '@tauri-apps/api/core'
 import { LogicalPosition } from '@tauri-apps/api/dpi'
 import { Menu } from '@tauri-apps/api/menu'
+import { relaunch } from '@tauri-apps/plugin-process'
+import { check } from '@tauri-apps/plugin-updater'
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import Modal from './components/Modal.vue'
 import Sidebar from './components/Sidebar.vue'
@@ -13,6 +15,12 @@ import {
   PanelLeftClose,
   PanelLeftOpen,
 } from '@lucide/vue'
+import {
+  PROJECT_ICON_PRESETS,
+  isProjectIconPreset,
+  projectIconPresetFromValue,
+  projectIconPresetValue,
+} from './lib/projectIconPresets'
 import {
   appendChatMessageToMarkdown,
   createMarkdownFile,
@@ -81,6 +89,9 @@ const DEFAULT_SETTINGS = {
 }
 
 const USER_NAME_MAX_LENGTH = 20
+const FONT_SIZE_MIN = 12
+const FONT_SIZE_MAX = 28
+const FONT_SIZE_DEFAULT = Number(DEFAULT_SETTINGS.fontSize)
 
 const THEME_COLORS = {
   orange: {
@@ -359,6 +370,14 @@ const themeColorTokens = (value) => {
   }
 }
 
+const normalizeFontSize = (value) => {
+  const fontSize = Number(value)
+
+  if (!Number.isFinite(fontSize)) return String(FONT_SIZE_DEFAULT)
+
+  return String(Math.min(FONT_SIZE_MAX, Math.max(FONT_SIZE_MIN, Math.round(fontSize))))
+}
+
 const SETTINGS_CATEGORIES = [
   { id: 'user', label: 'ユーザー' },
   { id: 'appearance', label: '外観' },
@@ -420,6 +439,7 @@ const renameFolderName = ref('')
 const folderIconPath = ref('')
 const folderMarkdownExportPath = ref('')
 const settingsStatus = ref('')
+const isCheckingForUpdates = ref(false)
 const notePathInput = ref('')
 const noteActionError = ref('')
 let saveSettingsRequestId = 0
@@ -558,7 +578,7 @@ const isAutoSaveMarkdownEnabled = computed(() => settingsAutoSaveMarkdown.value 
 const appSettingsPayload = () => ({
   themeMode: settingsThemeMode.value,
   themeColor: normalizeThemeColor(settingsThemeColor.value),
-  fontSize: settingsFontSize.value,
+  fontSize: normalizeFontSize(settingsFontSize.value),
   uiDensity: settingsUiDensity.value,
   markdownDefaultView: settingsMarkdownDefaultView.value,
   autoSaveMarkdown: settingsAutoSaveMarkdown.value,
@@ -574,7 +594,7 @@ const appSettingValue = (settingName) => appSettingsPayload()[settingName]
 const applyAppearanceSettings = () => {
   const root = document.documentElement
   const themeColor = themeColorTokens(settingsThemeColor.value)
-  const fontSize = Number(settingsFontSize.value)
+  const fontSize = Number(normalizeFontSize(settingsFontSize.value))
 
   if (settingsThemeMode.value === 'system') {
     delete root.dataset.theme
@@ -586,7 +606,7 @@ const applyAppearanceSettings = () => {
   root.style.setProperty('--bg-primary-hover', themeColor.hover)
   root.style.setProperty('--surface-accent-light', themeColor.accentLight)
   root.style.setProperty('--surface-accent-dark', themeColor.accentDark)
-  root.style.setProperty('--font-size', `${Number.isFinite(fontSize) ? fontSize : 16}px`)
+  root.style.setProperty('--font-size', `${fontSize}px`)
 }
 
 const loadAppSettings = async () => {
@@ -594,7 +614,9 @@ const loadAppSettings = async () => {
   settingsThemeColor.value = normalizeThemeColor(
     await loadSetting(SETTINGS_KEYS.themeColor, DEFAULT_SETTINGS.themeColor),
   )
-  settingsFontSize.value = await loadSetting(SETTINGS_KEYS.fontSize, DEFAULT_SETTINGS.fontSize)
+  settingsFontSize.value = normalizeFontSize(
+    await loadSetting(SETTINGS_KEYS.fontSize, DEFAULT_SETTINGS.fontSize),
+  )
   settingsUiDensity.value = await loadSetting(SETTINGS_KEYS.uiDensity, DEFAULT_SETTINGS.uiDensity)
   settingsMarkdownDefaultView.value = await loadSetting(
     SETTINGS_KEYS.markdownDefaultView,
@@ -1665,16 +1687,17 @@ const openFolderSettingsModalFromMenu = async (folder) => {
   isModalOpen.value = true
 }
 
+const openFolderIconModalFromMenu = async (folder) => {
+  if (!(await prepareFolderContextAction(folder))) return
+
+  modalMode.value = 'folder-icon-settings'
+  isModalOpen.value = true
+}
+
 const browseFolderPathFromMenu = async (folder) => {
   if (!(await prepareFolderContextAction(folder))) return
 
   await handleBrowseFolderMarkdownExportPath()
-}
-
-const browseFolderIconFromMenu = async (folder) => {
-  if (!(await prepareFolderContextAction(folder))) return
-
-  await handleBrowseFolderIcon()
 }
 
 const deleteFolderFromMenu = async (folder) => {
@@ -1724,7 +1747,7 @@ const handleFolderContextMenuAction = async (action, folder) => {
   }
 
   if (action === 'folder-image') {
-    await browseFolderIconFromMenu(folder)
+    await openFolderIconModalFromMenu(folder)
     return
   }
 
@@ -1755,7 +1778,7 @@ const getFolderContextMenu = () => {
         },
         {
           id: 'folder-image',
-          text: '画像を変更',
+          text: 'アイコンを変更',
           action: (id) => {
             void handleFolderContextMenuAction(id, folderContextMenuTarget.value)
           },
@@ -1877,6 +1900,20 @@ const handleBrowseFolderIcon = async () => {
   }
 }
 
+const handleSelectFolderIconPreset = async (presetId) => {
+  if (!selectedFolder.value) return
+
+  folderIconPath.value = projectIconPresetValue(presetId)
+  await handleSaveFolderSettings()
+}
+
+const handleClearFolderIcon = async () => {
+  if (!selectedFolder.value) return
+
+  folderIconPath.value = ''
+  await handleSaveFolderSettings()
+}
+
 const handleBrowseCreateFolderIcon = async () => {
   loadFolderError.value = ''
 
@@ -1898,6 +1935,14 @@ const handleBrowseCreateFolderIcon = async () => {
   } catch (error) {
     loadFolderError.value = error instanceof Error ? error.message : 'プロジェクト画像の選択に失敗しました'
   }
+}
+
+const handleSelectCreateFolderIconPreset = (presetId) => {
+  folderCreateIconPath.value = projectIconPresetValue(presetId)
+}
+
+const handleClearCreateFolderIcon = () => {
+  folderCreateIconPath.value = ''
 }
 
 const handleBrowseCreateProjectDirectory = async () => {
@@ -2431,6 +2476,48 @@ const handleSaveSettings = async (settingName = null) => {
   }
 }
 
+const handleCheckForUpdates = async () => {
+  if (isCheckingForUpdates.value) return
+
+  isCheckingForUpdates.value = true
+  settingsStatus.value = 'アップデートを確認しています'
+
+  try {
+    const update = await check()
+
+    if (!update) {
+      settingsStatus.value = '利用可能なアップデートはありません'
+      return
+    }
+
+    if (!confirmDiscardMarkdownChanges()) {
+      settingsStatus.value = 'アップデートをキャンセルしました'
+      return
+    }
+
+    settingsStatus.value = `バージョン ${update.version} をダウンロードしています`
+    let downloadedBytes = 0
+
+    await update.downloadAndInstall((event) => {
+      if (event.event === 'Progress') {
+        downloadedBytes += event.data.chunkLength
+        settingsStatus.value = `アップデートをダウンロードしています (${Math.round(downloadedBytes / 1024 / 1024)}MB)`
+      }
+
+      if (event.event === 'Finished') {
+        settingsStatus.value = 'アップデートをインストールしています'
+      }
+    })
+
+    settingsStatus.value = 'アップデートをインストールしました。再起動します'
+    await relaunch()
+  } catch (error) {
+    settingsStatus.value = error instanceof Error ? error.message : 'アップデートの確認に失敗しました'
+  } finally {
+    isCheckingForUpdates.value = false
+  }
+}
+
 const restoreLastWorkspace = async () => {
   if (settingsReopenLastWorkspace.value !== 'true' || selectedFolderId.value !== null) return
 
@@ -2670,30 +2757,17 @@ onBeforeUnmount(() => {
         />
       </main>
     </div>
-    <div
-      v-if="isCustomReactionModalOpen"
-      class="custom-reaction-modal-backdrop"
-      role="presentation"
-      @click.self="closeCustomReactionModal"
-    >
+    <Modal v-model="isCustomReactionModalOpen" size="default" @close="closeCustomReactionModal">
+      <template #header>
+        <h2 id="custom-reaction-title" class="modal-title">絵文字を追加する</h2>
+      </template>
+
+      <template #body>
       <form
-        class="custom-reaction-modal"
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="custom-reaction-title"
+        id="custom-reaction-form"
+        class="custom-reaction-form"
         @submit.prevent="handleSaveCustomReaction"
       >
-        <div class="custom-reaction-header">
-          <h2 id="custom-reaction-title" class="custom-reaction-title">絵文字を追加する</h2>
-          <button
-            type="button"
-            class="custom-reaction-close"
-            aria-label="閉じる"
-            @click="closeCustomReactionModal"
-          >
-            ×
-          </button>
-        </div>
         <div class="custom-reaction-tabs" role="tablist" aria-label="絵文字追加方法">
           <button type="button" class="custom-reaction-tab active" role="tab" aria-selected="true">
             カスタム絵文字
@@ -2752,16 +2826,23 @@ onBeforeUnmount(() => {
             {{ customReactionError }}
           </p>
         </div>
-        <div class="custom-reaction-footer">
-          <button type="button" class="secondary-button" @click="closeCustomReactionModal">
-            キャンセル
-          </button>
-          <button type="submit" class="primary-button" :disabled="isCustomReactionSaveDisabled">
-            {{ isSavingCustomReaction ? '保存中' : '保存する' }}
-          </button>
-        </div>
       </form>
-    </div>
+      </template>
+
+      <template #footer>
+        <button type="button" class="secondary-button" @click="closeCustomReactionModal">
+          キャンセル
+        </button>
+        <button
+          type="submit"
+          form="custom-reaction-form"
+          class="primary-button"
+          :disabled="isCustomReactionSaveDisabled"
+        >
+          {{ isSavingCustomReaction ? '保存中' : '保存する' }}
+        </button>
+      </template>
+    </Modal>
     <Modal v-model="isModalOpen" :size="modalSize">
       <template #header>
         <h2 class="modal-title">
@@ -2770,9 +2851,11 @@ onBeforeUnmount(() => {
               ? 'アプリ設定'
               : modalMode === 'folder-settings'
                 ? 'プロジェクト設定'
-                : modalMode === 'create-note'
-                  ? 'ノート作成'
-                  : 'プロジェクト登録'
+                : modalMode === 'folder-icon-settings'
+                  ? 'アイコン変更'
+                  : modalMode === 'create-note'
+                    ? 'ノート作成'
+                    : 'プロジェクト登録'
           }}
         </h2>
       </template>
@@ -2872,12 +2955,25 @@ onBeforeUnmount(() => {
                       v-model="settingsFontSize"
                       class="settings-range"
                       type="range"
-                      min="14"
-                      max="20"
+                      :min="FONT_SIZE_MIN"
+                      :max="FONT_SIZE_MAX"
                       step="1"
                       @change="handleSaveSettings('fontSize')"
                     />
-                    <p class="settings-inline-value">{{ settingsFontSize }}px</p>
+                    <div class="number-field">
+                      <input
+                        v-model="settingsFontSize"
+                        class="path-input font-size-input"
+                        type="number"
+                        :min="FONT_SIZE_MIN"
+                        :max="FONT_SIZE_MAX"
+                        step="1"
+                        inputmode="numeric"
+                        aria-label="フォントサイズの数値"
+                        @change="settingsFontSize = normalizeFontSize(settingsFontSize); handleSaveSettings('fontSize')"
+                      />
+                      <span class="settings-inline-value">px</span>
+                    </div>
                   </div>
                 </div>
                 <div class="settings-row">
@@ -2920,6 +3016,17 @@ onBeforeUnmount(() => {
 
             <div v-else class="settings-section">
               <div class="settings-group">
+                <div class="settings-row">
+                  <span class="field-label">アプリのアップデート</span>
+                  <button
+                    type="button"
+                    class="secondary-button settings-action-button"
+                    :disabled="isCheckingForUpdates"
+                    @click="handleCheckForUpdates"
+                  >
+                    {{ isCheckingForUpdates ? '確認中' : 'アップデートを確認' }}
+                  </button>
+                </div>
                 <div class="settings-row">
                   <label class="field-label" for="root-markdown-export-path">ルート用Markdown保存先</label>
                   <div class="path-field">
@@ -2997,14 +3104,30 @@ onBeforeUnmount(() => {
             type="text"
             :placeholder="getPathBaseName(projectDirectoryPath) || 'MyTimes'"
           />
-          <label class="field-label" for="create-folder-icon-path">プロジェクト画像</label>
+          <span class="field-label">プロジェクトアイコン</span>
+          <div class="project-icon-presets" aria-label="プロジェクトアイコンのプリセット">
+            <button
+              v-for="preset in PROJECT_ICON_PRESETS"
+              :key="preset.id"
+              type="button"
+              class="project-icon-preset-button"
+              :class="{ active: folderCreateIconPath === projectIconPresetValue(preset.id) }"
+              :aria-label="`${preset.label}を選択`"
+              :title="preset.label"
+              @click="handleSelectCreateFolderIconPreset(preset.id)"
+            >
+              <component :is="preset.icon" :size="20" aria-hidden="true" />
+            </button>
+          </div>
+          <label class="field-label" for="create-folder-icon-path">画像を使う</label>
           <div class="path-field">
             <input
               id="create-folder-icon-path"
-              v-model="folderCreateIconPath"
+              :value="isProjectIconPreset(folderCreateIconPath) ? projectIconPresetFromValue(folderCreateIconPath)?.label : folderCreateIconPath"
               class="path-input"
               type="text"
               placeholder="未設定"
+              readonly
             />
             <button
               type="button"
@@ -3012,6 +3135,13 @@ onBeforeUnmount(() => {
               @click="handleBrowseCreateFolderIcon"
             >
               参照
+            </button>
+            <button
+              type="button"
+              class="secondary-button browse-button"
+              @click="handleClearCreateFolderIcon"
+            >
+              解除
             </button>
           </div>
           <p v-if="loadFolderError" class="settings-status is-error">{{ loadFolderError }}</p>
@@ -3030,15 +3160,30 @@ onBeforeUnmount(() => {
             placeholder="表示名"
             @change="handleSaveFolderSettings()"
           />
-          <label class="field-label" for="folder-icon-path">プロジェクト画像</label>
+          <span class="field-label">プロジェクトアイコン</span>
+          <div class="project-icon-presets" aria-label="プロジェクトアイコンのプリセット">
+            <button
+              v-for="preset in PROJECT_ICON_PRESETS"
+              :key="preset.id"
+              type="button"
+              class="project-icon-preset-button"
+              :class="{ active: folderIconPath === projectIconPresetValue(preset.id) }"
+              :aria-label="`${preset.label}を選択`"
+              :title="preset.label"
+              @click="handleSelectFolderIconPreset(preset.id)"
+            >
+              <component :is="preset.icon" :size="20" aria-hidden="true" />
+            </button>
+          </div>
+          <label class="field-label" for="folder-icon-path">画像を使う</label>
           <div class="path-field">
             <input
               id="folder-icon-path"
-              v-model="folderIconPath"
+              :value="isProjectIconPreset(folderIconPath) ? projectIconPresetFromValue(folderIconPath)?.label : folderIconPath"
               class="path-input"
               type="text"
               placeholder="未設定"
-              @change="handleSaveFolderSettings()"
+              readonly
             />
             <button
               type="button"
@@ -3046,6 +3191,13 @@ onBeforeUnmount(() => {
               @click="handleBrowseFolderIcon"
             >
               参照
+            </button>
+            <button
+              type="button"
+              class="secondary-button browse-button"
+              @click="handleClearFolderIcon"
+            >
+              解除
             </button>
           </div>
           <label class="field-label" for="folder-markdown-export-path">プロジェクトのMarkdown保存先</label>
@@ -3064,6 +3216,53 @@ onBeforeUnmount(() => {
               @click="handleBrowseFolderMarkdownExportPath"
             >
               参照
+            </button>
+          </div>
+          <p v-if="loadFolderError" class="settings-status is-error">{{ loadFolderError }}</p>
+        </form>
+        <form
+          v-else-if="modalMode === 'folder-icon-settings'"
+          class="settings-form"
+          @submit.prevent
+        >
+          <span class="field-label">プリセット</span>
+          <div class="project-icon-presets" aria-label="プロジェクトアイコンのプリセット">
+            <button
+              v-for="preset in PROJECT_ICON_PRESETS"
+              :key="preset.id"
+              type="button"
+              class="project-icon-preset-button"
+              :class="{ active: folderIconPath === projectIconPresetValue(preset.id) }"
+              :aria-label="`${preset.label}を選択`"
+              :title="preset.label"
+              @click="handleSelectFolderIconPreset(preset.id)"
+            >
+              <component :is="preset.icon" :size="20" aria-hidden="true" />
+            </button>
+          </div>
+          <label class="field-label" for="folder-icon-only-path">画像を使う</label>
+          <div class="path-field">
+            <input
+              id="folder-icon-only-path"
+              :value="isProjectIconPreset(folderIconPath) ? projectIconPresetFromValue(folderIconPath)?.label : folderIconPath"
+              class="path-input"
+              type="text"
+              placeholder="未設定"
+              readonly
+            />
+            <button
+              type="button"
+              class="secondary-button browse-button"
+              @click="handleBrowseFolderIcon"
+            >
+              参照
+            </button>
+            <button
+              type="button"
+              class="secondary-button browse-button"
+              @click="handleClearFolderIcon"
+            >
+              解除
             </button>
           </div>
           <p v-if="loadFolderError" class="settings-status is-error">{{ loadFolderError }}</p>
@@ -3099,6 +3298,9 @@ onBeforeUnmount(() => {
           {{ isSavingNote ? '作成中' : '作成' }}
         </button>
       </template>
+      <template v-else-if="modalMode === 'folder-icon-settings'" #footer="{ close }">
+        <button type="button" class="secondary-button" @click="close">閉じる</button>
+      </template>
     </Modal>
   </div>
 </template>
@@ -3106,6 +3308,9 @@ onBeforeUnmount(() => {
 <style scoped>
 .container {
   --titlebar-height: 40px;
+  height: 100dvh;
+  box-sizing: border-box;
+  overflow: hidden;
   padding: calc(var(--titlebar-height) + 8px * var(--density-scale)) calc(16px * var(--density-scale)) calc(16px * var(--density-scale));
 }
 
@@ -3227,84 +3432,27 @@ onBeforeUnmount(() => {
   color: var(--text-secondary);
 }
 
-.custom-reaction-modal-backdrop {
-  position: fixed;
-  inset: 0;
-  z-index: 1000;
+.custom-reaction-form {
   display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 24px;
-  background: color-mix(in srgb, var(--overlay-backdrop) 82%, transparent);
-}
-
-.custom-reaction-modal {
-  display: flex;
-  width: min(860px, calc(100vw - 48px));
-  max-height: min(820px, calc(100vh - 48px));
   flex-direction: column;
-  overflow: hidden;
-  border: 1px solid var(--border-strong);
-  border-radius: 12px;
-  color: var(--text-primary);
-  background: var(--surface-panel);
-  box-shadow: var(--shadow-modal);
-}
-
-.custom-reaction-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  min-height: 88px;
-  padding: 0 44px 0 48px;
-}
-
-.custom-reaction-title {
-  margin: 0;
-  font-size: 32px;
-  font-weight: 800;
-  letter-spacing: 0;
-}
-
-.custom-reaction-close {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 44px;
-  height: 44px;
-  padding: 0;
-  color: var(--text-tertiary);
-  background: transparent;
-  border: 0;
-  border-radius: 50%;
-  cursor: pointer;
-  font-size: 38px;
-  line-height: 1;
-}
-
-.custom-reaction-close:hover,
-.custom-reaction-close:focus-visible {
-  color: var(--text-primary);
-  background: var(--surface-elevated-hover);
-  outline: none;
+  gap: 20px;
 }
 
 .custom-reaction-tabs {
   display: flex;
-  gap: 30px;
-  min-height: 48px;
-  padding: 0 48px;
+  gap: 18px;
+  min-height: 40px;
   border-bottom: 1px solid var(--border-default);
 }
 
 .custom-reaction-tab {
   position: relative;
-  padding: 0 10px;
+  padding: 0 6px;
   color: var(--text-tertiary);
   background: transparent;
   border: 0;
-  font-size: 18px;
-  font-weight: 800;
+  font-size: 14px;
+  font-weight: 700;
 }
 
 .custom-reaction-tab.active {
@@ -3329,18 +3477,16 @@ onBeforeUnmount(() => {
 .custom-reaction-content {
   display: flex;
   flex-direction: column;
-  gap: 28px;
+  gap: 22px;
   min-height: 0;
-  padding: 28px 48px 36px;
-  overflow-y: auto;
 }
 
 .custom-reaction-description {
-  max-width: 720px;
+  max-width: 560px;
   margin: 0;
   color: var(--text-secondary);
-  font-size: 18px;
-  line-height: 1.7;
+  font-size: 14px;
+  line-height: 1.6;
 }
 
 .custom-reaction-section {
@@ -3351,45 +3497,45 @@ onBeforeUnmount(() => {
 
 .custom-reaction-step {
   margin: 0;
-  font-size: 20px;
-  font-weight: 800;
+  font-size: 15px;
+  font-weight: 700;
 }
 
 .custom-reaction-help {
-  max-width: 720px;
-  margin: 0 0 0 28px;
+  max-width: 560px;
+  margin: 0;
   color: var(--text-tertiary);
-  font-size: 16px;
+  font-size: 13px;
   line-height: 1.6;
 }
 
 .custom-reaction-upload-row {
   display: flex;
   align-items: center;
-  gap: 24px;
-  margin: 18px 0 0 28px;
+  gap: 16px;
+  margin-top: 10px;
 }
 
 .custom-reaction-preview {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 96px;
-  height: 96px;
+  width: 76px;
+  height: 76px;
   border: 1px solid var(--border-strong);
-  border-radius: 4px;
+  border-radius: 8px;
   background: var(--surface-input);
 }
 
 .custom-reaction-preview img {
-  width: 72px;
-  height: 72px;
+  width: 56px;
+  height: 56px;
   object-fit: contain;
 }
 
 .custom-reaction-preview-placeholder {
   color: var(--text-tertiary);
-  font-size: 42px;
+  font-size: 30px;
   line-height: 1;
 }
 
@@ -3403,66 +3549,19 @@ onBeforeUnmount(() => {
 .custom-reaction-upload-label {
   margin: 0;
   color: var(--text-tertiary);
-  font-size: 16px;
+  font-size: 13px;
   font-weight: 700;
 }
 
 .custom-reaction-name-input {
-  width: min(100%, 720px);
-  height: 54px;
-  margin: 18px 0 0 28px;
-  font-size: 18px;
-}
-
-.custom-reaction-footer {
-  display: flex;
-  justify-content: flex-end;
-  gap: 16px;
-  padding: 24px 48px 40px;
+  width: min(100%, 560px);
+  margin-top: 10px;
 }
 
 @media (max-width: 640px) {
-  .custom-reaction-modal-backdrop {
-    padding: 12px;
-  }
-
-  .custom-reaction-modal {
-    width: calc(100vw - 24px);
-    max-height: calc(100vh - 24px);
-  }
-
-  .custom-reaction-header {
-    min-height: 72px;
-    padding: 0 18px 0 22px;
-  }
-
-  .custom-reaction-title {
-    font-size: 24px;
-  }
-
-  .custom-reaction-tabs,
-  .custom-reaction-content,
-  .custom-reaction-footer {
-    padding-right: 22px;
-    padding-left: 22px;
-  }
-
-  .custom-reaction-description {
-    font-size: 15px;
-  }
-
-  .custom-reaction-help,
-  .custom-reaction-upload-row,
-  .custom-reaction-name-input {
-    margin-left: 0;
-  }
-
   .custom-reaction-upload-row {
     align-items: flex-start;
-  }
-
-  .custom-reaction-footer {
-    flex-wrap: wrap;
+    flex-direction: column;
   }
 }
 
@@ -3474,6 +3573,38 @@ onBeforeUnmount(() => {
   display: flex;
   flex-direction: column;
   gap: 8px;
+}
+
+.project-icon-presets {
+  display: grid;
+  grid-template-columns: repeat(5, 44px);
+  gap: 8px;
+}
+
+.project-icon-preset-button {
+  width: 44px;
+  height: 44px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--border-default);
+  border-radius: 10px;
+  background: var(--surface-input);
+  color: var(--text-tertiary);
+  cursor: pointer;
+}
+
+.project-icon-preset-button:hover {
+  border-color: var(--border-strong);
+  background: var(--surface-elevated-hover);
+  color: var(--text-primary);
+}
+
+.project-icon-preset-button.active {
+  border-color: color-mix(in srgb, var(--bg-primary) 44%, var(--border-default));
+  background: color-mix(in srgb, var(--bg-primary) 14%, var(--surface-input));
+  color: var(--text-primary);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--bg-primary) 16%, transparent);
 }
 
 .settings-layout {
@@ -3563,11 +3694,9 @@ onBeforeUnmount(() => {
 }
 
 .settings-inline-value {
-  min-width: 42px;
   margin: 0;
   color: var(--text-tertiary);
   font-size: 12px;
-  text-align: right;
 }
 
 .settings-range {
@@ -3580,6 +3709,26 @@ onBeforeUnmount(() => {
   align-items: center;
   gap: 12px;
   min-width: 0;
+}
+
+.number-field {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 6px;
+}
+
+.font-size-input {
+  width: 74px;
+  text-align: right;
+  -moz-appearance: textfield;
+  appearance: textfield;
+}
+
+.font-size-input::-webkit-outer-spin-button,
+.font-size-input::-webkit-inner-spin-button {
+  margin: 0;
+  -webkit-appearance: none;
 }
 
 .color-field {
@@ -3794,6 +3943,11 @@ select.path-input {
 .browse-button {
   flex: 0 0 auto;
   min-width: 72px;
+}
+
+.settings-action-button {
+  justify-self: flex-start;
+  min-width: 160px;
 }
 
 .messages {

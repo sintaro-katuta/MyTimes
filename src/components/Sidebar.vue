@@ -3,6 +3,7 @@ import { convertFileSrc } from '@tauri-apps/api/core'
 import { LogicalPosition } from '@tauri-apps/api/dpi'
 import { Menu } from '@tauri-apps/api/menu'
 import { computed, nextTick, ref, watch } from 'vue'
+import { projectIconPresetFromValue } from '../lib/projectIconPresets'
 
 import {
   ChevronDown,
@@ -426,8 +427,13 @@ const commitRenameNote = (note) => {
 }
 
 const folderIconSrc = (folder) => {
-  return folder.iconPath ? convertFileSrc(folder.iconPath) : ''
+  return folder.iconPath && !projectIconPresetFromValue(folder.iconPath) ? convertFileSrc(folder.iconPath) : ''
 }
+
+const folderIconPreset = (folder) => projectIconPresetFromValue(folder.iconPath)
+
+const hasCustomImageIcon = (folder) => Boolean(folder.iconPath && !folderIconPreset(folder))
+const hasPresetIcon = (folder) => Boolean(folderIconPreset(folder))
 
 const toggleFolder = (folder) => {
   const nextExpandedIds = new Set(expandedFolderIds.value)
@@ -535,13 +541,23 @@ watch(
             <button
               type="button"
               class="rail-button"
-              :class="{ active: selectedFolderId === folder.id, 'has-image': folder.iconPath }"
+              :class="{
+                active: selectedFolderId === folder.id,
+                'has-image': hasCustomImageIcon(folder),
+                'has-preset': hasPresetIcon(folder),
+              }"
               :aria-label="folder.name"
               :title="folder.path"
               @click="selectFolder(folder)"
               @contextmenu.prevent="openFolderContextMenu($event, folder)"
             >
-              <img v-if="folder.iconPath" class="folder-image" :src="folderIconSrc(folder)" alt="" />
+              <component
+                :is="folderIconPreset(folder)?.icon"
+                v-if="folderIconPreset(folder)"
+                :size="21"
+                aria-hidden="true"
+              />
+              <img v-else-if="folder.iconPath" class="folder-image" :src="folderIconSrc(folder)" alt="" />
               <Folder v-else :size="20" />
             </button>
           </div>
@@ -655,7 +671,7 @@ watch(
   display: flex;
   flex-direction: column;
   align-items: center;
-  background-color: var(--bg-base-1);
+  background-color: var(--surface-canvas);
   padding: 12px;
 }
 
@@ -699,6 +715,7 @@ watch(
 }
 
 .rail-button {
+  box-sizing: border-box;
   width: 48px;
   height: 48px;
   display: flex;
@@ -719,8 +736,17 @@ watch(
 }
 
 .rail-button.active {
-  border-color: var(--border-subtle);
-  background: var(--bg-base-2);
+  border-color: color-mix(in srgb, var(--bg-primary) 40%, var(--border-subtle));
+  background: color-mix(in srgb, var(--bg-primary) 12%, var(--bg-base-2));
+  color: var(--text-primary);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--bg-primary) 12%, transparent);
+}
+
+.rail-button.has-preset {
+  color: var(--text-secondary);
+}
+
+.rail-button.has-preset.active {
   color: var(--text-primary);
 }
 
@@ -747,6 +773,7 @@ watch(
 
 .rail-settings {
   margin-top: 16px;
+  margin-bottom: 16px;
 }
 
 .panel {
@@ -837,14 +864,15 @@ watch(
 
 
 .new-note-button {
+  box-sizing: border-box;
   width: 100%;
-  min-height: 52px;
+  height: 48px;
   display: flex;
   align-items: center;
   justify-content: center;
   gap: 12px;
   margin-top: 8px;
-  padding: 12px 16px;
+  padding: 0 16px;
   border: none;
   border-radius: 10px;
   background: var(--bg-primary);

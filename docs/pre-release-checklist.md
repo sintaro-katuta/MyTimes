@@ -134,12 +134,15 @@ npm run build
 
 - [ ] 公開対象 commit が `main` に入っている
 - [ ] `main` の GitHub Actions が成功している
+- [ ] GitHub Secrets に `TAURI_SIGNING_PRIVATE_KEY` と `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` が設定されている
 - [ ] `npm run tauri -- build --verbose` の成果物を起動確認している
 - [ ] Release に含める変更内容を整理している
 - [ ] 既知の未対応事項を Release notes に記載するか判断している
 - [ ] バージョン番号を更新する必要がある場合、`package.json` と `src-tauri/tauri.conf.json` の整合を確認している
 - [ ] 生成されたアプリを別ディレクトリの確認用 Markdown プロジェクトで起動確認している
 - [ ] 公開してはいけないローカル DB、個人ファイル、秘密情報が成果物やリポジトリに含まれていない
+- [ ] Release assets に `latest.json`、updater 用アーカイブ、署名ファイルが含まれている
+- [ ] インストール済みアプリの設定画面からアップデート確認が実行できる
 - [ ] GitHub Release のタイトル、本文、添付ファイルを確認している
 
 ## 公開判断
