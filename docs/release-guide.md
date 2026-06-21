@@ -40,6 +40,7 @@ npm version 0.2.0
 - `package-lock.json`
 - `src-tauri/tauri.conf.json`
 - `src-tauri/Cargo.toml`
+- `src-tauri/Cargo.lock`
 
 同期状態は次のコマンドでも確認できます。
 
@@ -58,11 +59,15 @@ cargo check --manifest-path src-tauri/Cargo.toml
 npm run build
 ```
 
-公開候補をローカルで確認する場合は、Tauri の production build も実行します。
+公開候補をローカルで確認する場合は、署名キーを読み込んだ状態で Tauri の production build も実行します。
 
 ```sh
+export TAURI_SIGNING_PRIVATE_KEY='<private key>'
+export TAURI_SIGNING_PRIVATE_KEY_PASSWORD='<password>'
 npm run tauri -- build --verbose
 ```
+
+署名キーをローカルに置かない場合は、GitHub Secrets が渡る Release workflow で production build を確認します。
 
 ## 変更を push する
 
@@ -90,7 +95,8 @@ Release workflow は次の成果物を作成します。
 - アプリ内アップデート用の `latest.json`
 - 署名付き updater 成果物
 
-GitHub Actions で全 matrix が成功していることを確認します。
+Release workflow は matrix の各ジョブで draft Release に成果物をアップロードし、全 matrix が成功したあとに `Publish release` ジョブで Release を公開します。
+GitHub Actions で全 matrix と `Publish release` が成功していることを確認します。
 
 ## GitHub Release を確認する
 

@@ -74,8 +74,35 @@ jobs:
             MyTimes のリリースです。
 
             アプリ内アップデート用の latest.json と署名付き成果物を含みます。
-          releaseDraft: false
+          releaseDraft: true
           prerelease: false
           updaterJsonPreferNsis: true
           tauriScript: npm run tauri
           args: ${{ matrix.args }}
+
+  publish-release:
+    name: Publish release
+    needs: release
+    runs-on: ubuntu-22.04
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Read package version
+        id: package-version
+        run: echo "version=$(node -p \"require('./package.json').version\")" >> "$GITHUB_OUTPUT"
+
+      - name: Publish draft release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_TAG: v${{ steps.package-version.outputs.version }}
+        run: gh release edit "$RELEASE_TAG" --draft=false

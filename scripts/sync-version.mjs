@@ -6,9 +6,24 @@ const paths = {
   packageJson: new URL('../package.json', import.meta.url),
   tauriConfig: new URL('../src-tauri/tauri.conf.json', import.meta.url),
   cargoToml: new URL('../src-tauri/Cargo.toml', import.meta.url),
+  cargoLock: new URL('../src-tauri/Cargo.lock', import.meta.url),
 }
 
 const readJson = async (path) => JSON.parse(await readFile(path, 'utf8'))
+
+const escapeRegExp = (value) => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+
+const updateCargoLockPackageVersion = (content, packageName, version) => {
+  const packageSectionPattern = new RegExp(
+    `(\\[\\[package\\]\\]\\nname = "${escapeRegExp(packageName)}"\\nversion = )"[^"]+"`,
+  )
+
+  if (!packageSectionPattern.test(content)) {
+    throw new Error(`src-tauri/Cargo.lock の ${packageName} package version が見つかりません`)
+  }
+
+  return content.replace(packageSectionPattern, `$1"${version}"`)
+}
 
 const updateCargoPackageVersion = (content, version) => {
   const packageSectionPattern = /(^\[package\][\s\S]*?^version\s*=\s*)"[^"]+"/m
@@ -22,7 +37,12 @@ const updateCargoPackageVersion = (content, version) => {
 
 const main = async () => {
   const packageJson = await readJson(paths.packageJson)
+  const packageName = packageJson.name
   const version = packageJson.version
+
+  if (!packageName) {
+    throw new Error('package.json の name が見つかりません')
+  }
 
   if (!version) {
     throw new Error('package.json の version が見つかりません')
@@ -38,6 +58,8 @@ const main = async () => {
   const nextTauriConfigText = `${JSON.stringify(nextTauriConfig, null, 2)}\n`
   const currentTauriConfigText = await readFile(paths.tauriConfig, 'utf8')
   const nextCargoToml = updateCargoPackageVersion(cargoToml, version)
+  const currentCargoLock = await readFile(paths.cargoLock, 'utf8')
+  const nextCargoLock = updateCargoLockPackageVersion(currentCargoLock, packageName, version)
 
   const changedFiles = []
 
@@ -47,6 +69,10 @@ const main = async () => {
 
   if (cargoToml !== nextCargoToml) {
     changedFiles.push('src-tauri/Cargo.toml')
+  }
+
+  if (currentCargoLock !== nextCargoLock) {
+    changedFiles.push('src-tauri/Cargo.lock')
   }
 
   if (CHECK_MODE) {
@@ -64,6 +90,10 @@ const main = async () => {
 
   if (changedFiles.includes('src-tauri/Cargo.toml')) {
     await writeFile(paths.cargoToml, nextCargoToml)
+  }
+
+  if (changedFiles.includes('src-tauri/Cargo.lock')) {
+    await writeFile(paths.cargoLock, nextCargoLock)
   }
 
   console.log(
