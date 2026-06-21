@@ -2490,6 +2490,11 @@ const handleCheckForUpdates = async () => {
       return
     }
 
+    if (!confirmDiscardMarkdownChanges()) {
+      settingsStatus.value = 'アップデートをキャンセルしました'
+      return
+    }
+
     settingsStatus.value = `バージョン ${update.version} をダウンロードしています`
     let downloadedBytes = 0
 
