@@ -715,6 +715,7 @@ watch(
 }
 
 .rail-button {
+  box-sizing: border-box;
   width: 48px;
   height: 48px;
   display: flex;
@@ -862,6 +863,7 @@ watch(
 
 
 .new-note-button {
+  box-sizing: border-box;
   width: 100%;
   height: 48px;
   display: flex;
