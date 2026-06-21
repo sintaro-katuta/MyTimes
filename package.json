@@ -7,10 +7,13 @@
     "dev": "vite",
     "build": "vite build",
     "capture:readme": "node scripts/capture-readme-screenshots.mjs",
+    "check:version": "node scripts/sync-version.mjs --check",
     "preview": "vite preview",
+    "sync:version": "node scripts/sync-version.mjs",
     "tauri": "tauri",
     "tauri:dev": "tauri dev",
-    "tauri:build": "tauri build"
+    "tauri:build": "tauri build",
+    "version": "npm run sync:version && git add src-tauri/tauri.conf.json src-tauri/Cargo.toml"
   },
   "dependencies": {
     "@lucide/vue": "^1.7.0",
