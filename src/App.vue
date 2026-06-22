@@ -2768,14 +2768,15 @@ onBeforeUnmount(() => {
           />
           <p v-if="markdownEditorError" class="settings-status is-error" role="alert">{{ markdownEditorError }}</p>
         </div>
-        <SendMessage
-          v-if="viewMode === 'chat'"
-          v-model="draftMessage"
-          :is-sending="isSendingMessage"
-          :disabled="isMarkdownSendDisabled"
-          :error-message="sendMessageError"
-          @submit="sendMessage"
-        />
+        <div v-if="viewMode === 'chat'" class="chat-composer">
+          <SendMessage
+            v-model="draftMessage"
+            :is-sending="isSendingMessage"
+            :disabled="isMarkdownSendDisabled"
+            :error-message="sendMessageError"
+            @submit="sendMessage"
+          />
+        </div>
       </main>
     </div>
     <p v-if="exportStatus" class="export-status" role="status" aria-live="polite">
@@ -3398,11 +3399,11 @@ onBeforeUnmount(() => {
   display: flex;
   align-items: center;
   min-height: 48px;
-  margin-bottom: 16px;
+  margin: 0 16px 16px;
 }
 
 .search-result-status {
-  margin: -8px 0 12px;
+  margin: -8px 16px 12px;
   color: var(--text-tertiary);
   font-size: 12px;
 }
@@ -3412,7 +3413,7 @@ onBeforeUnmount(() => {
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  margin: 0 0 12px;
+  margin: 0 16px 12px;
 }
 
 .view-tabs {
@@ -3484,7 +3485,7 @@ onBeforeUnmount(() => {
 }
 
 .unsaved-warning {
-  margin: -6px 0 12px;
+  margin: -6px 16px 12px;
   color: var(--text-secondary);
   font-size: 12px;
 }
@@ -4026,6 +4027,10 @@ select.path-input {
   overflow-y: auto;
   scrollbar-width: none;
   -ms-overflow-style: none;
+}
+
+.chat-composer {
+  margin: 0 16px;
 }
 
 .messages::-webkit-scrollbar {
