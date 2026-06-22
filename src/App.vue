@@ -93,6 +93,7 @@ const USER_NAME_MAX_LENGTH = 20
 const FONT_SIZE_MIN = 12
 const FONT_SIZE_MAX = 28
 const FONT_SIZE_DEFAULT = Number(DEFAULT_SETTINGS.fontSize)
+const TEXT_INPUT_SELECTOR = 'input, textarea, [contenteditable]'
 
 const THEME_COLORS = {
   orange: {
@@ -447,6 +448,7 @@ let saveSettingsRequestId = 0
 let autoSaveMarkdownTimer = null
 let shouldRescheduleAutoSaveMarkdown = false
 let exportStatusTimer = null
+let textAssistanceObserver = null
 
 const clearAutoSaveMarkdownTimer = () => {
   window.clearTimeout(autoSaveMarkdownTimer)
@@ -456,6 +458,41 @@ const clearAutoSaveMarkdownTimer = () => {
 const clearExportStatusTimer = () => {
   window.clearTimeout(exportStatusTimer)
   exportStatusTimer = null
+}
+
+const disableTextAssistanceForElement = (element) => {
+  if (!(element instanceof HTMLElement)) return
+
+  element.setAttribute('spellcheck', 'false')
+  element.setAttribute('autocorrect', 'off')
+  element.setAttribute('autocapitalize', 'none')
+  element.setAttribute('autocomplete', 'off')
+}
+
+const disableTextAssistance = (root = document) => {
+  if (root instanceof Element && root.matches(TEXT_INPUT_SELECTOR)) {
+    disableTextAssistanceForElement(root)
+  }
+
+  root.querySelectorAll?.(TEXT_INPUT_SELECTOR).forEach(disableTextAssistanceForElement)
+}
+
+const installTextAssistanceGuard = () => {
+  disableTextAssistance()
+  textAssistanceObserver?.disconnect()
+  textAssistanceObserver = new MutationObserver((mutations) => {
+    mutations.forEach((mutation) => {
+      mutation.addedNodes.forEach((node) => {
+        if (node instanceof Element) {
+          disableTextAssistance(node)
+        }
+      })
+    })
+  })
+  textAssistanceObserver.observe(document.body, {
+    childList: true,
+    subtree: true,
+  })
 }
 
 const selectedFolder = computed(() => {
@@ -2609,6 +2646,7 @@ watch(settingsAutoSaveMarkdown, (value) => {
 })
 
 onMounted(async () => {
+  installTextAssistanceGuard()
   await loadAppSettings().catch((error) => {
     loadMessageError.value = error instanceof Error ? error.message : '設定の読み込みに失敗しました'
   })
@@ -2626,6 +2664,8 @@ onMounted(async () => {
 onBeforeUnmount(() => {
   clearAutoSaveMarkdownTimer()
   clearExportStatusTimer()
+  textAssistanceObserver?.disconnect()
+  textAssistanceObserver = null
 })
 </script>
 
