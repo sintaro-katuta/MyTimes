@@ -87,6 +87,7 @@ v1 公開前チェックリストの実施記録。
 - 390px 相当で信号ボタン上部をドラッグしてウィンドウ移動できない: タイトルバーに明示的なドラッグ領域を追加し、狭幅時の余白を調整
 - 入力欄で OS / WebView の英語自動変換が効く: 全入力欄、テキストエリア、リッチ入力に `spellcheck=false` / `autocorrect=off` / `autocapitalize=none` / `autocomplete=off` を適用
 - タイトルバーをドラッグしてもウィンドウを移動できない: 見た目は変更せず、タイトルバーの `mousedown` で Tauri の `startDragging()` を呼ぶ処理を追加
+- `startDragging()` が Tauri 側で拒否される可能性がある: `core:window:allow-start-dragging` 権限を capability に追加
 
 ### 残る確認
 
