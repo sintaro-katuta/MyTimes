@@ -33,8 +33,8 @@ v1 公開前チェックリストの実施記録。
 
 - [x] `main` と `origin/main` の一致確認
 - [x] 未コミット差分なし
-- [ ] GitHub Actions の `Build` workflow 成功確認: `gh api` は Bad credentials。GitHub connector の commit status は空で、Actions 成功の確証は未取得。
-- [ ] GitHub Secrets の `TAURI_SIGNING_PRIVATE_KEY` / `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` 設定確認
+- [x] GitHub Actions の `Build` workflow 成功確認: `env -u GITHUB_TOKEN gh run list --branch main --limit 10` で main の最新 Build が success。
+- [x] GitHub Secrets の `TAURI_SIGNING_PRIVATE_KEY` / `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` 設定確認
 - [x] 新規確認用の空フォルダーを用意: `/private/tmp/mytimes-v1-check/empty-project`
 - [x] 既存 Markdown を含む確認用フォルダーを用意: `/private/tmp/mytimes-v1-check/existing-project`
 - [x] 外部編集確認用フォルダーを用意: `/private/tmp/mytimes-v1-check/external-edit-project`
@@ -58,4 +58,4 @@ v1 公開前チェックリストの実施記録。
 - 現時点では、ローカル production build の updater 署名のみ未完了。
 - 署名キーをローカルに置かない運用なら、Release workflow 成功をもって署名付き updater 成果物の確認とする。
 - `npm audit` の脆弱性 10 件は公開判断前に内容を確認する。
-- GitHub Actions と GitHub Secrets は、このセッションでは認証または権限の都合で確証を取れていない。
+- GitHub CLI は環境変数 `GITHUB_TOKEN` が無効な場合に Bad credentials になるため、確認時は `env -u GITHUB_TOKEN` を付けて keyring 認証を使う。
