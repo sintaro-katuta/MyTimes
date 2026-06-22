@@ -2701,7 +2701,7 @@ onBeforeUnmount(() => {
             :disabled="isReloadMarkdownDisabled"
             @click="reloadSelectedMarkdown"
           >
-            <RefreshCw :size="18" :class="{ spinning: isReloadingMarkdown }" aria-hidden="true" />
+            <RefreshCw :size="22" :class="{ spinning: isReloadingMarkdown }" aria-hidden="true" />
           </button>
         </div>
         <p v-if="viewMode === 'chat' && isMarkdownDirty" class="unsaved-warning">
@@ -3462,8 +3462,8 @@ onBeforeUnmount(() => {
 .export-status {
   position: fixed;
   z-index: 80;
+  top: calc(var(--titlebar-height, 40px) + 16px);
   right: 24px;
-  bottom: 24px;
   max-width: min(420px, calc(100vw - 48px));
   box-sizing: border-box;
   margin: 0;
@@ -4011,10 +4011,12 @@ select.path-input {
   flex: 1;
   display: flex;
   min-height: 0;
+  box-sizing: border-box;
   flex-direction: column;
   justify-content: flex-end;
   gap: calc(16px * var(--density-scale));
   margin-bottom: calc(16px * var(--density-scale));
+  padding: 8px;
   overflow-y: auto;
   scrollbar-width: none;
   -ms-overflow-style: none;

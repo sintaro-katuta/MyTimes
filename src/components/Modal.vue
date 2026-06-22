@@ -1,5 +1,5 @@
 <script setup>
-import { CircleX } from '@lucide/vue'
+import { X } from '@lucide/vue'
 import { useSlots } from 'vue'
 
 const props = defineProps({
@@ -36,7 +36,7 @@ const closeModal = () => {
       <div class="modal-shell" :class="`modal-shell-${props.size}`">
         <div class="modal-content">
           <button type="button" class="close-button" aria-label="モーダルを閉じる" @click="closeModal">
-            <CircleX size="24" class="close" />
+            <X size="24" class="close" />
           </button>
 
           <header v-if="slots.header" class="modal-header">
