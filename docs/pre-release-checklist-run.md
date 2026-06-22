@@ -20,8 +20,8 @@ v1 公開前チェックリストの実施記録。
 
 | コマンド | 結果 | メモ |
 | --- | --- | --- |
-| `npm ci` | 成功 | 依存関係のインストールは完了。 |
-| `npm audit` | 要確認 | 全体では 10 vulnerabilities: 8 moderate, 2 high。runtime 依存のみでは 5 moderate。`picomatch` と `postcss` に no fix available の advisory あり。公開判断前に影響範囲を確認する。 |
+| `npm ci` | 成功 | 依存関係のインストールは完了。依存更新後も `npm_config_cache=/private/tmp/mytimes-npm-cache npm ci` で成功。 |
+| `npm audit` | 成功 | 依存更新後に `npm audit` で 0 vulnerabilities を確認。 |
 | `npm run check:version` | 成功 | アプリバージョンは 0.1.0 で同期済み。 |
 | `cargo fmt --manifest-path src-tauri/Cargo.toml -- --check` | 成功 | 2026-06-23 に再実行して成功。 |
 | `cargo check --manifest-path src-tauri/Cargo.toml` | 成功 | 2026-06-23 に再実行して成功。 |
@@ -38,7 +38,7 @@ v1 公開前チェックリストの実施記録。
 - [x] 新規確認用の空フォルダーを用意: `/private/tmp/mytimes-v1-check/empty-project`
 - [x] 既存 Markdown を含む確認用フォルダーを用意: `/private/tmp/mytimes-v1-check/existing-project`
 - [x] 外部編集確認用フォルダーを用意: `/private/tmp/mytimes-v1-check/external-edit-project`
-- [ ] 外部編集確認用エディタを用意
+- [x] 外部編集確認用エディタを用意: VS Code (`/usr/local/bin/code`)、vim、nano を確認
 
 ## 手動確認サマリー
 
@@ -51,11 +51,11 @@ v1 公開前チェックリストの実施記録。
 | 外部編集、削除、リネーム | 一部確認 | ファイル操作の Rust ロジックは確認。外部エディタ連携の実機操作は未確認。 |
 | データ移行と互換性 | 一部確認 | Markdown 書き出しロジックは `cargo test` で確認。既存 DB の実データ移行は未確認。 |
 | 表示品質 | 一部確認 | Playwright で 1440px / 390px の初期表示を確認。390px の横スクロールを修正し、再確認で `html` / `body` とも overflow なし。Tauri API がない Web 単体起動では `invoke` error が出るため、実アプリ上の目視は未確認。 |
-| GitHub Release 前 | 未実施 | `main` 取り込み後に Release workflow と assets を確認する。 |
+| GitHub Release 前 | 未実施 | このブランチはまだ `main` に入っておらず、Release workflow は tag push により公開 Release を作成するため、この作業内では実行しない。`main` 取り込み後に Release workflow と assets を確認する。 |
 
 ## 公開判断メモ
 
-- 現時点では、ローカル production build の updater 署名のみ未完了。
+- 現時点では、ローカル production build の updater 署名のみ未完了。秘密鍵をローカルに置いていないため、この環境では実行できない。
 - 署名キーをローカルに置かない運用なら、Release workflow 成功をもって署名付き updater 成果物の確認とする。
-- `npm audit` の脆弱性 10 件は公開判断前に内容を確認する。
+- `npm audit` の脆弱性は依存更新により 0 件に解消済み。
 - GitHub CLI は環境変数 `GITHUB_TOKEN` が無効な場合に Bad credentials になるため、確認時は `env -u GITHUB_TOKEN` を付けて keyring 認証を使う。
