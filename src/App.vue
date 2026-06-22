@@ -2701,7 +2701,7 @@ onBeforeUnmount(() => {
             :disabled="isReloadMarkdownDisabled"
             @click="reloadSelectedMarkdown"
           >
-            <RefreshCw :size="22" :class="{ spinning: isReloadingMarkdown }" aria-hidden="true" />
+            <RefreshCw :size="26" :class="{ spinning: isReloadingMarkdown }" aria-hidden="true" />
           </button>
         </div>
         <p v-if="viewMode === 'chat' && isMarkdownDirty" class="unsaved-warning">
@@ -3455,6 +3455,12 @@ onBeforeUnmount(() => {
   padding: 0;
 }
 
+.icon-action-button.reload-button {
+  width: 44px;
+  min-width: 44px;
+  height: 44px;
+}
+
 .spinning {
   animation: spin 800ms linear infinite;
 }
@@ -4014,9 +4020,9 @@ select.path-input {
   box-sizing: border-box;
   flex-direction: column;
   justify-content: flex-end;
-  gap: calc(16px * var(--density-scale));
+  gap: calc(24px * var(--density-scale));
   margin-bottom: calc(16px * var(--density-scale));
-  padding: 8px;
+  padding: 16px 16px 28px;
   overflow-y: auto;
   scrollbar-width: none;
   -ms-overflow-style: none;
