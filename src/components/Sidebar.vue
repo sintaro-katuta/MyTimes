@@ -1036,4 +1036,24 @@ watch(
   white-space: nowrap;
   border: 0;
 }
+
+@media (max-width: 640px) {
+  .sidebar {
+    position: relative;
+    z-index: 20;
+    width: 72px;
+    min-width: 72px;
+    max-width: 72px;
+    flex: 0 0 72px;
+  }
+
+  .panel {
+    position: absolute;
+    z-index: 30;
+    top: 0;
+    left: 80px;
+    width: min(280px, calc(100vw - 112px));
+    box-shadow: var(--shadow-panel);
+  }
+}
 </style>
