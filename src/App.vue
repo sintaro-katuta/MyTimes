@@ -5,6 +5,7 @@ import { LogicalPosition } from '@tauri-apps/api/dpi'
 import { Menu } from '@tauri-apps/api/menu'
 import { relaunch } from '@tauri-apps/plugin-process'
 import { check } from '@tauri-apps/plugin-updater'
+import { getCurrentWindow } from '@tauri-apps/api/window'
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import Modal from './components/Modal.vue'
 import Sidebar from './components/Sidebar.vue'
@@ -493,6 +494,14 @@ const installTextAssistanceGuard = () => {
     childList: true,
     subtree: true,
   })
+}
+
+const startWindowDrag = (event) => {
+  if (event.button !== 0 || event.target.closest?.('button')) return
+  if (!window.__TAURI_INTERNALS__) return
+
+  event.preventDefault()
+  void getCurrentWindow().startDragging()
 }
 
 const selectedFolder = computed(() => {
@@ -2671,7 +2680,7 @@ onBeforeUnmount(() => {
 
 <template>
   <div class="container">
-    <div class="window-titlebar" data-tauri-drag-region>
+    <div class="window-titlebar" data-tauri-drag-region @mousedown="startWindowDrag">
       <button
         type="button"
         class="titlebar-tree-toggle"
