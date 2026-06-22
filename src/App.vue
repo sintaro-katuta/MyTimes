@@ -4035,7 +4035,7 @@ select.path-input {
   box-sizing: border-box;
   flex-direction: column;
   justify-content: flex-end;
-  gap: calc(24px * var(--density-scale));
+  gap: calc(16px * var(--density-scale));
   margin-bottom: calc(16px * var(--density-scale));
   padding: 16px 16px 28px;
   overflow-y: auto;
