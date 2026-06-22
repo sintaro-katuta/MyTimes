@@ -2632,6 +2632,7 @@ onBeforeUnmount(() => {
 <template>
   <div class="container">
     <div class="window-titlebar" data-tauri-drag-region>
+      <div class="titlebar-drag-handle" data-tauri-drag-region aria-hidden="true"></div>
       <button
         type="button"
         class="titlebar-tree-toggle"
@@ -3349,8 +3350,16 @@ onBeforeUnmount(() => {
   box-sizing: border-box;
   display: flex;
   align-items: center;
-  padding-left: calc(16px * var(--density-scale) + 80px);
+  gap: 8px;
+  padding: 0 16px 0 calc(16px * var(--density-scale) + 80px);
   background: var(--surface-canvas);
+  -webkit-app-region: drag;
+}
+
+.titlebar-drag-handle {
+  height: 100%;
+  flex: 1 1 auto;
+  min-width: 44px;
   -webkit-app-region: drag;
 }
 
@@ -3623,6 +3632,11 @@ onBeforeUnmount(() => {
 }
 
 @media (max-width: 640px) {
+  .window-titlebar {
+    padding-right: 12px;
+    padding-left: 92px;
+  }
+
   .custom-reaction-upload-row {
     align-items: flex-start;
     flex-direction: column;
