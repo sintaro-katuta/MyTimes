@@ -14,6 +14,7 @@ import Input from './components/Input.vue'
 import {
   PanelLeftClose,
   PanelLeftOpen,
+  RefreshCw,
 } from '@lucide/vue'
 import {
   PROJECT_ICON_PRESETS,
@@ -445,10 +446,16 @@ const noteActionError = ref('')
 let saveSettingsRequestId = 0
 let autoSaveMarkdownTimer = null
 let shouldRescheduleAutoSaveMarkdown = false
+let exportStatusTimer = null
 
 const clearAutoSaveMarkdownTimer = () => {
   window.clearTimeout(autoSaveMarkdownTimer)
   autoSaveMarkdownTimer = null
+}
+
+const clearExportStatusTimer = () => {
+  window.clearTimeout(exportStatusTimer)
+  exportStatusTimer = null
 }
 
 const selectedFolder = computed(() => {
@@ -556,6 +563,16 @@ watch(viewMode, (mode) => {
   if (mode !== 'chat') {
     openReactionPickerMessageId.value = null
   }
+})
+
+watch(exportStatus, (message) => {
+  clearExportStatusTimer()
+
+  if (!message) return
+
+  exportStatusTimer = window.setTimeout(() => {
+    exportStatus.value = ''
+  }, 4200)
 })
 
 const isReloadMarkdownDisabled = computed(() =>
@@ -2512,7 +2529,9 @@ const handleCheckForUpdates = async () => {
     settingsStatus.value = 'アップデートをインストールしました。再起動します'
     await relaunch()
   } catch (error) {
-    settingsStatus.value = error instanceof Error ? error.message : 'アップデートの確認に失敗しました'
+    settingsStatus.value = error instanceof Error
+      ? `アップデート情報を取得できませんでした: ${error.message}`
+      : 'アップデート情報を取得できませんでした'
   } finally {
     isCheckingForUpdates.value = false
   }
@@ -2606,6 +2625,7 @@ onMounted(async () => {
 
 onBeforeUnmount(() => {
   clearAutoSaveMarkdownTimer()
+  clearExportStatusTimer()
 })
 </script>
 
@@ -2675,15 +2695,16 @@ onBeforeUnmount(() => {
           </div>
           <button
             type="button"
-            class="secondary-button reload-button"
+            class="secondary-button icon-action-button reload-button"
+            :aria-label="isReloadingMarkdown ? 'Markdownを再読み込み中' : 'Markdownを再読み込み'"
+            :title="isReloadingMarkdown ? '再読み込み中' : '再読み込み'"
             :disabled="isReloadMarkdownDisabled"
             @click="reloadSelectedMarkdown"
           >
-            {{ isReloadingMarkdown ? '再読み込み中' : '再読み込み' }}
+            <RefreshCw :size="18" :class="{ spinning: isReloadingMarkdown }" aria-hidden="true" />
           </button>
         </div>
-        <p v-if="exportStatus" class="export-status">{{ exportStatus }}</p>
-        <p v-if="viewMode === 'chat' && isMarkdownDirty" class="export-status is-warning">
+        <p v-if="viewMode === 'chat' && isMarkdownDirty" class="unsaved-warning">
           Markdownに未保存の変更があります
         </p>
         <div
@@ -2732,7 +2753,7 @@ onBeforeUnmount(() => {
                 type="button"
                 class="primary-button"
                 :disabled="isSavingMarkdown || isSavingNote || !isMarkdownDirty"
-                @click="saveMarkdownDraft"
+                @click="saveMarkdownDraft()"
               >
                 {{ isSavingMarkdown ? '保存中' : '保存' }}
               </button>
@@ -2757,6 +2778,9 @@ onBeforeUnmount(() => {
         />
       </main>
     </div>
+    <p v-if="exportStatus" class="export-status" role="status" aria-live="polite">
+      {{ exportStatus }}
+    </p>
     <Modal v-model="isCustomReactionModalOpen" size="default" @close="closeCustomReactionModal">
       <template #header>
         <h2 id="custom-reaction-title" class="modal-title">絵文字を追加する</h2>
@@ -3422,14 +3446,47 @@ onBeforeUnmount(() => {
   flex: 0 0 auto;
 }
 
+.icon-action-button {
+  width: 36px;
+  min-width: 36px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+}
+
+.spinning {
+  animation: spin 800ms linear infinite;
+}
+
 .export-status {
+  position: fixed;
+  z-index: 80;
+  right: 24px;
+  bottom: 24px;
+  max-width: min(420px, calc(100vw - 48px));
+  box-sizing: border-box;
+  margin: 0;
+  border: 1px solid var(--border-default);
+  border-radius: 8px;
+  padding: 10px 12px;
+  background: var(--surface-overlay);
+  box-shadow: var(--shadow-panel);
+  color: var(--text-secondary);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.unsaved-warning {
   margin: -6px 0 12px;
-  color: var(--text-tertiary);
+  color: var(--text-secondary);
   font-size: 12px;
 }
 
-.export-status.is-warning {
-  color: var(--text-secondary);
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 .custom-reaction-form {
