@@ -2672,7 +2672,6 @@ onBeforeUnmount(() => {
 <template>
   <div class="container">
     <div class="window-titlebar" data-tauri-drag-region>
-      <div class="titlebar-drag-handle" data-tauri-drag-region aria-hidden="true"></div>
       <button
         type="button"
         class="titlebar-tree-toggle"
@@ -2683,6 +2682,7 @@ onBeforeUnmount(() => {
         <PanelLeftClose v-if="isTreePanelOpen" :size="18" />
         <PanelLeftOpen v-else :size="18" />
       </button>
+      <div class="titlebar-drag-handle" data-tauri-drag-region aria-hidden="true"></div>
     </div>
     <div class="layout">
       <Sidebar
@@ -3672,11 +3672,6 @@ onBeforeUnmount(() => {
 }
 
 @media (max-width: 640px) {
-  .window-titlebar {
-    padding-right: 12px;
-    padding-left: 92px;
-  }
-
   .custom-reaction-upload-row {
     align-items: flex-start;
     flex-direction: column;
