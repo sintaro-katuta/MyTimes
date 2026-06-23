@@ -416,6 +416,7 @@ const loadFolderNotesError = ref('')
 const sendMessageError = ref('')
 const markdownEditorError = ref('')
 const exportStatus = ref('')
+const exportStatusKind = ref('success')
 const selectedMarkdownContent = ref('')
 const selectedMarkdownSignature = ref('')
 const isSelectedNoteDbFallback = ref(false)
@@ -459,6 +460,15 @@ const clearAutoSaveMarkdownTimer = () => {
 const clearExportStatusTimer = () => {
   window.clearTimeout(exportStatusTimer)
   exportStatusTimer = null
+}
+
+const setExportStatus = (message, kind = 'success') => {
+  exportStatusKind.value = kind
+  exportStatus.value = message
+}
+
+const clearExportStatus = () => {
+  setExportStatus('')
 }
 
 const disableTextAssistanceForElement = (element) => {
@@ -614,10 +624,10 @@ watch(viewMode, (mode) => {
 watch(exportStatus, (message) => {
   clearExportStatusTimer()
 
-  if (!message) return
+  if (!message || exportStatusKind.value !== 'success') return
 
   exportStatusTimer = window.setTimeout(() => {
-    exportStatus.value = ''
+    clearExportStatus()
   }, 4200)
 })
 
@@ -1437,7 +1447,7 @@ const reloadSelectedMarkdown = async () => {
   isReloadingMarkdown.value = true
   loadMessageError.value = ''
   markdownEditorError.value = ''
-  exportStatus.value = ''
+  clearExportStatus()
 
   try {
     const markdown = await readMarkdownFile({
@@ -1457,9 +1467,11 @@ const reloadSelectedMarkdown = async () => {
     }
 
     await applyMarkdownDocument({ markdown, parsed, relativePath })
-    exportStatus.value = nextSignature === previousSignature
-      ? `${relativePath} は最新です`
-      : `${relativePath} を再読み込みしました`
+    setExportStatus(
+      nextSignature === previousSignature
+        ? `${relativePath} は最新です`
+        : `${relativePath} を再読み込みしました`,
+    )
     await scrollMessagesToBottom()
     await refreshFolderNotes()
   } catch (error) {
@@ -2227,7 +2239,7 @@ const sendMessage = async () => {
 
   isSendingMessage.value = true
   sendMessageError.value = ''
-  exportStatus.value = ''
+  clearExportStatus()
 
   try {
     if (isMarkdownSendDisabled.value) {
@@ -2322,11 +2334,13 @@ const sendMessage = async () => {
       const parsed = await parseMarkdownToChat(nextMarkdown)
 
       draftMessage.value = ''
-      exportStatus.value = didCreateDailyNote
-        ? `${relativePath} を作成して追記しました`
-        : pendingTimelineMessageCount > 0
-          ? `${relativePath} に未同期の投稿${pendingTimelineMessageCount}件と新規投稿を追記しました`
-          : `${relativePath} に追記しました`
+      setExportStatus(
+        didCreateDailyNote
+          ? `${relativePath} を作成して追記しました`
+          : pendingTimelineMessageCount > 0
+            ? `${relativePath} に未同期の投稿${pendingTimelineMessageCount}件と新規投稿を追記しました`
+            : `${relativePath} に追記しました`,
+      )
 
       if (
         selectedFolder.value &&
@@ -2393,7 +2407,7 @@ const sendMessage = async () => {
         files: result.files,
         folderId: exportFolderId,
       })
-      exportStatus.value = `${result.exported_count}件を書き出しました`
+      setExportStatus(`${result.exported_count}件を書き出しました`)
       if (selectedFolderId.value === exportFolderId && selectedNotePath.value === exportNotePath) {
         const refreshedRows = await loadStoredMessages({
           folderId: exportFolderId,
@@ -2403,9 +2417,12 @@ const sendMessage = async () => {
       }
       await refreshFolderNotes()
     } catch (error) {
-      exportStatus.value = error instanceof Error
-        ? `メッセージは保存しましたが、Markdown書き出しに失敗しました: ${error.message}`
-        : 'メッセージは保存しましたが、Markdown書き出しに失敗しました'
+      setExportStatus(
+        error instanceof Error
+          ? `メッセージは保存しましたが、Markdown書き出しに失敗しました: ${error.message}`
+          : 'メッセージは保存しましたが、Markdown書き出しに失敗しました',
+        'error',
+      )
     }
   } catch (error) {
     sendMessageError.value = error instanceof Error ? error.message : 'メッセージの送信に失敗しました'
@@ -2449,7 +2466,7 @@ const saveMarkdownDraft = async (expectedTarget = null) => {
 
   isSavingMarkdown.value = true
   markdownEditorError.value = ''
-  exportStatus.value = ''
+  clearExportStatus()
 
   try {
     const latestMarkdown = await readMarkdownFile({
@@ -2487,7 +2504,7 @@ const saveMarkdownDraft = async (expectedTarget = null) => {
         notePath: relativePath,
         parsed,
       })
-      exportStatus.value = `${relativePath} を保存しました`
+      setExportStatus(`${relativePath} を保存しました`)
       await refreshFolderNotes()
     }
   } catch (error) {
@@ -2829,7 +2846,13 @@ onBeforeUnmount(() => {
         </div>
       </main>
     </div>
-    <p v-if="exportStatus" class="export-status" role="status" aria-live="polite">
+    <p
+      v-if="exportStatus"
+      class="export-status"
+      :class="{ 'is-error': exportStatusKind === 'error' }"
+      :role="exportStatusKind === 'error' ? 'alert' : 'status'"
+      :aria-live="exportStatusKind === 'error' ? 'assertive' : 'polite'"
+    >
       {{ exportStatus }}
     </p>
     <Modal v-model="isCustomReactionModalOpen" size="default" @close="closeCustomReactionModal">
@@ -3540,6 +3563,11 @@ onBeforeUnmount(() => {
   color: var(--text-secondary);
   font-size: 12px;
   font-weight: 700;
+}
+
+.export-status.is-error {
+  border-color: color-mix(in srgb, var(--bg-error) 48%, var(--border-default));
+  color: var(--bg-error);
 }
 
 .unsaved-warning {
