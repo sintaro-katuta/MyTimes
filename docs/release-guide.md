@@ -95,7 +95,7 @@ TAURI_SIGNING_PRIVATE_KEY_PASSWORD='<password>' \
 このスクリプトは次をまとめて行います。
 
 - `npm run tauri -- signer generate` で秘密鍵を生成する
-- 出力された公開鍵を読み取る
+- 出力された `Public` / `Public key` が `.pub` ファイルパスの場合は、そのファイルの中身を読み取る
 - `src-tauri/tauri.conf.json` の `plugins.updater.pubkey` を更新する
 - GitHub Secrets 更新用のコマンド例を表示する
 
@@ -153,8 +153,9 @@ cat "$HOME/.tauri/mytimes.key"
 GitHub CLI で更新する場合は、`GITHUB_TOKEN` 環境変数を使わず keyring 認証を使います。
 
 ```sh
-env -u GITHUB_TOKEN gh secret set TAURI_SIGNING_PRIVATE_KEY --repo sintaro-katuta/MyTimes < "$HOME/.tauri/mytimes.key"
-printf %s "$TAURI_SIGNING_PRIVATE_KEY_PASSWORD" | env -u GITHUB_TOKEN gh secret set TAURI_SIGNING_PRIVATE_KEY_PASSWORD --repo sintaro-katuta/MyTimes
+unset GITHUB_TOKEN
+gh secret set TAURI_SIGNING_PRIVATE_KEY --repo sintaro-katuta/MyTimes < "$HOME/.tauri/mytimes.key"
+printf %s "$TAURI_SIGNING_PRIVATE_KEY_PASSWORD" | gh secret set TAURI_SIGNING_PRIVATE_KEY_PASSWORD --repo sintaro-katuta/MyTimes
 ```
 
 ### 手動で updater archive を署名する

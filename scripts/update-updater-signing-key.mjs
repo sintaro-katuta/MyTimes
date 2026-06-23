@@ -80,6 +80,27 @@ const extractPublicKey = (output) => {
   return ''
 }
 
+const isPublicKeyPath = (value) =>
+  /\.pub$/i.test(value) ||
+  value.startsWith('/') ||
+  value.startsWith('./') ||
+  value.startsWith('../') ||
+  value.startsWith('~') ||
+  /^[A-Za-z]:[\\/]/.test(value)
+
+const resolvePublicKey = async (value) => {
+  if (!value) return ''
+
+  if (!isPublicKeyPath(value)) {
+    return value
+  }
+
+  const publicKeyPath = value.startsWith('~')
+    ? resolve(homedir(), value.slice(1))
+    : resolve(projectRoot, value)
+  return (await readFile(publicKeyPath, 'utf8')).trim()
+}
+
 const generatePublicKey = async ({ keyPath, password, force }) => {
   if (!password) {
     throw new Error('TAURI_SIGNING_PRIVATE_KEY_PASSWORD または --password を指定してください')
@@ -104,7 +125,7 @@ const generatePublicKey = async ({ keyPath, password, force }) => {
   }
 
   const { stdout, stderr } = await run(npmCommand, generateArgs)
-  const publicKey = extractPublicKey(`${stdout}\n${stderr}`)
+  const publicKey = await resolvePublicKey(extractPublicKey(`${stdout}\n${stderr}`))
 
   if (!publicKey) {
     throw new Error('公開鍵を signer generate の出力から読み取れませんでした')
@@ -133,7 +154,7 @@ const main = async () => {
 
   const keyPath = readOption('--key-path') ?? process.env.TAURI_SIGNING_PRIVATE_KEY_PATH ?? defaultKeyPath
   const password = readOption('--password') ?? process.env.TAURI_SIGNING_PRIVATE_KEY_PASSWORD ?? ''
-  const publicKeyOption = readOption('--public-key')
+  const publicKeyOption = await resolvePublicKey(readOption('--public-key'))
   const publicKey = publicKeyOption || await generatePublicKey({
     keyPath,
     password,
@@ -150,8 +171,9 @@ const main = async () => {
   if (!publicKeyOption) {
     console.log('')
     console.log('GitHub Secrets の更新例:')
-    console.log(`env -u GITHUB_TOKEN gh secret set TAURI_SIGNING_PRIVATE_KEY --repo sintaro-katuta/MyTimes < "${keyPath}"`)
-    console.log('printf %s "$TAURI_SIGNING_PRIVATE_KEY_PASSWORD" | env -u GITHUB_TOKEN gh secret set TAURI_SIGNING_PRIVATE_KEY_PASSWORD --repo sintaro-katuta/MyTimes')
+    console.log('unset GITHUB_TOKEN')
+    console.log(`gh secret set TAURI_SIGNING_PRIVATE_KEY --repo sintaro-katuta/MyTimes < "${keyPath}"`)
+    console.log('printf %s "$TAURI_SIGNING_PRIVATE_KEY_PASSWORD" | gh secret set TAURI_SIGNING_PRIVATE_KEY_PASSWORD --repo sintaro-katuta/MyTimes')
   }
 }
 
