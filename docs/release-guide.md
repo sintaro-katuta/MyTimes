@@ -85,23 +85,31 @@ updater 署名キーは、秘密鍵、秘密鍵パスワード、公開鍵の 3 
 
 まだ公開前で既存利用者がいない場合は、秘密鍵、GitHub Secrets、`pubkey` を同時に差し替えて問題ありません。
 
-### 新しい署名キーを生成する
+### スクリプトで新しい署名キーを生成する
 
 ```sh
-npm run tauri -- signer generate --write-keys "$HOME/.tauri/mytimes.key"
+TAURI_SIGNING_PRIVATE_KEY_PASSWORD='<password>' \
+  npm run signing:update -- --key-path "$HOME/.tauri/mytimes.key"
 ```
 
-生成時に表示される `Public key` を控えます。
-この値を `src-tauri/tauri.conf.json` の `plugins.updater.pubkey` に設定します。
+このスクリプトは次をまとめて行います。
 
-```json
-{
-  "plugins": {
-    "updater": {
-      "pubkey": "生成された公開鍵の文字列"
-    }
-  }
-}
+- `npm run tauri -- signer generate` で秘密鍵を生成する
+- 出力された公開鍵を読み取る
+- `src-tauri/tauri.conf.json` の `plugins.updater.pubkey` を更新する
+- GitHub Secrets 更新用のコマンド例を表示する
+
+既存の秘密鍵ファイルを上書きする場合は `--force` を付けます。
+
+```sh
+TAURI_SIGNING_PRIVATE_KEY_PASSWORD='<password>' \
+  npm run signing:update -- --key-path "$HOME/.tauri/mytimes.key" --force
+```
+
+公開鍵だけを差し替える場合は `--public-key` を使います。
+
+```sh
+npm run signing:update -- --public-key "生成された公開鍵の文字列"
 ```
 
 `pubkey` には環境変数名や秘密鍵ファイルのパスではなく、公開鍵の文字列そのものを書きます。
@@ -141,6 +149,13 @@ cat "$HOME/.tauri/mytimes.key"
 
 表示された全文を `TAURI_SIGNING_PRIVATE_KEY` に登録します。
 パスワードは後から復元できないため、分からない場合は鍵を作り直します。
+
+GitHub CLI で更新する場合は、`GITHUB_TOKEN` 環境変数を使わず keyring 認証を使います。
+
+```sh
+env -u GITHUB_TOKEN gh secret set TAURI_SIGNING_PRIVATE_KEY --repo sintaro-katuta/MyTimes < "$HOME/.tauri/mytimes.key"
+printf %s "$TAURI_SIGNING_PRIVATE_KEY_PASSWORD" | env -u GITHUB_TOKEN gh secret set TAURI_SIGNING_PRIVATE_KEY_PASSWORD --repo sintaro-katuta/MyTimes
+```
 
 ### 手動で updater archive を署名する
 
