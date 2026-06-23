@@ -26,9 +26,7 @@
       "csp": null,
       "assetProtocol": {
         "enable": true,
-        "scope": [
-          "$HOME/**"
-        ]
+        "scope": ["$HOME/**"]
       }
     }
   },
@@ -46,7 +44,7 @@
   },
   "plugins": {
     "updater": {
-      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDY5Mjc1RDdCRjIwNjBDQTIKUldTaURBYnllMTBuYVZmZ0VzSGVoUzBqcU05WmFUbXdVUi9WdTIwNzIvSWpMbzViTUhsWitIcm8K",
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEYxREY3QTkwQzdFMzZEOUQKUldTZGJlUEhrSHJmOGJhdGYyaDdzK1VqRUk4cWNNYWgxeVdzSHVvS3dEWDF1S1NZOHd5aVBKUjUK",
       "endpoints": [
         "https://github.com/sintaro-katuta/MyTimes/releases/latest/download/latest.json"
       ],
