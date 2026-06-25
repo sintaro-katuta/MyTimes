@@ -71,9 +71,22 @@ jobs:
           tagName: v__VERSION__
           releaseName: MyTimes v__VERSION__
           releaseBody: |
-            MyTimes のリリースです。
+            ## 概要
 
-            アプリ内アップデート用の latest.json と署名付き成果物を含みます。
+            MyTimes v1 の初回公開リリースです。
+
+            - 作業中の判断、詰まり、試行錯誤をチャット感覚で Markdown に記録できます
+            - ローカルフォルダー内の Markdown ファイルを直接作成・編集できます
+            - プロジェクトごとに保存先フォルダー、表示名、アイコンを管理できます
+            - アプリ内アップデート用の latest.json と署名付き成果物を同梱しています
+
+            ## 確認内容
+
+            - npm run check:version
+            - cargo fmt --manifest-path src-tauri/Cargo.toml -- --check
+            - cargo check --manifest-path src-tauri/Cargo.toml
+            - npm run build
+            - Release workflow による macOS / Windows / Linux 向け配布物生成
           releaseDraft: true
           prerelease: false
           updaterJsonPreferNsis: true
