@@ -11,6 +11,20 @@ const defaultKeyPath = resolve(homedir(), '.tauri/mytimes.key')
 
 const args = process.argv.slice(2)
 
+const expandHomePath = (value) => {
+  if (!value.startsWith('~')) return value
+  if (value === '~') return homedir()
+  if (value.startsWith('~/') || value.startsWith('~\\')) {
+    return resolve(homedir(), value.slice(2))
+  }
+  return value
+}
+
+const resolveFromProject = (value) => {
+  const expanded = expandHomePath(value)
+  return resolve(projectRoot, expanded)
+}
+
 const readOption = (name) => {
   const index = args.indexOf(name)
   if (index === -1) return null
@@ -25,7 +39,6 @@ const printHelp = () => {
 
 Options:
   --key-path <path>      Private key output path. Defaults to TAURI_SIGNING_PRIVATE_KEY_PATH or ~/.tauri/mytimes.key
-  --password <value>     Private key password. Defaults to TAURI_SIGNING_PRIVATE_KEY_PASSWORD
   --public-key <value>   Skip key generation and only update src-tauri/tauri.conf.json pubkey
   --force                Overwrite an existing private key file
   --help                 Show this help
@@ -36,11 +49,17 @@ Examples:
 `)
 }
 
-const run = (command, commandArgs) =>
+const redactArgs = (commandArgs) =>
+  commandArgs.map((arg, index) => commandArgs[index - 1] === '--password' ? '<redacted>' : arg)
+
+const run = (command, commandArgs, options = {}) =>
   new Promise((resolvePromise, rejectPromise) => {
     const child = spawn(command, commandArgs, {
       cwd: projectRoot,
-      env: process.env,
+      env: {
+        ...process.env,
+        ...options.env,
+      },
       stdio: ['inherit', 'pipe', 'pipe'],
     })
 
@@ -66,12 +85,12 @@ const run = (command, commandArgs) =>
         return
       }
 
-      rejectPromise(new Error(`${command} ${commandArgs.join(' ')} failed with code ${code}`))
+      rejectPromise(new Error(`${command} ${redactArgs(commandArgs).join(' ')} failed with code ${code}`))
     })
   })
 
 const extractPublicKey = (output) => {
-  const labeledMatch = output.match(/Public key:\s*([^\s]+)/i) ?? output.match(/Public:\s*([^\s]+)/i)
+  const labeledMatch = output.match(/^Public key:\s*(.+)$/im) ?? output.match(/^Public:\s*(.+)$/im)
   if (labeledMatch?.[1]) return labeledMatch[1]
 
   const base64Match = output.match(/dW50cnVzdGVk[0-9A-Za-z+/=]+/)
@@ -95,26 +114,22 @@ const resolvePublicKey = async (value) => {
     return value
   }
 
-  const publicKeyPath = value.startsWith('~')
-    ? resolve(homedir(), value.slice(1))
-    : resolve(projectRoot, value)
+  const publicKeyPath = resolveFromProject(value)
   return (await readFile(publicKeyPath, 'utf8')).trim()
 }
 
 const generatePublicKey = async ({ keyPath, password, force }) => {
   if (!password) {
-    throw new Error('TAURI_SIGNING_PRIVATE_KEY_PASSWORD または --password を指定してください')
+    throw new Error('TAURI_SIGNING_PRIVATE_KEY_PASSWORD を指定してください')
   }
 
-  const npmCommand = process.platform === 'win32' ? 'npm.cmd' : 'npm'
+  const resolvedKeyPath = resolveFromProject(keyPath)
+  const tauriCommand = resolve(projectRoot, 'node_modules', '.bin', process.platform === 'win32' ? 'tauri.cmd' : 'tauri')
   const generateArgs = [
-    'run',
-    'tauri',
-    '--',
     'signer',
     'generate',
     '--write-keys',
-    keyPath,
+    resolvedKeyPath,
     '--password',
     password,
     '--ci',
@@ -124,14 +139,16 @@ const generatePublicKey = async ({ keyPath, password, force }) => {
     generateArgs.push('--force')
   }
 
-  const { stdout, stderr } = await run(npmCommand, generateArgs)
-  const publicKey = await resolvePublicKey(extractPublicKey(`${stdout}\n${stderr}`))
+  const { stdout, stderr } = await run(tauriCommand, generateArgs)
+  const generatedPublicKeyPath = `${resolvedKeyPath}.pub`
+  const publicKey = await resolvePublicKey(generatedPublicKeyPath)
+    .catch(async () => resolvePublicKey(extractPublicKey(`${stdout}\n${stderr}`)))
 
   if (!publicKey) {
     throw new Error('公開鍵を signer generate の出力から読み取れませんでした')
   }
 
-  return publicKey
+  return { publicKey, keyPath: resolvedKeyPath }
 }
 
 const updateTauriPubkey = async (publicKey) => {
@@ -153,13 +170,16 @@ const main = async () => {
   }
 
   const keyPath = readOption('--key-path') ?? process.env.TAURI_SIGNING_PRIVATE_KEY_PATH ?? defaultKeyPath
-  const password = readOption('--password') ?? process.env.TAURI_SIGNING_PRIVATE_KEY_PASSWORD ?? ''
+  const password = process.env.TAURI_SIGNING_PRIVATE_KEY_PASSWORD ?? ''
   const publicKeyOption = await resolvePublicKey(readOption('--public-key'))
-  const publicKey = publicKeyOption || await generatePublicKey({
-    keyPath,
-    password,
-    force: hasFlag('--force'),
-  })
+  const generated = publicKeyOption
+    ? { publicKey: publicKeyOption, keyPath: resolveFromProject(keyPath) }
+    : await generatePublicKey({
+      keyPath,
+      password,
+      force: hasFlag('--force'),
+    })
+  const publicKey = generated.publicKey
   const previousPubkey = await updateTauriPubkey(publicKey)
 
   console.log('')
@@ -172,7 +192,7 @@ const main = async () => {
     console.log('')
     console.log('GitHub Secrets の更新例:')
     console.log('unset GITHUB_TOKEN')
-    console.log(`gh secret set TAURI_SIGNING_PRIVATE_KEY --repo sintaro-katuta/MyTimes < "${keyPath}"`)
+    console.log(`gh secret set TAURI_SIGNING_PRIVATE_KEY --repo sintaro-katuta/MyTimes < "${generated.keyPath}"`)
     console.log('printf %s "$TAURI_SIGNING_PRIVATE_KEY_PASSWORD" | gh secret set TAURI_SIGNING_PRIVATE_KEY_PASSWORD --repo sintaro-katuta/MyTimes')
   }
 }
