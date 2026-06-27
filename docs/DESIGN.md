@@ -117,7 +117,7 @@
 
 現状の注意:
 - アクションに `Heart` アイコンが 3 つ並んでいるが、意味づけはまだ入っていない。
-- アバター画像は現状 `./example1.jpg` 固定。
+- アバター画像は設定値から `/user-icon/default-user-icon.svg` を表示する。
 
 ### `SendMessage.vue`
 
