@@ -34,7 +34,7 @@ MyTimes は、エンジニアや個人開発者が作業中の考え、詰まっ
 
 ## MyTimes が解決すること
 
-![MyTimes のサムネイル](public/サムネ.png)
+![MyTimes のサムネイル](public/thumbnail.png)
 
 ### ちゃんと書こうとして、何も残らない
 
