@@ -6,7 +6,7 @@
     MyTimes は、実装中の判断、詰まり、試行錯誤をチャット感覚で Markdown に残すローカル分報アプリです。
   </p>
   <p>
-    <a href="https://github.com/sintaro-katuta/MyTimes/releases">
+    <a href="https://github.com/sintaro-katuta/MyTimes/releases/latest">
       <img src="https://img.shields.io/github/v/release/sintaro-katuta/MyTimes?label=release" alt="Release">
     </a>
     <a href="https://github.com/sintaro-katuta/MyTimes/actions/workflows/build.yml">
@@ -84,7 +84,7 @@ v1 では、チーム共有、クラウド同期、公開タイムライン、AI
 
 ## インストール
 
-[GitHub Releases](https://github.com/sintaro-katuta/MyTimes/releases) から、利用している OS に合う配布ファイルをダウンロードします。
+[GitHub Releases の最新版](https://github.com/sintaro-katuta/MyTimes/releases/latest) から、利用している OS に合う配布ファイルをダウンロードします。
 
 | OS | ダウンロードするファイルの目安 |
 | --- | --- |
@@ -97,7 +97,7 @@ v1 では、チーム共有、クラウド同期、公開タイムライン、AI
 3. ダウンロードしたファイルを開き、OS の案内に沿ってインストールする
 4. 初回起動時にセキュリティ警告が表示された場合は、信頼できるアプリとして実行を許可する
 
-実際に利用できる OS と配布形式は、各リリースの Assets に含まれるファイルを確認してください。
+実際に利用できる OS と配布形式は、最新版の Assets に含まれるファイルを確認してください。
 
 ## 使い方
 

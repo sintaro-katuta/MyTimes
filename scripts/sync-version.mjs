@@ -15,7 +15,7 @@ const escapeRegExp = (value) => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 
 const updateCargoLockPackageVersion = (content, packageName, version) => {
   const packageSectionPattern = new RegExp(
-    `(\\[\\[package\\]\\]\\nname = "${escapeRegExp(packageName)}"\\nversion = )"[^"]+"`,
+    `(\\[\\[package\\]\\]\\r?\\nname = "${escapeRegExp(packageName)}"\\r?\\nversion = )"[^"]+"`,
   )
 
   if (!packageSectionPattern.test(content)) {
