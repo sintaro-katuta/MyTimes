@@ -26,6 +26,8 @@
 
 ## MyTimes とは
 
+![MyTimes のサムネイル](public/thumbnail.png)
+
 MyTimes は、エンジニアや個人開発者が作業中の考え、詰まったこと、判断の理由、あとで拾いたいメモをすばやく残すための個人用タイムラインです。
 
 日報、PR、振り返りを書くときに「何を考えていたか」を探さなくてよくなります。作業の流れ、迷った理由、あとで試したいことが、時系列の Markdown として残ります。
@@ -86,11 +88,11 @@ v1 では、チーム共有、クラウド同期、公開タイムライン、AI
 
 [GitHub Releases の最新版](https://github.com/sintaro-katuta/MyTimes/releases/latest) から、利用している OS に合う配布ファイルをダウンロードします。
 
-| OS | ダウンロードするファイルの目安 |
-| --- | --- |
-| macOS | `.dmg` または `.app.tar.gz` |
-| Windows | `.msi` または `.exe` |
-| Linux | `.AppImage`、`.deb`、`.rpm` など |
+| OS      | ダウンロードするファイルの目安   |
+| ------- | -------------------------------- |
+| macOS   | `.dmg` または `.app.tar.gz`      |
+| Windows | `.msi` または `.exe`             |
+| Linux   | `.AppImage`、`.deb`、`.rpm` など |
 
 1. 最新リリースの Assets を開く
 2. 利用環境に合うファイルをダウンロードする
@@ -127,8 +129,8 @@ MyTimes はローカルファーストなデスクトップアプリです。記
 
 ### 技術スタック
 
-| Vue 3 | Tauri v2 | Rust | SQLite | Vite |
-| --- | --- | --- | --- | --- |
+| Vue 3                                                              | Tauri v2                                                                | Rust                                                               | SQLite                                                                 | Vite                                                               |
+| ------------------------------------------------------------------ | ----------------------------------------------------------------------- | ------------------------------------------------------------------ | ---------------------------------------------------------------------- | ------------------------------------------------------------------ |
 | <img src="public/tech/vue.svg" alt="Vue 3" width="56" height="56"> | <img src="public/tech/tauri.svg" alt="Tauri v2" width="56" height="56"> | <img src="public/tech/rust.svg" alt="Rust" width="56" height="56"> | <img src="public/tech/sqlite.svg" alt="SQLite" width="56" height="56"> | <img src="public/tech/vite.svg" alt="Vite" width="56" height="56"> |
 
 UI は Vue 3 / Vite、ローカルファイル操作とアプリ機能は Tauri v2 / Rust、設定や表示用キャッシュは SQLite を使います。
