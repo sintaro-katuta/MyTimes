@@ -15,6 +15,15 @@ npm run build
 npm run tauri -- build --verbose
 ```
 
+`npm run tauri -- build --verbose` は updater 成果物の署名も行うため、ローカルで成功させるには次の環境変数が必要。
+
+```sh
+export TAURI_SIGNING_PRIVATE_KEY='<private key>'
+export TAURI_SIGNING_PRIVATE_KEY_PASSWORD='<password>'
+```
+
+署名キーをローカルに置かない場合、`A public key has been found, but no private key. Make sure to set TAURI_SIGNING_PRIVATE_KEY environment variable.` で失敗することは想定内とする。この場合は、直前の `cargo build --bins --features tauri/custom-protocol --release` が成功してアプリ本体と DMG が生成されていることを確認し、署名付き updater 成果物は GitHub Secrets が渡る Release workflow で確認する。
+
 PR では最低限、次の確認を完了する。
 
 ```sh

@@ -5,6 +5,7 @@ import { LogicalPosition } from '@tauri-apps/api/dpi'
 import { Menu } from '@tauri-apps/api/menu'
 import { relaunch } from '@tauri-apps/plugin-process'
 import { check } from '@tauri-apps/plugin-updater'
+import { getCurrentWindow } from '@tauri-apps/api/window'
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import Modal from './components/Modal.vue'
 import Sidebar from './components/Sidebar.vue'
@@ -14,6 +15,7 @@ import Input from './components/Input.vue'
 import {
   PanelLeftClose,
   PanelLeftOpen,
+  RefreshCw,
 } from '@lucide/vue'
 import {
   PROJECT_ICON_PRESETS,
@@ -92,6 +94,7 @@ const USER_NAME_MAX_LENGTH = 20
 const FONT_SIZE_MIN = 12
 const FONT_SIZE_MAX = 28
 const FONT_SIZE_DEFAULT = Number(DEFAULT_SETTINGS.fontSize)
+const TEXT_INPUT_SELECTOR = 'input, textarea, [contenteditable]'
 
 const THEME_COLORS = {
   orange: {
@@ -413,6 +416,7 @@ const loadFolderNotesError = ref('')
 const sendMessageError = ref('')
 const markdownEditorError = ref('')
 const exportStatus = ref('')
+const exportStatusKind = ref('success')
 const selectedMarkdownContent = ref('')
 const selectedMarkdownSignature = ref('')
 const isSelectedNoteDbFallback = ref(false)
@@ -445,10 +449,69 @@ const noteActionError = ref('')
 let saveSettingsRequestId = 0
 let autoSaveMarkdownTimer = null
 let shouldRescheduleAutoSaveMarkdown = false
+let exportStatusTimer = null
+let textAssistanceObserver = null
 
 const clearAutoSaveMarkdownTimer = () => {
   window.clearTimeout(autoSaveMarkdownTimer)
   autoSaveMarkdownTimer = null
+}
+
+const clearExportStatusTimer = () => {
+  window.clearTimeout(exportStatusTimer)
+  exportStatusTimer = null
+}
+
+const setExportStatus = (message, kind = 'success') => {
+  exportStatusKind.value = kind
+  exportStatus.value = message
+}
+
+const clearExportStatus = () => {
+  setExportStatus('')
+}
+
+const disableTextAssistanceForElement = (element) => {
+  if (!(element instanceof HTMLElement)) return
+
+  element.setAttribute('spellcheck', 'false')
+  element.setAttribute('autocorrect', 'off')
+  element.setAttribute('autocapitalize', 'none')
+  element.setAttribute('autocomplete', 'off')
+}
+
+const disableTextAssistance = (root = document) => {
+  if (root instanceof Element && root.matches(TEXT_INPUT_SELECTOR)) {
+    disableTextAssistanceForElement(root)
+  }
+
+  root.querySelectorAll?.(TEXT_INPUT_SELECTOR).forEach(disableTextAssistanceForElement)
+}
+
+const installTextAssistanceGuard = () => {
+  disableTextAssistance()
+  textAssistanceObserver?.disconnect()
+  textAssistanceObserver = new MutationObserver((mutations) => {
+    mutations.forEach((mutation) => {
+      mutation.addedNodes.forEach((node) => {
+        if (node instanceof Element) {
+          disableTextAssistance(node)
+        }
+      })
+    })
+  })
+  textAssistanceObserver.observe(document.body, {
+    childList: true,
+    subtree: true,
+  })
+}
+
+const startWindowDrag = (event) => {
+  if (event.button !== 0 || event.target.closest?.('button')) return
+  if (!window.__TAURI_INTERNALS__) return
+
+  event.preventDefault()
+  void getCurrentWindow().startDragging()
 }
 
 const selectedFolder = computed(() => {
@@ -556,6 +619,16 @@ watch(viewMode, (mode) => {
   if (mode !== 'chat') {
     openReactionPickerMessageId.value = null
   }
+})
+
+watch(exportStatus, (message) => {
+  clearExportStatusTimer()
+
+  if (!message || exportStatusKind.value !== 'success') return
+
+  exportStatusTimer = window.setTimeout(() => {
+    clearExportStatus()
+  }, 4200)
 })
 
 const isReloadMarkdownDisabled = computed(() =>
@@ -1374,7 +1447,7 @@ const reloadSelectedMarkdown = async () => {
   isReloadingMarkdown.value = true
   loadMessageError.value = ''
   markdownEditorError.value = ''
-  exportStatus.value = ''
+  clearExportStatus()
 
   try {
     const markdown = await readMarkdownFile({
@@ -1394,9 +1467,11 @@ const reloadSelectedMarkdown = async () => {
     }
 
     await applyMarkdownDocument({ markdown, parsed, relativePath })
-    exportStatus.value = nextSignature === previousSignature
-      ? `${relativePath} は最新です`
-      : `${relativePath} を再読み込みしました`
+    setExportStatus(
+      nextSignature === previousSignature
+        ? `${relativePath} は最新です`
+        : `${relativePath} を再読み込みしました`,
+    )
     await scrollMessagesToBottom()
     await refreshFolderNotes()
   } catch (error) {
@@ -2164,7 +2239,7 @@ const sendMessage = async () => {
 
   isSendingMessage.value = true
   sendMessageError.value = ''
-  exportStatus.value = ''
+  clearExportStatus()
 
   try {
     if (isMarkdownSendDisabled.value) {
@@ -2259,11 +2334,13 @@ const sendMessage = async () => {
       const parsed = await parseMarkdownToChat(nextMarkdown)
 
       draftMessage.value = ''
-      exportStatus.value = didCreateDailyNote
-        ? `${relativePath} を作成して追記しました`
-        : pendingTimelineMessageCount > 0
-          ? `${relativePath} に未同期の投稿${pendingTimelineMessageCount}件と新規投稿を追記しました`
-          : `${relativePath} に追記しました`
+      setExportStatus(
+        didCreateDailyNote
+          ? `${relativePath} を作成して追記しました`
+          : pendingTimelineMessageCount > 0
+            ? `${relativePath} に未同期の投稿${pendingTimelineMessageCount}件と新規投稿を追記しました`
+            : `${relativePath} に追記しました`,
+      )
 
       if (
         selectedFolder.value &&
@@ -2330,7 +2407,7 @@ const sendMessage = async () => {
         files: result.files,
         folderId: exportFolderId,
       })
-      exportStatus.value = `${result.exported_count}件を書き出しました`
+      setExportStatus(`${result.exported_count}件を書き出しました`)
       if (selectedFolderId.value === exportFolderId && selectedNotePath.value === exportNotePath) {
         const refreshedRows = await loadStoredMessages({
           folderId: exportFolderId,
@@ -2340,9 +2417,12 @@ const sendMessage = async () => {
       }
       await refreshFolderNotes()
     } catch (error) {
-      exportStatus.value = error instanceof Error
-        ? `メッセージは保存しましたが、Markdown書き出しに失敗しました: ${error.message}`
-        : 'メッセージは保存しましたが、Markdown書き出しに失敗しました'
+      setExportStatus(
+        error instanceof Error
+          ? `メッセージは保存しましたが、Markdown書き出しに失敗しました: ${error.message}`
+          : 'メッセージは保存しましたが、Markdown書き出しに失敗しました',
+        'error',
+      )
     }
   } catch (error) {
     sendMessageError.value = error instanceof Error ? error.message : 'メッセージの送信に失敗しました'
@@ -2386,7 +2466,7 @@ const saveMarkdownDraft = async (expectedTarget = null) => {
 
   isSavingMarkdown.value = true
   markdownEditorError.value = ''
-  exportStatus.value = ''
+  clearExportStatus()
 
   try {
     const latestMarkdown = await readMarkdownFile({
@@ -2424,7 +2504,7 @@ const saveMarkdownDraft = async (expectedTarget = null) => {
         notePath: relativePath,
         parsed,
       })
-      exportStatus.value = `${relativePath} を保存しました`
+      setExportStatus(`${relativePath} を保存しました`)
       await refreshFolderNotes()
     }
   } catch (error) {
@@ -2512,7 +2592,9 @@ const handleCheckForUpdates = async () => {
     settingsStatus.value = 'アップデートをインストールしました。再起動します'
     await relaunch()
   } catch (error) {
-    settingsStatus.value = error instanceof Error ? error.message : 'アップデートの確認に失敗しました'
+    settingsStatus.value = error instanceof Error
+      ? `アップデート情報を取得できませんでした: ${error.message}`
+      : 'アップデート情報を取得できませんでした'
   } finally {
     isCheckingForUpdates.value = false
   }
@@ -2590,6 +2672,7 @@ watch(settingsAutoSaveMarkdown, (value) => {
 })
 
 onMounted(async () => {
+  installTextAssistanceGuard()
   await loadAppSettings().catch((error) => {
     loadMessageError.value = error instanceof Error ? error.message : '設定の読み込みに失敗しました'
   })
@@ -2606,12 +2689,15 @@ onMounted(async () => {
 
 onBeforeUnmount(() => {
   clearAutoSaveMarkdownTimer()
+  clearExportStatusTimer()
+  textAssistanceObserver?.disconnect()
+  textAssistanceObserver = null
 })
 </script>
 
 <template>
   <div class="container">
-    <div class="window-titlebar" data-tauri-drag-region>
+    <div class="window-titlebar" data-tauri-drag-region @mousedown="startWindowDrag">
       <button
         type="button"
         class="titlebar-tree-toggle"
@@ -2622,6 +2708,7 @@ onBeforeUnmount(() => {
         <PanelLeftClose v-if="isTreePanelOpen" :size="18" />
         <PanelLeftOpen v-else :size="18" />
       </button>
+      <div class="titlebar-drag-handle" data-tauri-drag-region aria-hidden="true"></div>
     </div>
     <div class="layout">
       <Sidebar
@@ -2675,15 +2762,16 @@ onBeforeUnmount(() => {
           </div>
           <button
             type="button"
-            class="secondary-button reload-button"
+            class="secondary-button icon-action-button reload-button"
+            :aria-label="isReloadingMarkdown ? 'Markdownを再読み込み中' : 'Markdownを再読み込み'"
+            :title="isReloadingMarkdown ? '再読み込み中' : '再読み込み'"
             :disabled="isReloadMarkdownDisabled"
             @click="reloadSelectedMarkdown"
           >
-            {{ isReloadingMarkdown ? '再読み込み中' : '再読み込み' }}
+            <RefreshCw :size="26" :class="{ spinning: isReloadingMarkdown }" aria-hidden="true" />
           </button>
         </div>
-        <p v-if="exportStatus" class="export-status">{{ exportStatus }}</p>
-        <p v-if="viewMode === 'chat' && isMarkdownDirty" class="export-status is-warning">
+        <p v-if="viewMode === 'chat' && isMarkdownDirty" class="unsaved-warning">
           Markdownに未保存の変更があります
         </p>
         <div
@@ -2732,7 +2820,7 @@ onBeforeUnmount(() => {
                 type="button"
                 class="primary-button"
                 :disabled="isSavingMarkdown || isSavingNote || !isMarkdownDirty"
-                @click="saveMarkdownDraft"
+                @click="saveMarkdownDraft()"
               >
                 {{ isSavingMarkdown ? '保存中' : '保存' }}
               </button>
@@ -2747,16 +2835,26 @@ onBeforeUnmount(() => {
           />
           <p v-if="markdownEditorError" class="settings-status is-error" role="alert">{{ markdownEditorError }}</p>
         </div>
-        <SendMessage
-          v-if="viewMode === 'chat'"
-          v-model="draftMessage"
-          :is-sending="isSendingMessage"
-          :disabled="isMarkdownSendDisabled"
-          :error-message="sendMessageError"
-          @submit="sendMessage"
-        />
+        <div v-if="viewMode === 'chat'" class="chat-composer">
+          <SendMessage
+            v-model="draftMessage"
+            :is-sending="isSendingMessage"
+            :disabled="isMarkdownSendDisabled"
+            :error-message="sendMessageError"
+            @submit="sendMessage"
+          />
+        </div>
       </main>
     </div>
+    <p
+      v-if="exportStatus"
+      class="export-status"
+      :class="{ 'is-error': exportStatusKind === 'error' }"
+      :role="exportStatusKind === 'error' ? 'alert' : 'status'"
+      :aria-live="exportStatusKind === 'error' ? 'assertive' : 'polite'"
+    >
+      {{ exportStatus }}
+    </p>
     <Modal v-model="isCustomReactionModalOpen" size="default" @close="closeCustomReactionModal">
       <template #header>
         <h2 id="custom-reaction-title" class="modal-title">絵文字を追加する</h2>
@@ -3324,8 +3422,16 @@ onBeforeUnmount(() => {
   box-sizing: border-box;
   display: flex;
   align-items: center;
-  padding-left: calc(16px * var(--density-scale) + 80px);
+  gap: 8px;
+  padding: 0 16px 0 calc(16px * var(--density-scale) + 80px);
   background: var(--surface-canvas);
+  -webkit-app-region: drag;
+}
+
+.titlebar-drag-handle {
+  height: 100%;
+  flex: 1 1 auto;
+  min-width: 44px;
   -webkit-app-region: drag;
 }
 
@@ -3374,11 +3480,11 @@ onBeforeUnmount(() => {
   display: flex;
   align-items: center;
   min-height: 48px;
-  margin-bottom: 16px;
+  margin: 0 16px 16px;
 }
 
 .search-result-status {
-  margin: -8px 0 12px;
+  margin: -8px 16px 12px;
   color: var(--text-tertiary);
   font-size: 12px;
 }
@@ -3388,7 +3494,7 @@ onBeforeUnmount(() => {
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  margin: 0 0 12px;
+  margin: 0 16px 12px;
 }
 
 .view-tabs {
@@ -3422,14 +3528,58 @@ onBeforeUnmount(() => {
   flex: 0 0 auto;
 }
 
+.icon-action-button {
+  width: 36px;
+  min-width: 36px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+}
+
+.icon-action-button.reload-button {
+  width: 44px;
+  min-width: 44px;
+  height: 44px;
+}
+
+.spinning {
+  animation: spin 800ms linear infinite;
+}
+
 .export-status {
-  margin: -6px 0 12px;
-  color: var(--text-tertiary);
+  position: fixed;
+  z-index: 80;
+  top: calc(var(--titlebar-height, 40px) + 16px);
+  right: 24px;
+  max-width: min(420px, calc(100vw - 48px));
+  box-sizing: border-box;
+  margin: 0;
+  border: 1px solid var(--border-default);
+  border-radius: 8px;
+  padding: 10px 12px;
+  background: var(--surface-overlay);
+  box-shadow: var(--shadow-panel);
+  color: var(--text-secondary);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.export-status.is-error {
+  border-color: color-mix(in srgb, var(--bg-error) 48%, var(--border-default));
+  color: var(--bg-error);
+}
+
+.unsaved-warning {
+  margin: -6px 16px 12px;
+  color: var(--text-secondary);
   font-size: 12px;
 }
 
-.export-status.is-warning {
-  color: var(--text-secondary);
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 .custom-reaction-form {
@@ -3954,13 +4104,19 @@ select.path-input {
   flex: 1;
   display: flex;
   min-height: 0;
+  box-sizing: border-box;
   flex-direction: column;
   justify-content: flex-end;
   gap: calc(16px * var(--density-scale));
   margin-bottom: calc(16px * var(--density-scale));
+  padding: 16px 16px 28px;
   overflow-y: auto;
   scrollbar-width: none;
   -ms-overflow-style: none;
+}
+
+.chat-composer {
+  margin: 0 16px;
 }
 
 .messages::-webkit-scrollbar {

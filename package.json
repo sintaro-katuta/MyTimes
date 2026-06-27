@@ -10,6 +10,7 @@
     "check:version": "node scripts/sync-version.mjs --check",
     "preview": "vite preview",
     "sync:version": "node scripts/sync-version.mjs",
+    "signing:update": "node scripts/update-updater-signing-key.mjs",
     "tauri": "tauri",
     "tauri:dev": "tauri dev",
     "tauri:build": "tauri build",
